@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical } from "lucide-react";
+import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer } from "lucide-react";
 import * as THREE from "three";
 import { storage } from "./lib/storage";
+import { supabase } from "./lib/supabaseClient";
+import { useAuth } from "./lib/AuthProvider";
 
 /* ---------------------------------- tokens ---------------------------------- */
 const INK = "#0F3D5C";        // blueprint ink
@@ -9,9 +11,18 @@ const INK_DEEP = "#0A2B41";
 const CHARCOAL = "#1C2126";
 const PAPER = "#F4F2EA";
 const STEEL = "#8A94A6";
-const SAFETY = "#D9622B";
-const AMBER = "#C68A2E";
-const GREEN = "#4C7A4F";
+const SAFETY = "#D4AF37";     // gold accent (was orange)
+const AMBER = "#EFA623";      // brighter gold
+const GREEN = "#2FA84F";      // brighter green
+
+// Densities in lb/in³ — used by the coil weight calculator (standard material physics
+// constants, not specific to any particular calculator app).
+const MATERIAL_DENSITIES = {
+  steel: { label: "Steel / Galvanized / Galvalume", density: 0.2836 },
+  stainless: { label: "Stainless Steel", density: 0.289 },
+  aluminum: { label: "Aluminum", density: 0.098 },
+  copper: { label: "Copper", density: 0.323 },
+};
 
 const GAUGE_OPTIONS = [
   { id: "24ga", label: "24 Gauge", panelSqft: 3.75, trimFt: 2.75 },
@@ -23,12 +34,37 @@ const COPPER_WEIGHT_OPTIONS = [
   { id: "20oz", label: "20 oz Copper", panelSqft: 17.75, trimFt: 13.25 },
 ];
 
-const PAINT_OPTIONS = [
-  { id: "pvdf", label: "PVDF (Kynar 500)", mult: 1.15 },
-  { id: "smp", label: "SMP", mult: 1.0 },
+const G90_GAUGE_OPTIONS = [
+  { id: "16ga", label: "16 Gauge", panelSqft: 6.25, trimFt: 4.60 },
+  { id: "18ga", label: "18 Gauge", panelSqft: 5.35, trimFt: 3.95 },
+  { id: "20ga", label: "20 Gauge", panelSqft: 4.55, trimFt: 3.35 },
+  { id: "22ga", label: "22 Gauge", panelSqft: 4.05, trimFt: 3.00 },
+  { id: "24ga", label: "24 Gauge", panelSqft: 3.35, trimFt: 2.50 },
 ];
 
-const BRANDS = ["Fortified Metal", "McElroy", "Una-Clad", "Adax Metals", "Copper"];
+const GALVALUME_GAUGE_OPTIONS = [
+  { id: "24ga", label: "24 Gauge", panelSqft: 3.45, trimFt: 2.55 },
+  { id: "26ga", label: "26 Gauge", panelSqft: 2.85, trimFt: 2.10 },
+];
+
+const BONDERIZED_GAUGE_OPTIONS = [
+  { id: "24ga", label: "24 Gauge", panelSqft: 3.60, trimFt: 2.65 },
+  { id: "26ga", label: "26 Gauge", panelSqft: 3.00, trimFt: 2.20 },
+];
+
+const PAINT_OPTIONS = [
+  { id: "pvdf", label: "PVDF (Kynar 500)", mult: 1.15 },
+  { id: "smp", label: "40YR SMP", mult: 1.0 },
+];
+
+const BRAND_GROUPS = {
+  Painted: ["Fortified Metal", "McElroy", "Una-Clad", "Adax Metals", "Berridge", "Quality Metals"],
+};
+const BRANDS = [...BRAND_GROUPS.Painted]; // painted brands only — unpainted materials live in their own dropdown
+const UNPAINTED_MATERIALS = ["G90 Galvanized", "Copper", "Galvalume", "Bonderized"];
+const PVDF_24GA_ONLY_BRANDS = ["Berridge", "McElroy"];
+const PVDF_ONLY_BRANDS = ["Una-Clad"]; // no SMP, but any gauge is fine
+const UNPAINTED_FLATS_ONLY_BRANDS = ["G90 Galvanized"];
 
 const PROFILE_INFO = {
   'SS450 – 1.5" Snap-Lock': { code: "SS450", family: "snap", takeup: 4.5, desc: "Popular residential snap-lock; the clip flares over the male leg." },
@@ -51,10 +87,145 @@ const PROFILES = Object.keys(PROFILE_INFO);
 function profileFamily(profile) {
   return PROFILE_INFO[profile]?.family || "mech";
 }
+
+// Builds a detailed side-view (cross-section) of the panel: real fold geometry for the
+// seam (a rounded hook cap for snap-lock vs. a flat, layered, double-folded block for
+// mechanical seam — those are mechanically different closures and should read as visually
+// different shapes, not the same blob), plus the rib texture running across the pan.
+// This draws the sheet as a proper closed outline (top face + a thin material-thickness
+// edge) with a metal-sheen gradient, rather than a single centerline stroke, and zooms in
+// on one full seam-to-seam module rather than trying to show true panel width — legibility
+// of the fold shape matters more here than literal width-to-scale accuracy.
+function generatePanelProfileSvg(profileLabel, ribStyle, widthIn) {
+  const info = PROFILE_INFO[profileLabel] || {};
+  const family = info.family || "mech";
+  const seamHeightMatch = profileLabel.match(/(\d+(\.\d+)?)"/);
+  const seamHeightIn = seamHeightMatch ? parseFloat(seamHeightMatch[1]) : 1.5;
+
+  const w = 480, h = 300, padX = 50, baseY = 235;
+  const seamH = Math.min(150, 60 + seamHeightIn * 36); // exaggerated, zoomed in for legibility
+  const seamW = 42;
+  const thick = 4; // drawn material thickness
+
+  const isMech = family === "mech" || family === "mecharmco" || family === "trapezoid";
+  const isBatten = family === "batten";
+  const isFlange = family === "flange";
+
+  // Outer profile top-line + a thin parallel inner line (thick px back) to suggest
+  // material thickness, the way real fold-up drawings show gauge stock.
+  const seamPath = (x, mirror) => {
+    const s = mirror ? -1 : 1;
+    const top = baseY - seamH;
+    if (isMech) {
+      // Double-lock mechanical seam: wall up, fold flat across the top, step down,
+      // fold flat again, step down to close — a layered rectangular block, not a curl.
+      return {
+        outer: `M ${x} ${baseY} L ${x} ${top + 34}
+                L ${x + s * 2} ${top + 30} L ${x + s * 2} ${top + 16}
+                L ${x + s * 15} ${top + 16} L ${x + s * 15} ${top}
+                L ${x + s * 15} ${top} L ${x + s * 15} ${top + 10}
+                L ${x + s * 5} ${top + 10} L ${x + s * 5} ${top + 22}
+                L ${x + s * 12} ${top + 22} L ${x + s * 12} ${top + 40}
+                L ${x + s * 6} ${top + 40} L ${x + s * 6} ${baseY - 10}
+                L ${x} ${baseY - 10} Z`,
+        foldLines: [
+          `M ${x + s * 2} ${top + 16} L ${x + s * 15} ${top + 16}`,
+          `M ${x + s * 5} ${top + 22} L ${x + s * 12} ${top + 22}`,
+          `M ${x + s * 6} ${top + 34} L ${x + s * 6} ${baseY - 10}`,
+        ],
+      };
+    }
+    if (isBatten) {
+      // Board-and-batten cap: a wide, boxy trapezoid rather than a thin hook.
+      return {
+        outer: `M ${x - s * 3} ${baseY} L ${x - s * 3} ${top + 8}
+                L ${x + s * 3} ${top} L ${x + s * 22} ${top}
+                L ${x + s * 28} ${top + 8} L ${x + s * 28} ${baseY - 10}
+                L ${x + s * 20} ${baseY - 10} L ${x + s * 20} ${top + 16}
+                L ${x + s * 8} ${top + 16} L ${x + s * 8} ${baseY - 10}
+                L ${x - s * 3} ${baseY - 10} Z`,
+        foldLines: [`M ${x + s * 3} ${top} L ${x + s * 3} ${baseY - 10}`],
+      };
+    }
+    // Snap-lock / flange / newlock family: a rounded hook cap. The male leg curls
+    // over and nests inside the taller female leg's curled lip — draw the outer wall,
+    // a smooth rounded bulb over the top, and a shorter inner hook line to suggest
+    // the nested male leg without turning it into a flat blob.
+    const flangeFoot = isFlange
+      ? `M ${x} ${baseY} L ${x - s * 10} ${baseY} L ${x - s * 10} ${baseY - 6} L ${x} ${baseY - 6} Z `
+      : "";
+    return {
+      outer: `M ${x} ${baseY} L ${x} ${top + 22}
+              C ${x} ${top + 4} ${x + s * 4} ${top - 6} ${x + s * 14} ${top - 4}
+              C ${x + s * 24} ${top - 2} ${x + s * 26} ${top + 10} ${x + s * 18} ${top + 16}
+              C ${x + s * 13} ${top + 20} ${x + s * 9} ${top + 18} ${x + s * 9} ${top + 26}
+              L ${x + s * 9} ${baseY - 8} L ${x} ${baseY - 8} Z`,
+      foldLines: [
+        `M ${x + s * 4} ${top + 8} C ${x + s * 4} ${top + 2} ${x + s * 9} ${top - 2} ${x + s * 15} ${top}`,
+      ],
+      extra: flangeFoot,
+    };
+  };
+
+  const left = seamPath(padX, false);
+  const right = seamPath(w - padX, true);
+
+  // Rib texture across the pan, between the two seams — drawn as a proper filled
+  // ribbon (top surface) rather than a thin centerline, so it reads as raised metal.
+  const panStart = padX + seamW, panEnd = w - padX - seamW;
+  const panSpan = panEnd - panStart;
+  let ribTop = "", ribShade = [];
+  if (ribStyle === "bead") {
+    const n = 2, r = 16;
+    let d = `M ${panStart} ${baseY}`;
+    for (let i = 1; i <= n; i++) {
+      const cx = panStart + (panSpan * i) / (n + 1);
+      d += ` L ${cx - r} ${baseY} C ${cx - r} ${baseY - r * 1.3} ${cx + r} ${baseY - r * 1.3} ${cx + r} ${baseY}`;
+      ribShade.push(`M ${cx - r} ${baseY} C ${cx - r} ${baseY - r * 1.3} ${cx + r} ${baseY - r * 1.3} ${cx + r} ${baseY}`);
+    }
+    d += ` L ${panEnd} ${baseY}`;
+    ribTop = d;
+  } else if (ribStyle === "pencil") {
+    const n = 3, r = 6;
+    let d = `M ${panStart} ${baseY}`;
+    for (let i = 1; i <= n; i++) {
+      const cx = panStart + (panSpan * i) / (n + 1);
+      d += ` L ${cx - r} ${baseY} L ${cx - 2} ${baseY - 20} L ${cx + 2} ${baseY - 20} L ${cx + r} ${baseY}`;
+      ribShade.push(`M ${cx - r} ${baseY} L ${cx - 2} ${baseY - 20} L ${cx + 2} ${baseY - 20} L ${cx + r} ${baseY}`);
+    }
+    d += ` L ${panEnd} ${baseY}`;
+    ribTop = d;
+  } else if (ribStyle === "v") {
+    const n = 2, r = 22;
+    let d = `M ${panStart} ${baseY}`;
+    for (let i = 1; i <= n; i++) {
+      const cx = panStart + (panSpan * i) / (n + 1);
+      d += ` L ${cx - r} ${baseY} L ${cx} ${baseY - 30} L ${cx + r} ${baseY}`;
+      ribShade.push(`M ${cx - r} ${baseY} L ${cx} ${baseY - 30} L ${cx + r} ${baseY}`);
+    }
+    d += ` L ${panEnd} ${baseY}`;
+    ribTop = d;
+  } else if (ribStyle === "striations") {
+    const n = 11, r = 5;
+    let d = `M ${panStart} ${baseY}`;
+    for (let i = 1; i <= n; i++) {
+      const cx = panStart + (panSpan * i) / (n + 1);
+      d += ` L ${cx - r} ${baseY} C ${cx - r} ${baseY - 6} ${cx + r} ${baseY - 6} ${cx + r} ${baseY}`;
+    }
+    d += ` L ${panEnd} ${baseY}`;
+    ribTop = d;
+  } else {
+    ribTop = `M ${panStart} ${baseY} L ${panEnd} ${baseY}`;
+  }
+
+  return { w, h, left, right, ribTop, ribShade, panStart, panEnd, baseY, thick };
+}
+
 function profileSearchUrl(profile) {
   const code = PROFILE_INFO[profile]?.code || profile;
   return `https://newtechmachinery.com/?s=${encodeURIComponent(code)}`;
 }
+
 
 const COLORS_BY_BRAND = {
   "Fortified Metal": [
@@ -79,85 +250,47 @@ const COLORS_BY_BRAND = {
     { name: "Texas Silver Metallic", hex: "#B0B4B7", premium: true },
   ],
   McElroy: [
-    { name: "Adobe Red", hex: "#A24C3D" },
-    { name: "Alamo White", hex: "#EDEAE0" },
-    { name: "Almond", hex: "#D9C9A8" },
-    { name: "Antique Brown", hex: "#6B4A34" },
-    { name: "Arctic Grey", hex: "#B8BCC0" },
-    { name: "Ash Gray", hex: "#8D9096" },
-    { name: "Autumn Red", hex: "#8B2E22" },
-    { name: "Barkwood", hex: "#5A4A3A" },
-    { name: "Blue Slate", hex: "#3A4A55" },
-    { name: "Bone White", hex: "#EDE8DD" },
-    { name: "Brandywine", hex: "#6E2F28" },
-    { name: "Bravo Red", hex: "#9C2B24" },
-    { name: "Brite Red", hex: "#B5262A" },
-    { name: "Buckskin", hex: "#9C8060" },
-    { name: "Camo Panel", hex: "#5C6644" },
-    { name: "Cedar Shake", hex: "#8A6B4A" },
-    { name: "Champagne Metallic", hex: "#C8B98A", premium: true },
-    { name: "Charcoal", hex: "#4A4E52" },
-    { name: "Charcoal Blend", hex: "#45494D" },
-    { name: "Classic Cedar Shake", hex: "#7C5B3C" },
-    { name: "Clay", hex: "#B98255" },
-    { name: "Colonial Red", hex: "#7B2B25" },
-    { name: "Copper Penny", hex: "#A05A3A", premium: true },
-    { name: "COR-TEN AZP Raw", hex: "#8C5A3C" },
-    { name: "Coral Blue", hex: "#4A7A8C" },
-    { name: "Cotillion White", hex: "#EFEDE6" },
-    { name: "Dark Bronze", hex: "#4A3B2E" },
-    { name: "Ebony", hex: "#232323" },
-    { name: "Estate Grey", hex: "#6E6C68" },
-    { name: "Evergreen", hex: "#2F4B3C" },
-    { name: "Forest Green", hex: "#33513F" },
-    { name: "Gallery Blue", hex: "#3E6E8C" },
-    { name: "Galvalume Plus", hex: "#A8ADB4" },
-    { name: "Gray Slate", hex: "#5C6268" },
-    { name: "Green Slate", hex: "#4A5C4E" },
-    { name: "Hartford Green", hex: "#1F3D2B" },
-    { name: "Hemlock Green", hex: "#445940" },
-    { name: "Heritage Green", hex: "#35503D" },
-    { name: "Homestead Brown", hex: "#5E4530" },
-    { name: "Ivory", hex: "#EDE6D3" },
-    { name: "Keystone Gray", hex: "#7A7D80" },
-    { name: "Leadcoat", hex: "#6E7276" },
-    { name: "Lightstone", hex: "#C9BFA8" },
-    { name: "Linen", hex: "#E7E1D3" },
-    { name: "Manor Gray", hex: "#6C6F73" },
-    { name: "Mansard Brown", hex: "#4A3826" },
-    { name: "Matte Black", hex: "#2B2B2B" },
-    { name: "Meadow Green", hex: "#5C7A4A" },
-    { name: "Medium Bronze", hex: "#5C4A38" },
-    { name: "Mission Clay", hex: "#A8623E" },
-    { name: "Morocco Red", hex: "#8C2E22" },
-    { name: "Mossy Oak Camo", hex: "#5A5A3E" },
-    { name: "New Penny", hex: "#B5622F" },
-    { name: "Oakwood", hex: "#7A5C3E" },
-    { name: "Patina Green", hex: "#5C8264" },
-    { name: "Patrician Bronze", hex: "#5C4630" },
-    { name: "Pewter Gray", hex: "#7C7F82" },
-    { name: "Ponderosa", hex: "#6E5138" },
-    { name: "Preweathered Galvalume", hex: "#9B9E9E" },
-    { name: "Ranchwood Brown", hex: "#6B4E36" },
-    { name: "Red Slate", hex: "#7A3A34" },
-    { name: "Regal Blue", hex: "#2E4A66" },
-    { name: "Regal White", hex: "#EDEAE1" },
-    { name: "Roman Blue", hex: "#35506B" },
-    { name: "Sandstone", hex: "#C2A97E" },
-    { name: "Seasoned Cedar Shake", hex: "#7E6244" },
-    { name: "Sepia Brown", hex: "#5A4632" },
-    { name: "Silver Metallic", hex: "#B7BABD", premium: true },
-    { name: "Slate Gray", hex: "#616669" },
-    { name: "Spanish Tile Red", hex: "#9C3C2C" },
-    { name: "Surrey Beige", hex: "#C7B896" },
-    { name: "Taupe", hex: "#8C7B65" },
-    { name: "Terra Cotta", hex: "#B5623E" },
-    { name: "Terratone", hex: "#8C6B4A" },
-    { name: "Texas Silver Metallic", hex: "#B0B4B7", premium: true },
-    { name: "Timber Tan", hex: "#B79A6E" },
-    { name: "Tudor Brown", hex: "#4E3A28" },
-    { name: "Weathered Galvalume", hex: "#9C9C94" },
-    { name: "Weathered Wood", hex: "#7A6A54" },
+    // Standard Options
+    { name: "Regal White", hex: "#E8EBEA" },
+    { name: "Bone White", hex: "#F0EDE4" },
+    { name: "Surrey Beige", hex: "#BFA98C" },
+    { name: "Sandstone", hex: "#C9C2B0" },
+    { name: "Almond", hex: "#DED0BC" },
+    { name: "Buckskin", hex: "#6E5C52" },
+    { name: "Ash Gray", hex: "#A2A09E" },
+    { name: "Slate Gray", hex: "#75767A" },
+    { name: "Charcoal", hex: "#55555C" },
+    { name: "Dark Charcoal", hex: "#33323A" },
+    { name: "Matte Black", hex: "#0F1420" },
+    { name: "Medium Bronze", hex: "#6F625E" },
+    { name: "Dark Bronze", hex: "#2B2621" },
+    { name: "Patina Green", hex: "#8FAF8B" },
+    { name: "Evergreen", hex: "#1F4A2C" },
+    { name: "Mansard Brown", hex: "#3F2B21" },
+    { name: "Colonial Red", hex: "#7B1F24" },
+    { name: "Roman Blue", hex: "#4A7896" },
+    { name: "Patrician Bronze", hex: "#3A2E22" },
+    { name: "Terra Cotta", hex: "#B85736" },
+    { name: "Galvalume Plus", hex: "#A8ABAA" },
+    // Deep Tone Premium Colors
+    { name: "Regal Blue", hex: "#1D4577", premium: true },
+    { name: "Brite Red", hex: "#C1321F", premium: true },
+    { name: "Hartford Green", hex: "#16342A", premium: true },
+    { name: "Brandywine", hex: "#4A1620", premium: true },
+    // Metallic Colors
+    { name: "Preweathered Galvalume", hex: "#8D9092", premium: true },
+    { name: "Leadcoat", hex: "#9B9B9C", premium: true },
+    { name: "Silver Metallic", hex: "#A6A9AC", premium: true },
+    { name: "Copper Penny Metallic", hex: "#A9682E", premium: true },
+    { name: "Texas Silver Metallic", hex: "#A2A6A8", premium: true },
+    { name: "Champagne Metallic", hex: "#9C9478", premium: true },
+    // Woodgrains
+    { name: "Chestnut", hex: "#7A4A2C", premium: true },
+    { name: "Driftwood", hex: "#6B6B68", premium: true },
+    { name: "Golden Pecan", hex: "#A9702F", premium: true },
+    // Specialty Finishes
+    { name: "Brushed Metal", hex: "#4B4E52", premium: true },
+    { name: "COR-TEN AZP Raw", hex: "#6B4A3A", premium: true },
   ],
   "Una-Clad": [
     { name: "Stone White", hex: "#EDEBE3" },
@@ -221,12 +354,128 @@ const COLORS_BY_BRAND = {
   ],
   "Copper": [
     { name: "Natural Copper (Mill Finish)", hex: "#B87333" },
-    { name: "Bright Copper (Polished)", hex: "#D2895A" },
-    { name: "Statuary Bronze Copper", hex: "#5C4326", premium: true },
-    { name: "Pre-Weathered Copper (Light Patina)", hex: "#8C7256", premium: true },
-    { name: "Pre-Weathered Copper (Medium Patina)", hex: "#6E8C7A", premium: true },
-    { name: "Pre-Patina Copper (Verdigris Green)", hex: "#4A8C72", premium: true },
   ],
+  "G90 Galvanized": [
+    { name: "G90 Galvanized (Mill Finish)", hex: "#B8BCC0" },
+  ],
+  "Galvalume": [
+    { name: "Galvalume (Mill Finish)", hex: "#C4C7C6" },
+  ],
+  "Bonderized": [
+    { name: "Bonderized (Mill Finish)", hex: "#A8A398" },
+  ],
+  "Berridge": [
+    // Standard Colors
+    { name: "Buckskin", hex: "#8A7B65" },
+    { name: "Parchment", hex: "#D9D6C9" },
+    { name: "Almond", hex: "#E4E6D3" },
+    { name: "Aged Bronze", hex: "#3E2E22" },
+    { name: "Shasta White", hex: "#EDEDE8" },
+    { name: "Forest Green", hex: "#1F4739" },
+    { name: "Patina Green", hex: "#5F9384" },
+    { name: "Sierra Tan", hex: "#B9AD8B" },
+    { name: "Medium Bronze", hex: "#4B3A2B" },
+    { name: "Charcoal Grey", hex: "#3D3D3F" },
+    { name: "Hemlock Green", hex: "#5C7B6C" },
+    { name: "Bristol Blue", hex: "#3A6E85" },
+    { name: "Terra-Cotta", hex: "#B0562F" },
+    { name: "Dark Bronze", hex: "#2E2318" },
+    { name: "Zinc Grey", hex: "#75797C" },
+    { name: "Hartford Green", hex: "#1D3B33" },
+    { name: "Royal Blue", hex: "#1B4863" },
+    { name: "Colonial Red", hex: "#7A2E2A" },
+    { name: "Copper Brown", hex: "#3A2A20" },
+    { name: "Matte Black", hex: "#232324" },
+    { name: "Teal Green", hex: "#2E7266" },
+    { name: "Burgundy", hex: "#4A1F22" },
+    { name: "Deep Red", hex: "#A32030" },
+    // Premium Colors
+    { name: "Natural White", hex: "#F5F3EA", premium: true },
+    { name: "Award Blue", hex: "#1B3E6F", premium: true },
+    // Metallic Colors
+    { name: "Champagne", hex: "#A99C86", premium: true },
+    { name: "Copper-Cote", hex: "#B5652C", premium: true },
+    { name: "Antique Copper-Cote", hex: "#8C8A6E", premium: true },
+    { name: "Zinc-Cote", hex: "#8B8D8E", premium: true },
+    { name: "Lead-Cote", hex: "#6E6F71", premium: true },
+    { name: "Preweathered Galvalume", hex: "#8C8D8A", premium: true },
+    // Natural Metal Finish
+    { name: "Acrylic-Coated Galvalume", hex: "#C9CACA" },
+  ],
+  "Quality Metals": {
+    pvdf: [
+      // Standard Colors
+      { name: "Regal White", hex: "#E7E4DC" },
+      { name: "Almond", hex: "#D6CDB5" },
+      { name: "Sandstone", hex: "#C7BFA6" },
+      { name: "Surrey Beige", hex: "#A8907A" },
+      { name: "Sierra Tan", hex: "#A08D78" },
+      { name: "Ash Gray", hex: "#A5A093" },
+      { name: "Slate Gray", hex: "#625E56" },
+      { name: "Musket Gray", hex: "#4F4C46" },
+      { name: "Charcoal Gray", hex: "#55555A" },
+      { name: "Dark Charcoal", hex: "#3A3B3D" },
+      { name: "Patina Green", hex: "#6E7C5E" },
+      { name: "Slate Blue", hex: "#4F6C7C" },
+      { name: "Evergreen", hex: "#38453A" },
+      { name: "Terra Cotta", hex: "#8B4A3B" },
+      { name: "Colonial Red", hex: "#4A2B26" },
+      { name: "Buckskin", hex: "#6F6459" },
+      { name: "Medium Bronze", hex: "#453A32" },
+      { name: "Aged Bronze", hex: "#3D3730" },
+      { name: "Copper Brown", hex: "#3A2A20" },
+      { name: "Dark Bronze", hex: "#2E2622" },
+      // Premium Colors
+      { name: "Matte Black", hex: "#26282A", premium: true },
+      { name: "Hartford Green", hex: "#303E37", premium: true },
+      { name: "Brite Red", hex: "#7A2530", premium: true },
+      { name: "Burgundy", hex: "#3E2A2C", premium: true },
+      { name: "Regal Blue", hex: "#1B3252", premium: true },
+      // Metallic Colors
+      { name: "Galvalume", hex: "#B8BBB8", premium: true },
+      { name: "Silver Metallic", hex: "#A9ACA8", premium: true },
+      { name: "Champagne", hex: "#9C9678", premium: true },
+      { name: "Weathered Galvalume", hex: "#7C837E", premium: true },
+      { name: "Copper Metallic", hex: "#A9702F", premium: true },
+      // Low Gloss - Low Sheen Colors
+      { name: "Slate Gray (Low Sheen)", hex: "#6B6A63", premium: true },
+      { name: "Aged Bronze (Low Sheen)", hex: "#443C33", premium: true },
+      { name: "Dark Bronze (Low Sheen)", hex: "#322A24", premium: true },
+      { name: "Medium Bronze (Low Sheen)", hex: "#453C34", premium: true },
+      { name: "Matte Black (Low Sheen)", hex: "#2A2B2C", premium: true },
+    ],
+    smp: [
+      // Standard Colors
+      { name: "Polar White", hex: "#EDEBE1" },
+      { name: "Rustic Red", hex: "#6E2A2E" },
+      { name: "Saddle Tan", hex: "#C7A97C" },
+      { name: "Colony Green", hex: "#7B8D74" },
+      { name: "Desert Sand", hex: "#B7A583" },
+      { name: "Burnished Slate", hex: "#3E362E" },
+      { name: "Light Stone", hex: "#D2C4A5" },
+      { name: "Charcoal Gray", hex: "#4A413C" },
+      { name: "Ash Gray", hex: "#9C9689" },
+      { name: "Cocoa Brown", hex: "#3E332C" },
+      // Premium Colors
+      { name: "Fern Green", hex: "#303B30", premium: true },
+      { name: "Hawaiian Blue", hex: "#5B6478", premium: true },
+      { name: "Evergreen", hex: "#384433", premium: true },
+      { name: "Burgundy", hex: "#3E2E2E", premium: true },
+      { name: "Brite Red", hex: "#8B2530", premium: true },
+      { name: "Regal Blue", hex: "#1F2E5C", premium: true },
+      { name: "Matte Black", hex: "#211E1A", premium: true },
+      // Metallic Colors
+      { name: "Copper Metallic", hex: "#A9743A", premium: true },
+      { name: "Weathered Galvalume", hex: "#8B8983", premium: true },
+      { name: "Silver Metallic", hex: "#C4C1B6", premium: true },
+      // Low Gloss Colors
+      { name: "Slate Gray (Low Gloss)", hex: "#6E6E64", premium: true },
+      { name: "Copper Brown (Low Gloss)", hex: "#3A2E28", premium: true },
+      { name: "Aged Bronze (Low Gloss)", hex: "#35302A", premium: true },
+      { name: "Dark Bronze (Low Gloss)", hex: "#2C2823", premium: true },
+      { name: "Medium Bronze (Low Gloss)", hex: "#3E362E", premium: true },
+    ],
+  },
 };
 
 const TRIM_PRESETS = {
@@ -275,26 +524,361 @@ function bendAngle(prev, cur, next) {
   return Math.round(180 - (Math.acos(cos) * 180) / Math.PI);
 }
 
-function findColor(name, brand) {
-  const preferred = COLORS_BY_BRAND[brand]?.find((c) => c.name === name);
+// Most brands have one flat color list. A few (like Quality Metals) have genuinely
+// different palettes for PVDF vs SMP, stored as { pvdf: [...], smp: [...] } instead —
+// this always returns a flat array either way.
+function getColorsForBrand(brand, paintId) {
+  const entry = COLORS_BY_BRAND[brand];
+  if (!entry) return [];
+  if (Array.isArray(entry)) return entry;
+  return entry[paintId] || entry.pvdf || entry.smp || [];
+}
+
+function findColor(name, brand, paintId) {
+  const preferred = getColorsForBrand(brand, paintId).find((c) => c.name === name);
   if (preferred) return preferred;
-  for (const list of Object.values(COLORS_BY_BRAND)) {
-    const hit = list.find((c) => c.name === name);
-    if (hit) return hit;
+  for (const entry of Object.values(COLORS_BY_BRAND)) {
+    const lists = Array.isArray(entry) ? [entry] : Object.values(entry);
+    for (const list of lists) {
+      const hit = list.find((c) => c.name === name);
+      if (hit) return hit;
+    }
   }
   return null;
 }
 
+function hexToRgb(hex) {
+  const clean = hex.replace("#", "");
+  return {
+    r: parseInt(clean.slice(0, 2), 16),
+    g: parseInt(clean.slice(2, 4), 16),
+    b: parseInt(clean.slice(4, 6), 16),
+  };
+}
+
+function hexToHsl(hex) {
+  const { r, g, b } = hexToRgb(hex);
+  const rn = r / 255, gn = g / 255, bn = b / 255;
+  const max = Math.max(rn, gn, bn), min = Math.min(rn, gn, bn);
+  const l = (max + min) / 2;
+  let h = 0, s = 0;
+  const d = max - min;
+  if (d > 0) {
+    s = d / (1 - Math.abs(2 * l - 1));
+    if (max === rn) h = 60 * (((gn - bn) / d) % 6);
+    else if (max === gn) h = 60 * ((bn - rn) / d + 2);
+    else h = 60 * ((rn - gn) / d + 4);
+    if (h < 0) h += 360;
+  }
+  return { h, s, l };
+}
+
+// Plain-language description of how a match differs from the reference color —
+// lighter/darker, warmer/cooler, more muted/richer — instead of a fabricated precision
+// percentage the underlying hex estimates can't actually support.
+// Classifies a color into an everyday color word, the same way a person would
+// describe it out loud — "black," "brown," "gray" — not a technical hue/saturation term.
+function colorFamilyName(h, s, l) {
+  if (l < 0.13) return "black";
+  if (l > 0.92) return "white";
+  if (s < 0.14) return l < 0.35 ? "dark gray" : l < 0.7 ? "gray" : "light gray";
+  if (h < 20 || h >= 345) return "red";
+  if (h < 45) return l < 0.4 ? "brown" : "orange";
+  if (h < 65) return "tan";
+  if (h < 170) return "green";
+  if (h < 200) return "teal";
+  if (h < 250) return "blue";
+  if (h < 290) return "purple";
+  return "pink";
+}
+
+function describeColorShift(hexRef, hexMatch) {
+  const ref = hexToHsl(hexRef), m = hexToHsl(hexMatch);
+  const refFamily = colorFamilyName(ref.h, ref.s, ref.l);
+  const matchFamily = colorFamilyName(m.h, m.s, m.l);
+  const dl = m.l - ref.l;
+  const parts = [];
+  if (Math.abs(dl) > 0.05) parts.push(dl > 0 ? "Lighter" : "Darker");
+  if (matchFamily !== refFamily) parts.push(`leans more ${matchFamily}`);
+  if (parts.length === 0) return "Nearly identical tone";
+  return parts.join(", ");
+}
+
+// Simple weighted Euclidean distance in RGB space — cheap to compute and good enough
+// for "which of these is visually closest" ranking without needing a full Lab conversion.
+function colorDistance(hexA, hexB) {
+  const a = hexToRgb(hexA), b = hexToRgb(hexB);
+  const dr = a.r - b.r, dg = a.g - b.g, db = a.b - b.b;
+  return Math.sqrt(2 * dr * dr + 4 * dg * dg + 3 * db * db);
+}
+
+// Finds the closest-matching colors to a given hex from every OTHER brand — so if a
+// customer's preferred color isn't available from one manufacturer, the shop can show
+// the nearest equivalent from a different one instead of just saying "we don't have that."
+function findSimilarColorsAcrossBrands(hex, excludeBrand, limit = 8) {
+  const results = [];
+  for (const [brandName, entry] of Object.entries(COLORS_BY_BRAND)) {
+    if (brandName === excludeBrand) continue;
+    const isNested = !Array.isArray(entry);
+    const colorGroups = isNested ? Object.entries(entry) : [[null, entry]];
+    for (const [paintKey, colors] of colorGroups) {
+      for (const c of colors) {
+        results.push({ brand: brandName, name: c.name, hex: c.hex, premium: c.premium, paintId: paintKey, distance: colorDistance(hex, c.hex) });
+      }
+    }
+  }
+  results.sort((a, b) => a.distance - b.distance);
+  return results.slice(0, limit);
+}
+
+// Gauge IDs (e.g. "24ga") are reused across different material option sets with different
+// prices, so lookup has to pick the right set by brand FIRST, then find within it — a plain
+// id-only search would silently match the wrong table.
+function findGauge(gaugeId, brand) {
+  const set = brand === "Copper" ? COPPER_WEIGHT_OPTIONS
+    : brand === "G90 Galvanized" ? G90_GAUGE_OPTIONS
+    : brand === "Galvalume" ? GALVALUME_GAUGE_OPTIONS
+    : brand === "Bonderized" ? BONDERIZED_GAUGE_OPTIONS
+    : GAUGE_OPTIONS;
+  return set.find((g) => g.id === gaugeId) || set[0] || GAUGE_OPTIONS[0];
+}
+
+// Rolls a job's line items up into "what raw stock do I need to pull to run this job":
+// how many flat sheets (by size), and how much coil (by width, in linear feet).
+// Panel orders don't store their own coil width directly, so it's derived from the
+// profile's takeup the same way the order form itself computes it.
+// Formats a dimension without unnecessary trailing zeros: 4.00 -> "4", 16.50 -> "16.5",
+// 20.875 -> "20.88" (still rounds to 2 decimals, just doesn't pad with zeros).
+function formatDim(n) {
+  return (+n).toFixed(2).replace(/\.?0+$/, "");
+}
+
+// Formats a length given in inches as feet + leftover inches: 126 -> "10' 6"", 120 -> "10'".
+function formatFeetInches(totalInches) {
+  const totalIn = Math.round(+totalInches || 0);
+  const ft = Math.floor(totalIn / 12);
+  const inch = totalIn % 12;
+  return inch === 0 ? `${ft}'` : `${ft}' ${inch}"`;
+}
+
+// Renders a trim profile as a plain, static SVG string (not the interactive drawing
+// tool) for print/export — clean outline with length labels at each segment.
+function generateProfileSvgString(points, colorHex) {
+  if (!points || points.length < 2) return "";
+  const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const pad = 30, w = 480, h = 320;
+  const spanX = Math.max(maxX - minX, 1), spanY = Math.max(maxY - minY, 1);
+  const scale = Math.min((w - pad * 2) / spanX, (h - pad * 2) / spanY);
+  const toSvg = ([x, y]) => [(x - minX) * scale + pad, (y - minY) * scale + pad];
+  const pathPts = points.map(toSvg);
+  const pathD = pathPts.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+  let labels = "";
+  for (let i = 1; i < points.length; i++) {
+    const len = dist(points[i - 1], points[i]);
+    const mx = (pathPts[i - 1][0] + pathPts[i][0]) / 2;
+    const my = (pathPts[i - 1][1] + pathPts[i][1]) / 2;
+    labels += `<text x="${mx.toFixed(1)}" y="${(my - 8).toFixed(1)}" font-size="11" text-anchor="middle" font-family="monospace" fill="#333">${len.toFixed(2)}"</text>`;
+  }
+  const dotSvg = pathPts.map((p) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${colorHex || "#333"}" />`).join("");
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="background:#fff;border:1px solid #ddd;border-radius:8px;">
+    <path d="${pathD}" fill="none" stroke="${colorHex || "#333"}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    ${dotSvg}
+    ${labels}
+  </svg>`;
+}
+
+// Opens a clean, printable spec sheet in a new tab and prompts the browser's native
+// print dialog — the person can "Save as PDF" from there. No PDF library needed or
+// available in this environment, so this is the reliable cross-browser path.
+function printPartAsPDF(item) {
+  const svg = generateProfileSvgString(item.points, item.colorHex);
+  const win = window.open("", "_blank");
+  if (!win) { window.alert("Your browser blocked the print window — please allow popups for this site and try again."); return; }
+  const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  win.document.write(`<!doctype html><html><head><title>${esc(item.name || "Trim Part")}</title>
+    <style>
+      body{font-family:system-ui,-apple-system,sans-serif;padding:28px;color:#1C1C1E;max-width:720px;margin:0 auto;}
+      h1{font-size:20px;margin:0 0 2px;}
+      .sub{color:#777;font-size:12px;margin-bottom:20px;}
+      .row{display:flex;gap:28px;margin-top:12px;flex-wrap:wrap;}
+      .details div{margin-bottom:7px;font-size:13px;}
+      .details b{display:inline-block;width:130px;color:#555;}
+      img.ref{max-width:260px;border-radius:8px;border:1px solid #ddd;margin-top:14px;display:block;}
+      .printbtn{margin-top:28px;padding:11px 22px;background:#D4AF37;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;}
+      @media print { .printbtn{display:none;} }
+    </style></head><body>
+    <h1>${esc(item.name || "Trim Part")}</h1>
+    <div class="sub">Fortified Sheet Metal — Order Spec Sheet</div>
+    <div class="row">
+      <div>${svg}</div>
+      <div class="details">
+        <div><b>Quantity</b>${esc(item.quantity)}</div>
+        <div><b>Length / piece</b>${esc(item.lengthPerPiece)} ft</div>
+        <div><b>Girth</b>${item.girth != null ? item.girth.toFixed(2) : "—"}"</div>
+        <div><b>Brand</b>${esc(item.brand)}</div>
+        <div><b>Color</b>${esc(item.colorName)}</div>
+        <div><b>Paint side</b>${item.paintSide === "left" ? "Left" : "Right"}</div>
+        <div><b>Start hem</b>${esc(item.hemStart)}</div>
+        <div><b>End hem</b>${esc(item.hemEnd)}</div>
+        ${item.photo ? `<img class="ref" src="${item.photo}" />` : ""}
+      </div>
+    </div>
+    <button class="printbtn" onclick="window.print()">Print / Save as PDF</button>
+  </body></html>`);
+  win.document.close();
+}
+
+function computeJobMaterials(items) {
+  const flatSheets = new Map(); // "widthxlength-brand-color" -> { width, length, count, brand, colorName, colorHex }
+  const coilByWidth = new Map(); // "width-brand-color" -> { width, feet, brand, colorName, colorHex }
+
+  const addCoil = (widthIn, feet, o) => {
+    if (!widthIn || !feet) return;
+    const w = Math.round(widthIn * 100) / 100;
+    const key = `${w}-${o.brand}-${o.colorName}`;
+    const existing = coilByWidth.get(key);
+    if (existing) existing.feet += feet;
+    else coilByWidth.set(key, { width: widthIn, feet, brand: o.brand, colorName: o.colorName, colorHex: o.colorHex });
+  };
+  const addFlatSheets = (widthIn, lengthIn, count, o) => {
+    if (!widthIn || !lengthIn || !count) return;
+    const w = Math.round(widthIn * 100) / 100, l = Math.round(lengthIn * 100) / 100;
+    const key = `${w}x${l}-${o.brand}-${o.colorName}`;
+    const existing = flatSheets.get(key);
+    if (existing) existing.count += count;
+    else flatSheets.set(key, { width: widthIn, length: lengthIn, count, brand: o.brand, colorName: o.colorName, colorHex: o.colorHex });
+  };
+
+  for (const o of items) {
+    if (o.type === "metal") {
+      if (o.flatWidth && o.flatLength) addFlatSheets(o.flatWidth, o.flatLength, +o.quantity || 0, o);
+      if (o.coilWidth && o.coilLength) addCoil(o.coilWidth, o.coilLength / 12, o);
+    } else if (o.type === "panel") {
+      const takeup = PROFILE_INFO[o.profile]?.takeup || 0;
+      const coilWidthIn = (+o.width || 0) + takeup;
+      const feet = ((+o.height || 0) / 12) * (+o.quantity || 0);
+      addCoil(coilWidthIn, feet, o);
+    } else if (o.type === "trim") {
+      // Trim is nested and cut across flat sheet stock, not fed from a coil — the order
+      // form already works out how many sheets that takes (partsPerSheet/sheetsNeeded),
+      // so reuse that instead of recomputing it differently here.
+      const sheetsNeeded = +o.sheetsNeeded || 0;
+      if (sheetsNeeded > 0) {
+        addFlatSheets(+o.sheetWidth || 0, (+o.lengthPerPiece || 0) * 12, sheetsNeeded, o);
+      }
+    }
+    // 3D parts aren't included — their flat-pattern material need isn't tracked per
+    // order the same way panels/trim/flats are, so they're left out of this rollup
+    // rather than guessed at.
+  }
+
+  return {
+    flatSheets: [...flatSheets.values()].sort((a, b) => b.count - a.count),
+    coil: [...coilByWidth.values()].sort((a, b) => b.feet - a.feet),
+  };
+}
+
 /* ---------------------------------- pricing ---------------------------------- */
-function computePrice(order) {
-  const gauge = GAUGE_OPTIONS.find((g) => g.id === order.gaugeId) || COPPER_WEIGHT_OPTIONS.find((g) => g.id === order.gaugeId) || GAUGE_OPTIONS[0];
+// Pulls live sell rates from the Price List (Greenleaf tier) instead of the old
+// hardcoded GAUGE_OPTIONS table, so editing prices in the Price List tab actually
+// changes what New Order shows. Price List panel rates are $/linear ft at a specific
+// coil width (that item's own "Coverage Width"), so they get converted to a $/sqft
+// basis using that same width — trim rates are already $/linear ft, no conversion
+// needed. Falls back to the old hardcoded rates for materials the Price List doesn't
+// have a matching entry for yet (Copper only if no matching entry, G90/Galvalume/
+// Bonderized always, since those aren't in the Price List at all currently).
+// Real supplier pricing for coil doesn't scale as a flat $/sqft rate — wider coil tends
+// to be a bit cheaper per inch of width than narrower coil, not exactly proportional.
+// This interpolates between known price points (e.g. "16in costs $2.56/LF, 21in costs
+// $3.03/LF") for any width in between, and extrapolates using the slope of the two
+// nearest points for anything outside the known range. Returns null if there aren't at
+// least 2 points to work with, so callers can fall back to the flat-rate calculation.
+function interpolateCoilPrice(widthIn, scale) {
+  if (!scale || scale.length < 2 || !widthIn) return null;
+  const sorted = [...scale].sort((a, b) => a.width - b.width);
+  if (widthIn <= sorted[0].width) {
+    const [a, b] = sorted;
+    const slope = (b.pricePerFt - a.pricePerFt) / (b.width - a.width);
+    return Math.max(0, a.pricePerFt + slope * (widthIn - a.width));
+  }
+  if (widthIn >= sorted[sorted.length - 1].width) {
+    const a = sorted[sorted.length - 2], b = sorted[sorted.length - 1];
+    const slope = (b.pricePerFt - a.pricePerFt) / (b.width - a.width);
+    return Math.max(0, b.pricePerFt + slope * (widthIn - b.width));
+  }
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const a = sorted[i], b = sorted[i + 1];
+    if (widthIn >= a.width && widthIn <= b.width) {
+      const t = (widthIn - a.width) / (b.width - a.width);
+      return a.pricePerFt + t * (b.pricePerFt - a.pricePerFt);
+    }
+  }
+  return null;
+}
+
+function getSellRates(gaugeId, brand, priceList) {
+  const gauge = findGauge(gaugeId, brand);
+  const fallback = { coilSqft: gauge.panelSqft, panelSqft: gauge.panelSqft, trimFt: gauge.trimFt };
+  if (!priceList || priceList.length === 0) return fallback;
+
+  if (brand === "Copper") {
+    const item = priceList.find((p) => p.category === "Copper" && p.name.toLowerCase().includes(gauge.label.toLowerCase()) && typeof p.greenleaf === "number");
+    const coilSqft = item ? item.greenleaf : fallback.coilSqft;
+    return { coilSqft, panelSqft: coilSqft, trimFt: fallback.trimFt };
+  }
+  if (["G90 Galvanized", "Galvalume", "Bonderized"].includes(brand)) {
+    return fallback; // not in the Price List yet
+  }
+
+  const gaugeLabel = gauge.label; // "24 Gauge" or "26 Gauge"
+  // "24/26 Gauge Coil" is the raw material rate. "Panel Fabrication" is the separate
+  // per-linear-ft charge for actually roll-forming that coil into a finished panel —
+  // raw coil/flat metal orders should only ever be charged the coil rate, never
+  // fabrication, since nothing's being formed.
+  const coilItem = priceList.find((p) => p.category === "Roof Panel" && p.name.startsWith(gaugeLabel) && typeof p.greenleaf === "number");
+  const fabItem = priceList.find((p) => p.category === "Roof Panel" && p.name.toLowerCase().includes("fabrication") && typeof p.greenleaf === "number");
+  const trimItem = priceList.find((p) => p.category === "Trim / Flashing" && p.name.startsWith(gaugeLabel) && typeof p.greenleaf === "number");
+
+  const coilWidthIn = coilItem?.coverageWidth || 12;
+  const coilSqft = coilItem ? coilItem.greenleaf / (coilWidthIn / 12) : fallback.coilSqft;
+  const fabSqft = fabItem ? fabItem.greenleaf / (coilWidthIn / 12) : 0;
+  const panelSqft = coilSqft + fabSqft;
+  const trimFt = trimItem ? trimItem.greenleaf : fallback.trimFt;
+  return { coilSqft, panelSqft, trimFt };
+}
+
+function computePrice(order, priceList, coilWidthScale) {
+  const rates = getSellRates(order.gaugeId, order.brand, priceList);
   const paint = order.brand === "Copper" ? { mult: 1 } : (PAINT_OPTIONS.find((p) => p.id === order.paintId) || PAINT_OPTIONS[0]);
-  const colorObj = findColor(order.colorName, order.brand);
+  const colorObj = findColor(order.colorName, order.brand, order.paintId);
   const premiumMult = colorObj?.premium ? 1.12 : 1;
   if (order.type === "metal") {
     const flatSqft = ((order.flatWidth || 0) * (order.flatLength || 0)) / 144;
-    const coilSqft = ((order.coilWidth || 0) * (order.coilLength || 0)) / 144;
-    const base = (flatSqft + coilSqft) * gauge.panelSqft * paint.mult * order.quantity;
+    // Flat sheets price as material ($/sq ft) + a flat processing fee per sheet, pulled
+    // from the Price List's "Flat Sheet Material" / "Flat Sheet Processing" items —
+    // falls back to the old gauge-derived rate (material only, no processing fee) if
+    // those items aren't in the Price List.
+    const flatMaterialItem = priceList?.find((p) => p.name.toLowerCase().includes("flat sheet material") && typeof p.greenleaf === "number");
+    const flatProcessingItem = priceList?.find((p) => p.name.toLowerCase().includes("flat sheet processing") && typeof p.greenleaf === "number");
+    const flatMaterialRate = flatMaterialItem ? flatMaterialItem.greenleaf : rates.coilSqft;
+    const flatProcessingFee = flatProcessingItem ? flatProcessingItem.greenleaf : 0;
+    const flatCost = (flatSqft * flatMaterialRate * paint.mult + flatProcessingFee) * order.quantity;
+    // Coil pricing prefers the real interpolated width scale (actual supplier price
+    // points) over the flat derived $/sqft rate, since coil doesn't price out linearly
+    // with width in the real world — falls back to the flat rate if there aren't at
+    // least 2 scale points to interpolate between. The scale points themselves are
+    // PVDF pricing, so they apply as-is for PVDF orders and get scaled down by the
+    // PVDF/SMP ratio for SMP orders, rather than getting the PVDF multiplier stacked
+    // on top of an already-PVDF price.
+    const interpolatedPerFt = interpolateCoilPrice(order.coilWidth, coilWidthScale);
+    const pvdfMult = PAINT_OPTIONS.find((p) => p.id === "pvdf")?.mult || 1;
+    const coilFeet = (order.coilLength || 0) / 12;
+    const coilCost = interpolatedPerFt !== null
+      ? interpolatedPerFt * (paint.mult / pvdfMult) * coilFeet
+      : (((order.coilWidth || 0) * (order.coilLength || 0)) / 144) * rates.coilSqft * paint.mult;
+    const base = flatCost + coilCost;
     return Math.max(15, base * premiumMult + 15);
   } else if (order.type === "part3d") {
     const W = order.partW || 0, D = order.partD || 0, H = order.partH || 0, CH = order.partCapH || 0;
@@ -306,18 +890,20 @@ function computePrice(order) {
       sqin = 2 * (W + D) * H + W * D; // walls + bottom
     }
     const sqft = sqin / 144;
-    const formingFee = 12; // per-piece fee for the extra seams/folds vs a flat panel
-    const base = sqft * gauge.panelSqft * paint.mult * order.quantity + formingFee * order.quantity;
+    const fabItemName = order.partType === "collector" ? "collector box" : order.partType === "scupper" ? "scupper" : "chimney cap";
+    const fabItem = priceList?.find((p) => p.category === "3D Parts" && p.name.toLowerCase().includes(fabItemName) && typeof p.greenleaf === "number");
+    const formingFee = fabItem ? fabItem.greenleaf : 12; // per-piece fee for the extra seams/folds vs a flat panel
+    const base = sqft * rates.coilSqft * paint.mult * order.quantity + formingFee * order.quantity;
     return Math.max(20, base * premiumMult + 20);
   } else if (order.type === "panel") {
     const sqft = (order.width * order.height) / 144;
-    const base = sqft * gauge.panelSqft * paint.mult * order.quantity;
+    const base = sqft * rates.panelSqft * paint.mult * order.quantity;
     return Math.max(15, base * premiumMult + 15);
   } else {
     const points = order.points || [];
     const bends = Math.max(0, points.length - 2);
     const totalFt = order.lengthPerPiece * order.quantity;
-    const base = (totalFt * gauge.trimFt * paint.mult) + bends * 2 * order.quantity;
+    const base = (totalFt * rates.trimFt * paint.mult) + bends * 2 * order.quantity;
     return Math.max(10, base * premiumMult + 10);
   }
 }
@@ -398,7 +984,7 @@ function hemGlyph(p, dir, side, isOpen, unit) {
   return { d, labelPos };
 }
 
-function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide }) {
+function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, viewResetKey }) {
   const svgRef = useRef(null);
   const [dragIdx, setDragIdx] = useState(null);
   const [zoom, setZoom] = useState(0.35); // 4 zoom-in clicks (0.2 each) from the standard 1.0, clamped at the 0.35 floor
@@ -408,6 +994,18 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide }
   const [gridSpacing, setGridSpacing] = useState(6); // inches between dots
   const [angleVisibility, setAngleVisibility] = useState("all"); // "all" | "hide90" | "hideAll"
   const [showSettings, setShowSettings] = useState(false);
+  const [unitSystem, setUnitSystem] = useState("imperial"); // "imperial" | "metric" — display only, data always stays in inches
+
+  // Formats a length in inches for display, switching to mm when metric is selected.
+  const formatLen = (inches) => (unitSystem === "metric" ? `${Math.round(inches * 25.4)}mm` : `${inches.toFixed(2)}"`);
+
+  // When a preset is loaded, reset to a neutral zoom. Sizing itself is now handled by
+  // the proportional margin above (scales with each shape's own size), so every preset
+  // — small or large — fills the frame consistently without needing a guessed zoom value.
+  useEffect(() => {
+    setZoom(1);
+    setZoomCenter(null);
+  }, [viewResetKey]);
 
   const toUser = useCallback((clientX, clientY) => {
     const svg = svgRef.current;
@@ -418,9 +1016,13 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide }
     return [snap(loc.x), snap(loc.y)];
   }, []);
 
+  const lastAddRef = useRef(0);
   const handleBgDown = (e) => {
     if (dragIdx !== null) return;
     if (mode === "select") { setSelectedIdx(null); return; }
+    const now = Date.now();
+    if (now - lastAddRef.current < 220) return; // debounce — stops one tap from registering as several points
+    lastAddRef.current = now;
     const [x, y] = toUser(e.clientX, e.clientY);
     setPoints((p) => {
       if (p.length === 0) return [[x, y]];
@@ -434,10 +1036,13 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide }
 
   const editSegmentLength = (i) => {
     const current = dist(points[i - 1], points[i]);
-    const input = window.prompt('Exact length for this segment (inches):', current.toFixed(2));
+    const unitLabel = unitSystem === "metric" ? "mm" : "inches";
+    const promptDefault = unitSystem === "metric" ? Math.round(current * 25.4).toString() : current.toFixed(2);
+    const input = window.prompt(`Exact length for this segment (${unitLabel}):`, promptDefault);
     if (input === null) return;
-    const val = parseFloat(input);
-    if (!isFinite(val) || val <= 0) return;
+    const raw = parseFloat(input);
+    if (!isFinite(raw) || raw <= 0) return;
+    const val = unitSystem === "metric" ? raw / 25.4 : raw; // always store in inches internally
     const dir = unitVec(points[i - 1], points[i]);
     setPoints((pts) => pts.map((pt, idx) => (idx === i
       ? [pts[i - 1][0] + dir[0] * val, pts[i - 1][1] + dir[1] * val]
@@ -468,26 +1073,43 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide }
     setPoints((pts) => pts.map((pt, idx) => (idx === i + 1 ? newNext : pt)));
   };
 
+  const dragStartRef = useRef(null); // { pointerX, pointerY, origPoint } — used to dampen drag sensitivity
   const handlePointDown = (i) => (e) => {
     e.stopPropagation();
+    e.preventDefault();
     e.target.setPointerCapture?.(e.pointerId);
     setDragIdx(i);
     setSelectedIdx(i);
+    const [ux, uy] = toUser(e.clientX, e.clientY);
+    dragStartRef.current = { startUx: ux, startUy: uy, origPoint: [...points[i]] };
   };
 
+  const DRAG_DAMPING = 0.51; // lower = slower/finer point movement relative to actual finger/mouse motion
   const handleMove = (e) => {
     if (dragIdx === null) return;
-    const [x, y] = toUser(e.clientX, e.clientY);
+    e.preventDefault();
+    const [ux, uy] = toUser(e.clientX, e.clientY);
+    const start = dragStartRef.current;
+    if (!start) return;
+    const dx = (ux - start.startUx) * DRAG_DAMPING;
+    const dy = (uy - start.startUy) * DRAG_DAMPING;
+    const x = snap(start.origPoint[0] + dx);
+    const y = snap(start.origPoint[1] + dy);
     setPoints((p) => p.map((pt, i) => (i === dragIdx ? [x, y] : pt)));
   };
 
   // Auto-fit & recenter the view around whatever has been drawn so far,
-  // so the whole profile is always fully visible.
-  const MIN_W = 14, MIN_H = 9, PAD = 2.5;
+  // so the whole profile is always fully visible. Margin scales with the shape's own
+  // size (not a fixed number of inches), so a tiny preset and a large one both end up
+  // looking similarly "filled" instead of one being cramped and the other swimming
+  // in empty space.
   const xs = points.length ? points.map((p) => p[0]) : [0];
   const ys = points.length ? points.map((p) => p[1]) : [0];
   let minX = Math.min(...xs), maxX = Math.max(...xs);
   let minY = Math.min(...ys), maxY = Math.max(...ys);
+  const contentSize = Math.max(maxX - minX, maxY - minY, 0.5);
+  const PAD = Math.max(0.6, contentSize * 0.18);
+  const MIN_W = Math.max(2.5, contentSize * 0.25), MIN_H = Math.max(1.8, contentSize * 0.25);
   if (maxX - minX < MIN_W) { const c = (minX + maxX) / 2; minX = c - MIN_W / 2; maxX = c + MIN_W / 2; }
   if (maxY - minY < MIN_H) { const c = (minY + maxY) / 2; minY = c - MIN_H / 2; maxY = c + MIN_H / 2; }
   const vbX = minX - PAD, vbY = minY - PAD, vbW = (maxX - minX) + PAD * 2, vbH = (maxY - minY) + PAD * 2;
@@ -510,7 +1132,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide }
   const pathD = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0]} ${p[1]}`).join(" ");
 
   return (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: "relative", userSelect: "none", WebkitUserSelect: "none", MozUserSelect: "none" }}>
       <div style={{ position: "absolute", top: 6, left: 6, zIndex: 2, display: "flex", flexDirection: "column", gap: 3 }}>
         <button type="button" onClick={() => setZoom((z) => Math.max(0.35, +(z - 0.2).toFixed(2)))}
           style={{ width: 24, height: 24, borderRadius: 5, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(10,43,65,0.85)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>
@@ -544,6 +1166,19 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide }
           position: "absolute", top: 34, right: 6, zIndex: 3, width: 190, background: "#0F2C3F", border: "1px solid rgba(255,255,255,0.25)",
           borderRadius: 8, padding: 10, boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
         }}>
+          <div style={{ fontSize: 10, color: "#8FB4C9", fontWeight: 700, marginBottom: 4 }}>UNITS</div>
+          <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+            {[{ id: "imperial", label: "in / ft" }, { id: "metric", label: "mm" }].map((u) => (
+              <button key={u.id} type="button" onClick={() => setUnitSystem(u.id)}
+                style={{
+                  flex: 1, padding: "5px 0", borderRadius: 5, fontSize: 10.5, cursor: "pointer",
+                  border: `1px solid ${unitSystem === u.id ? SAFETY : "rgba(255,255,255,0.3)"}`,
+                  background: unitSystem === u.id ? SAFETY : "transparent", color: "#fff", fontWeight: 600,
+                }}>
+                {u.label}
+              </button>
+            ))}
+          </div>
           <div style={{ fontSize: 10, color: "#8FB4C9", fontWeight: 700, marginBottom: 4 }}>GRID SPACING</div>
           <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
             {[3, 6, 12].map((g) => (
@@ -579,8 +1214,12 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide }
         viewBox={`${zVbX} ${zVbY} ${zVbW} ${zVbH}`}
         onPointerDown={handleBgDown}
         onPointerMove={handleMove}
-        onPointerUp={() => setDragIdx(null)}
-        style={{ width: "100%", height: "auto", aspectRatio: `${zVbW} / ${zVbH}`, background: INK, borderRadius: 4, touchAction: "none", cursor: mode === "select" ? "default" : "crosshair", display: "block" }}
+        onPointerUp={() => { setDragIdx(null); dragStartRef.current = null; }}
+        style={{
+          width: "100%", height: "auto", aspectRatio: `${zVbW} / ${zVbH}`, background: INK, borderRadius: 4,
+          touchAction: "none", cursor: mode === "select" ? "default" : "crosshair", display: "block",
+          userSelect: "none", WebkitUserSelect: "none", MozUserSelect: "none", WebkitTouchCallout: "none",
+        }}
       >
       {gridDots}
       {points.length > 1 && (
@@ -621,19 +1260,27 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide }
           <g key={i}>
             {prev && (() => {
               const mx = (prev[0] + p[0]) / 2, my = (prev[1] + p[1]) / 2;
-              const label = `${dist(prev, p).toFixed(2)}"`;
+              const segLen = dist(prev, p);
+              const label = formatLen(segLen);
               const fs = 3.4 * unit;
               const boxW = label.length * fs * 0.62 + fs * 0.9, boxH = fs * 1.6;
+              // Always sit off the line (never directly on top of it) — with a thin
+              // leader tick — so the actual line and its endpoints stay visible.
+              const segDir = unitVec(prev, p);
+              const perp = [-segDir[1], segDir[0]];
+              const offset = boxH * 0.9;
+              const lx = mx + perp[0] * offset, ly = my + perp[1] * offset;
               return (
                 <g
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => editSegmentLength(i)}
                   style={{ cursor: "pointer" }}
                 >
-                  <rect x={mx - boxW / 2} y={my - boxH / 2} width={boxW} height={boxH} rx={boxH / 2}
+                  <line x1={mx} y1={my} x2={lx} y2={ly} stroke="rgba(255,255,255,0.5)" strokeWidth={0.25 * unit} />
+                  <rect x={lx - boxW / 2} y={ly - boxH / 2} width={boxW} height={boxH} rx={boxH / 2}
                     fill={SAFETY} stroke={INK} strokeWidth={0.3 * unit} />
-                  <text x={mx} y={my} fill="#fff" fontSize={fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
-                    textAnchor="middle" dominantBaseline="central">
+                  <text x={lx} y={ly} dy="0.35em" fill="#fff" fontSize={fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
+                    textAnchor="middle">
                     {label}
                   </text>
                 </g>
@@ -657,8 +1304,8 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide }
                 >
                   <rect x={lx - boxW / 2} y={ly - boxH / 2} width={boxW} height={boxH} rx={boxH / 2}
                     fill={INK_DEEP} stroke={SAFETY} strokeWidth={0.25 * unit} />
-                  <text x={lx} y={ly} fill={SAFETY} fontSize={fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
-                    textAnchor="middle" dominantBaseline="central">
+                  <text x={lx} y={ly} dy="0.35em" fill={SAFETY} fontSize={fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
+                    textAnchor="middle">
                     {label}
                   </text>
                 </g>
@@ -680,14 +1327,14 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide }
                       cx={p[0]} cy={p[1]} r={3 * unit}
                       fill="transparent" stroke="none"
                       onPointerDown={handlePointDown(i)}
-                      style={{ cursor: "grab" }}
+                      style={{ cursor: "grab", touchAction: "none" }}
                     />
                   ) : (
                     <circle
                       cx={p[0]} cy={p[1]} r={2.5 * unit}
                       fill={i === 0 ? SAFETY : "#fff"} stroke={INK_DEEP} strokeWidth={0.5 * unit}
                       onPointerDown={handlePointDown(i)}
-                      style={{ cursor: "grab" }}
+                      style={{ cursor: "grab", touchAction: "none" }}
                     />
                   )}
                 </g>
@@ -1266,6 +1913,7 @@ function Part3DPreview({ partType, w, d, h, capH, colorHex, outletShape, flangeW
     position: "absolute", width: 34, height: 34, borderRadius: 17, border: "1px solid rgba(255,255,255,0.4)",
     background: "rgba(10,43,65,0.85)", color: "#fff", fontSize: 16, fontWeight: 700, cursor: "pointer",
     display: "flex", alignItems: "center", justifyContent: "center", lineHeight: 1, touchAction: "none",
+    userSelect: "none", WebkitUserSelect: "none", MozUserSelect: "none", WebkitTouchCallout: "none",
   };
   const startSpin = (dyaw, dpitch) => {
     stopSpin();
@@ -1280,9 +1928,12 @@ function Part3DPreview({ partType, w, d, h, capH, colorHex, outletShape, flangeW
   useEffect(() => () => stopSpin(), []);
 
   return (
-    <div>
+    <div style={{ userSelect: "none", WebkitUserSelect: "none", MozUserSelect: "none" }}>
       <div style={{ position: "relative" }}>
-        <div ref={mountRef} style={{ width: "100%", height: 260, borderRadius: 6, overflow: "hidden" }} />
+        <div ref={mountRef} style={{
+          width: "100%", height: 260, borderRadius: 6, overflow: "hidden", touchAction: "none",
+          userSelect: "none", WebkitUserSelect: "none", MozUserSelect: "none", WebkitTouchCallout: "none",
+        }} />
         <button type="button"
           onPointerDown={() => startSpin(0, -STEP)} onPointerUp={stopSpin} onPointerLeave={stopSpin} onPointerCancel={stopSpin}
           style={{ ...btnStyle, top: 4, left: "50%", transform: "translateX(-50%)" }} title="Hold to tilt up">↑</button>
@@ -1513,7 +2164,13 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
 
 /* ---------------------------------- main app ---------------------------------- */
 export default function ShopOrderApp() {
+  const { user, customer, isStaff, signOut } = useAuth();
+  const [customers, setCustomers] = useState([]); // staff-only: every registered customer, for tier assignment
+  const [customersLoaded, setCustomersLoaded] = useState(false);
   const [tab, setTab] = useState("order");
+  const [orderStep, setOrderStep] = useState("type"); // "color" | "type" | "details"
+  const [showColorMatch, setShowColorMatch] = useState(false);
+  const [materialCategory, setMaterialCategory] = useState("painted"); // "painted" | "unpainted"
   const [orders, setOrders] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [toast, setToast] = useState("");
@@ -1522,8 +2179,25 @@ export default function ShopOrderApp() {
   const [priceListLoaded, setPriceListLoaded] = useState(false);
   const [priceListView, setPriceListView] = useState("customer"); // "backend" | "customer"
   const [priceListTier, setPriceListTier] = useState("tier1"); // which tier the customer view shows
+
+  // Non-staff customers always see their own assigned tier, not whatever was last selected.
+  useEffect(() => {
+    if (!isStaff && customer?.tier) setPriceListTier(customer.tier);
+  }, [isStaff, customer]);
   const [materialCosts, setMaterialCosts] = useState([]);
   const [materialCostsLoaded, setMaterialCostsLoaded] = useState(false);
+  const [productionCosts, setProductionCosts] = useState([]);
+  const [productionCostsLoaded, setProductionCostsLoaded] = useState(false);
+  const [coilWidthScale, setCoilWidthScale] = useState([]);
+  const [customPresets, setCustomPresets] = useState([]);
+  const [showIdeaBox, setShowIdeaBox] = useState(false);
+  const [ideaType, setIdeaType] = useState("idea"); // "idea" | "bug"
+  const [ideaText, setIdeaText] = useState("");
+  const [ideaSubmitting, setIdeaSubmitting] = useState(false);
+  const [ideas, setIdeas] = useState([]);
+  const [ideasLoaded, setIdeasLoaded] = useState(false);
+  const [customPresetsLoaded, setCustomPresetsLoaded] = useState(false);
+  const [coilWidthScaleLoaded, setCoilWidthScaleLoaded] = useState(false);
   const [priceDrafts, setPriceDrafts] = useState({}); // holds in-progress typed text for price/cost/margin fields so it isn't clobbered mid-keystroke
 
   const theme = darkMode ? {
@@ -1591,10 +2265,19 @@ export default function ShopOrderApp() {
   }, [coilWidth, profile]);
   const [points, setPoints] = useState(TRIM_PRESETS["Eave"]);
   const [preset, setPreset] = useState("Eave");
+  const [viewResetKey, setViewResetKey] = useState(0);
   const [hemStart, setHemStart] = useState("none");
   const [hemEnd, setHemEnd] = useState("none");
   const [paintSide, setPaintSide] = useState("left");
   const [partName, setPartName] = useState("");
+  const [partPhoto, setPartPhoto] = useState(null); // base64 data URL of an attached reference photo
+  const [scanningSketch, setScanningSketch] = useState(false);
+  const [showCoilCalc, setShowCoilCalc] = useState(false);
+  const [coilCalcGaugeThickness, setCoilCalcGaugeThickness] = useState(0.0239); // 24ga steel, inches
+  const [coilCalcMaterial, setCoilCalcMaterial] = useState("steel");
+  const [coilCalcOD, setCoilCalcOD] = useState(48);
+  const [coilCalcID, setCoilCalcID] = useState(20);
+  const [coilCalcWidth, setCoilCalcWidth] = useState(21);
   const [gaugeId, setGaugeId] = useState(GAUGE_OPTIONS[0].id);
   const [paintId, setPaintId] = useState(PAINT_OPTIONS[0].id);
   const [brand, setBrand] = useState(BRANDS[0]);
@@ -1607,6 +2290,7 @@ export default function ShopOrderApp() {
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const [shopFloorView, setShopFloorView] = useState("jobs"); // "jobs" | "materials"
   const [expandedJobs, setExpandedJobs] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [basket, setBasket] = useState([]);
@@ -1628,6 +2312,16 @@ export default function ShopOrderApp() {
     storage.set("last-tab", tab, false).catch((e) => console.error("storage error", e));
   }, [tab, tabLoaded]);
 
+  // Shop Floor is staff-only — if a customer's saved "last tab" happens to point there
+  // (or they try to navigate there directly), bounce them back to New Order.
+  useEffect(() => {
+    if (tab === "dashboard" && !isStaff) setTab("order");
+  }, [tab, isStaff]);
+
+  useEffect(() => {
+    if (priceListView === "backend" && !isStaff) setPriceListView("customer");
+  }, [priceListView, isStaff]);
+
   useEffect(() => {
     (async () => {
       try {
@@ -1646,9 +2340,11 @@ export default function ShopOrderApp() {
 
   const DEFAULT_PRICE_LIST = [
     // Roof Panel
-    { id: "p1", category: "Roof Panel", name: '24 Gauge Panel (per linear ft)', derivedFromMaterialId: "m1", coverageWidth: 16, cost: 0, tier1: 4.10, tier2: 4.55, greenleaf: 3.95 },
-    { id: "p2", category: "Roof Panel", name: '26 Gauge Panel (per linear ft)', cost: 0, tier1: 3.30, tier2: 3.65, greenleaf: 3.15 },
-    { id: "p2b", category: "Roof Panel", name: "Flat Sheet 4' x 10' (per sheet)", cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
+    { id: "p1", category: "Roof Panel", name: '24 Gauge Coil (per linear ft)', derivedFromMaterialId: "m1", coverageWidth: 16, cost: 0, tier1: 4.10, tier2: 4.55, greenleaf: 3.95 },
+    { id: "p2", category: "Roof Panel", name: '26 Gauge Coil (per linear ft)', cost: 0, tier1: 3.30, tier2: 3.65, greenleaf: 3.15 },
+    { id: "p1f", category: "Roof Panel", name: 'Panel Fabrication (per linear ft)', cost: 0, tier1: 1.00, tier2: 1.15, greenleaf: 0.85 },
+    { id: "p2b", category: "Roof Panel", name: "Flat Sheet Material (per sq ft)", cost: 0, tier1: 1.40, tier2: 1.40, greenleaf: 1.40 },
+    { id: "p2c", category: "Roof Panel", name: "Flat Sheet Processing (per sheet)", cost: 0, tier1: 7.50, tier2: 7.50, greenleaf: 7.50 },
     // Trim / Flashing
     { id: "p3", category: "Trim / Flashing", name: '24 Gauge Trim (per linear ft)', cost: 0, tier1: 3.00, tier2: 3.35, greenleaf: 2.90 },
     { id: "p4", category: "Trim / Flashing", name: '26 Gauge Trim (per linear ft)', cost: 0, tier1: 2.40, tier2: 2.70, greenleaf: 2.30 },
@@ -1698,8 +2394,20 @@ export default function ShopOrderApp() {
 
   const savePriceList = async (next) => {
     setPriceList(next);
-    try { await storage.set("shop-price-list", JSON.stringify(next), true); }
-    catch (e) { console.error("storage error", e); }
+    const attempt = async () => {
+      try {
+        const res = await storage.set("shop-price-list", JSON.stringify(next), true);
+        return !!res; // storage.set can resolve to null on failure without throwing
+      } catch (e) {
+        console.error("storage error", e);
+        return false;
+      }
+    };
+    let ok = await attempt();
+    if (!ok) ok = await attempt(); // one automatic retry before giving up
+    if (!ok) {
+      setToast("⚠️ Price list change didn't save — check your connection and try again.");
+    }
   };
 
   const updatePriceListItem = (id, field, value) => {
@@ -1719,6 +2427,25 @@ export default function ShopOrderApp() {
     if (missing.length === 0) { setToast("Nothing missing — your price list already has every default item."); return; }
     savePriceList([...priceList, ...missing]);
     setToast(`Restored ${missing.length} item${missing.length === 1 ? "" : "s"} back to the price list.`);
+  };
+
+  // Staff-only: load every registered customer so their pricing tier can be assigned.
+  useEffect(() => {
+    if (!isStaff) return;
+    (async () => {
+      const { data, error } = await supabase.from("customers").select("*").order("created_at", { ascending: false });
+      if (!error) setCustomers(data || []);
+      setCustomersLoaded(true);
+    })();
+  }, [isStaff]);
+
+  const updateCustomerTier = async (customerId, tier) => {
+    setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, tier } : c)));
+    const { error } = await supabase.from("customers").update({ tier }).eq("id", customerId);
+    if (error) {
+      setToast("Couldn't save that — try again.");
+      console.error(error);
+    }
   };
 
   // Drag-to-reorder for price list items — touch-friendly, reorders live within the
@@ -1828,6 +2555,215 @@ export default function ShopOrderApp() {
     saveMaterialCosts(materialCosts.map((m) => (m.id === id ? { ...m, costPerSqft: value, lastUpdated: today } : m)));
   };
 
+  const DEFAULT_PRODUCTION_COSTS = [
+    { id: "pc1", name: "Flat Sheet (per sheet)", cost: 0, lastUpdated: null },
+    { id: "pc2", name: "Coil (per LF)", cost: 0, lastUpdated: null },
+    { id: "pc3", name: "Plastic (per LF)", cost: 0, lastUpdated: null },
+  ];
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await storage.get("shop-production-costs", true);
+        if (res?.value) setProductionCosts(JSON.parse(res.value));
+        else setProductionCosts(DEFAULT_PRODUCTION_COSTS);
+      } catch (e) { setProductionCosts(DEFAULT_PRODUCTION_COSTS); }
+      setProductionCostsLoaded(true);
+    })();
+  }, []);
+
+  const saveProductionCosts = async (next) => {
+    setProductionCosts(next);
+    try { await storage.set("shop-production-costs", JSON.stringify(next), true); }
+    catch (e) { console.error("storage error", e); }
+  };
+
+  const updateProductionCost = (id, value) => {
+    const today = new Date().toISOString().slice(0, 10);
+    saveProductionCosts(productionCosts.map((p) => (p.id === id ? { ...p, cost: value, lastUpdated: today } : p)));
+  };
+
+  const DEFAULT_COIL_WIDTH_SCALE = [
+    { id: "cw1", width: 16, pricePerFt: 2.56 },
+    { id: "cw2", width: 21, pricePerFt: 3.03 },
+  ];
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await storage.get("shop-coil-width-scale", true);
+        if (res?.value) setCoilWidthScale(JSON.parse(res.value));
+        else setCoilWidthScale(DEFAULT_COIL_WIDTH_SCALE);
+      } catch (e) { setCoilWidthScale(DEFAULT_COIL_WIDTH_SCALE); }
+      setCoilWidthScaleLoaded(true);
+    })();
+  }, []);
+
+  const saveCoilWidthScale = async (next) => {
+    setCoilWidthScale(next);
+    try { await storage.set("shop-coil-width-scale", JSON.stringify(next), true); }
+    catch (e) { console.error("storage error", e); }
+  };
+
+  const updateCoilScalePoint = (id, field, value) => {
+    saveCoilWidthScale(coilWidthScale.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
+  };
+  const addCoilScalePoint = () => {
+    saveCoilWidthScale([...coilWidthScale, { id: uid(), width: 24, pricePerFt: 0 }]);
+  };
+  const removeCoilScalePoint = (id) => {
+    saveCoilWidthScale(coilWidthScale.filter((c) => c.id !== id));
+  };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await storage.get("shop-custom-trim-presets", true);
+        if (res?.value) setCustomPresets(JSON.parse(res.value));
+      } catch (e) { /* none saved yet */ }
+      setCustomPresetsLoaded(true);
+    })();
+  }, []);
+
+  const saveCustomPresets = async (next) => {
+    setCustomPresets(next);
+    try { await storage.set("shop-custom-trim-presets", JSON.stringify(next), true); }
+    catch (e) { console.error("storage error", e); }
+  };
+
+  const saveCurrentAsPreset = () => {
+    if (points.length < 2) { setToast("Draw a shape first before saving it as a preset."); return; }
+    const name = window.prompt("Name this preset (e.g. \"Custom Sill Flashing\"):");
+    if (!name || !name.trim()) return;
+    saveCustomPresets([...customPresets, { id: uid(), name: name.trim(), points: points.map((pt) => [...pt]) }]);
+    setToast(`Saved "${name.trim()}" to your preset library.`);
+  };
+  const deleteCustomPreset = (id) => {
+    saveCustomPresets(customPresets.filter((p) => p.id !== id));
+  };
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await storage.get("shop-idea-box", true);
+        if (res?.value) setIdeas(JSON.parse(res.value));
+      } catch (e) { /* none submitted yet */ }
+      setIdeasLoaded(true);
+    })();
+  }, []);
+
+  const submitIdea = async () => {
+    if (!ideaText.trim()) { setToast("Write something first before submitting."); return; }
+    setIdeaSubmitting(true);
+    const next = [{ id: uid(), type: ideaType, text: ideaText.trim(), submittedBy: customerName.trim() || "Anonymous", createdAt: new Date().toISOString() }, ...ideas];
+    setIdeas(next);
+    try { await storage.set("shop-idea-box", JSON.stringify(next), true); }
+    catch (e) { console.error("storage error", e); }
+    setIdeaSubmitting(false);
+    setIdeaText("");
+    setShowIdeaBox(false);
+    setToast(ideaType === "bug" ? "Thanks — bug reported to the shop." : "Thanks — idea submitted!");
+    setTimeout(() => setToast(""), 3000);
+  };
+  const deleteIdea = async (id) => {
+    const next = ideas.filter((i) => i.id !== id);
+    setIdeas(next);
+    try { await storage.set("shop-idea-box", JSON.stringify(next), true); }
+    catch (e) { console.error("storage error", e); }
+  };
+
+  // Resizes/compresses a photo client-side before storing it (as a data URL) so a
+  // full-resolution phone photo doesn't blow past storage limits — caps the longest
+  // side at 1000px and re-encodes as JPEG at moderate quality.
+  const handlePhotoAttach = (file) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxSide = 1000;
+        const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        setPartPhoto(canvas.toDataURL("image/jpeg", 0.7));
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Sends a photo of a hand-drawn sketch to Claude's vision API and asks it to read
+  // off the shape (and any handwritten dimensions) as a straight-line point path,
+  // which becomes the starting drawing — this is a best-effort AI reading of a messy
+  // hand sketch, not precise tracing, so the result should always be checked and
+  // adjusted afterward rather than trusted blindly.
+  const scanSketchToPoints = (file) => {
+    if (!file) return;
+    setScanningSketch(true);
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const img = new Image();
+        const dataUrl = await new Promise((resolve, reject) => {
+          img.onload = () => {
+            const maxSide = 1200;
+            const scale = Math.min(1, maxSide / Math.max(img.width, img.height));
+            const canvas = document.createElement("canvas");
+            canvas.width = img.width * scale;
+            canvas.height = img.height * scale;
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL("image/jpeg", 0.85));
+          };
+          img.onerror = reject;
+          img.src = e.target.result;
+        });
+        const base64 = dataUrl.split(",")[1];
+
+        const response = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6",
+            max_tokens: 1000,
+            messages: [{
+              role: "user",
+              content: [
+                { type: "image", source: { type: "base64", media_type: "image/jpeg", data: base64 } },
+                {
+                  type: "text",
+                  text: "This is a photo of a hand-drawn sketch of a sheet metal trim/flashing cross-section profile — a shape made of connected straight line segments. Read any handwritten dimensions (lengths in inches or feet, angles in degrees) if present, and use them to size each segment accurately. If a segment isn't labeled, estimate its length proportionally relative to the labeled ones. Trace the profile as a connected path of straight segments only (no curves), starting from one end. Respond with ONLY a JSON array of [x, y] coordinate pairs in inches, like [[0,0],[4,0],[4,-2]] — no markdown code fences, no explanation, nothing else.",
+                },
+              ],
+            }],
+          }),
+        });
+        const data = await response.json();
+        const textBlock = (data.content || []).find((b) => b.type === "text");
+        if (!textBlock) throw new Error("No response from the model");
+        const cleaned = textBlock.text.replace(/```json|```/g, "").trim();
+        const parsed = JSON.parse(cleaned);
+        if (!Array.isArray(parsed) || parsed.length < 2 || !parsed.every((p) => Array.isArray(p) && p.length === 2 && isFinite(p[0]) && isFinite(p[1]))) {
+          throw new Error("Couldn't make sense of that sketch");
+        }
+        setPoints(parsed);
+        setViewResetKey((k) => k + 1);
+        setToast("Sketch scanned — check the shape and adjust any points/lengths before using it.");
+        setTimeout(() => setToast(""), 5000);
+      } catch (err) {
+        console.error("scanSketchToPoints error", err);
+        setToast("Couldn't read that sketch — try a clearer photo, or draw it by hand instead.");
+        setTimeout(() => setToast(""), 4000);
+      } finally {
+        setScanningSketch(false);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   // Draft-value helpers: while typing, the field shows exactly what was typed (including
   // "4.", a trailing decimal, or an empty field mid-edit) instead of a value re-parsed and
   // snapped back on every keystroke. The real numeric value only commits on blur.
@@ -1840,6 +2776,10 @@ export default function ShopOrderApp() {
     const parsed = parseFloat(raw);
     onCommit(isFinite(parsed) ? parsed : fallback);
   };
+  // Pressing Enter blurs the field, which triggers the existing onBlur commit — so a
+  // save isn't solely dependent on the browser firing a real blur event (flaky on some
+  // mobile/tablet keyboards when tapping "Done" or switching fields quickly).
+  const commitOnEnter = (e) => { if (e.key === "Enter") e.target.blur(); };
 
   const seedSampleOrders = async () => {
     const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
@@ -1857,7 +2797,14 @@ export default function ShopOrderApp() {
         ...trimColor("Fortified Metal", "Charcoal Gray"),
       };
       const merged = { ...base, ...over };
-      merged.price = computePrice(merged);
+      // Same math the real order form uses when a trim order is actually submitted,
+      // so sample/seed data rolls up into Materials Needed the same way real orders do.
+      const girth = merged.points.reduce((s, p, i) => s + (i > 0 ? dist(merged.points[i - 1], p) : 0), 0);
+      const sheetWidth = merged.sheetWidth || 48;
+      const partsPerSheet = girth > 0 ? Math.floor(sheetWidth / girth) : 0;
+      const sheetsNeeded = partsPerSheet > 0 ? Math.ceil(merged.quantity / partsPerSheet) : 0;
+      Object.assign(merged, { girth, sheetWidth, partsPerSheet, sheetsNeeded });
+      merged.price = computePrice(merged, priceList, coilWidthScale);
       return merged;
     };
     const mkPanel = (over) => {
@@ -1870,7 +2817,7 @@ export default function ShopOrderApp() {
         ...trimColor("Fortified Metal", "Charcoal Gray"),
       };
       const merged = { ...base, ...over };
-      merged.price = computePrice(merged);
+      merged.price = computePrice(merged, priceList, coilWidthScale);
       return merged;
     };
 
@@ -1939,15 +2886,50 @@ export default function ShopOrderApp() {
     setTimeout(() => setToast(""), 4000);
   };
 
-  const colorObj = findColor(colorName, brand);
+  const colorObj = findColor(colorName, brand, paintId);
+  const activeGauge = findGauge(gaugeId, brand);
+  const activePaint = brand === "Copper" ? { mult: 1 } : (PAINT_OPTIONS.find((p) => p.id === paintId) || PAINT_OPTIONS[0]);
+  const activePremiumMult = colorObj?.premium ? 1.12 : 1;
+  const activeRates = getSellRates(gaugeId, brand, priceList);
+  const ratePerSqft = activeRates.coilSqft * activePaint.mult * activePremiumMult;
+  const activeFlatMaterialItem = priceList?.find((p) => p.name.toLowerCase().includes("flat sheet material") && typeof p.greenleaf === "number");
+  const activeFlatProcessingItem = priceList?.find((p) => p.name.toLowerCase().includes("flat sheet processing") && typeof p.greenleaf === "number");
+  const activeFlatMaterialRate = activeFlatMaterialItem ? activeFlatMaterialItem.greenleaf : activeRates.coilSqft;
+  const activeFlatProcessingFee = activeFlatProcessingItem ? activeFlatProcessingItem.greenleaf : 0;
+  const flatSheetPrice = (((+flatWidth || 0) * (+flatLength || 0)) / 144) * activeFlatMaterialRate * activePaint.mult * activePremiumMult + activeFlatProcessingFee;
+  const interpolatedCoilPerFt = interpolateCoilPrice(+metalCoilWidth || 0, coilWidthScale);
+  const pvdfMultRef = PAINT_OPTIONS.find((p) => p.id === "pvdf")?.mult || 1;
+  const metalCoilPricePerFt = interpolatedCoilPerFt !== null
+    ? interpolatedCoilPerFt * (activePaint.mult / pvdfMultRef)
+    : ((+metalCoilWidth || 0) / 12) * ratePerSqft;
   const handleBrandChange = (nextBrand) => {
     setBrand(nextBrand);
-    setColorName(COLORS_BY_BRAND[nextBrand][0].name);
+    // paintId hasn't been updated yet at this point (that happens below), so figure out
+    // what paint type this brand will actually end up on before picking its default color.
+    const nextPaintId = PVDF_24GA_ONLY_BRANDS.includes(nextBrand) || PVDF_ONLY_BRANDS.includes(nextBrand) ? "pvdf" : paintId;
+    setColorName(getColorsForBrand(nextBrand, nextPaintId)[0].name);
     setColorSearch("");
-    if (nextBrand === "Copper") {
-      setGaugeId(COPPER_WEIGHT_OPTIONS[0].id);
-    } else if (brand === "Copper") {
-      setGaugeId(GAUGE_OPTIONS[0].id);
+    // gauge ids like "24ga" are reused across different option sets with different prices,
+    // so switching brands always resets to that brand's own first (correct) gauge option.
+    const nextGaugeSet = nextBrand === "Copper" ? COPPER_WEIGHT_OPTIONS
+      : nextBrand === "G90 Galvanized" ? G90_GAUGE_OPTIONS
+      : nextBrand === "Galvalume" ? GALVALUME_GAUGE_OPTIONS
+      : nextBrand === "Bonderized" ? BONDERIZED_GAUGE_OPTIONS
+      : PVDF_24GA_ONLY_BRANDS.includes(nextBrand) ? GAUGE_OPTIONS.filter((g) => g.id === "24ga")
+      : GAUGE_OPTIONS;
+    setGaugeId(nextGaugeSet[0].id);
+    if (PVDF_24GA_ONLY_BRANDS.includes(nextBrand) || PVDF_ONLY_BRANDS.includes(nextBrand)) {
+      setPaintId("pvdf"); // Kynar 500/Hylar 5000 (PVDF) only — no SMP
+    }
+  };
+  const handlePaintChange = (nextPaintId) => {
+    setPaintId(nextPaintId);
+    // A few brands (like Quality Metals) have genuinely different color palettes for
+    // PVDF vs SMP — if the current color doesn't exist under the new paint type, fall
+    // back to that palette's first color instead of leaving an invalid selection.
+    const nextColors = getColorsForBrand(brand, nextPaintId);
+    if (!nextColors.find((c) => c.name === colorName)) {
+      setColorName(nextColors[0].name);
     }
   };
   const draft = shapeType === "panel"
@@ -1957,13 +2939,14 @@ export default function ShopOrderApp() {
     : shapeType === "part3d"
     ? { type: "part3d", partType, partW, partD, partH, partCapH, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, quantity, gaugeId, paintId, colorName }
     : { type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, colorName };
-  const estimate = computePrice(draft);
+  const estimate = computePrice(draft, priceList, coilWidthScale);
   const girth = points.reduce((s, p, i) => s + (i > 0 ? dist(points[i - 1], p) : 0), 0);
   const partsPerSheet = girth > 0 ? Math.floor(sheetWidth / girth) : 0;
   const sheetsNeeded = partsPerSheet > 0 ? Math.ceil(quantity / partsPerSheet) : 0;
   const dropWidth = partsPerSheet > 0 ? Math.max(0, sheetWidth - partsPerSheet * girth) : sheetWidth;
 
   const resetForm = () => {
+    setOrderStep("type");
     setShapeType("panel"); setWidth(24); setHeight(36); setCoilWidth(24); setProfile(PROFILES[0]); setRunLocation("Shop"); setJobSiteAddress(""); setRibStyle(null); setClipRelief(null);
     setFlatWidth(48); setFlatLength(120); setMetalCoilWidth(21); setMetalCoilLength(12000);
     setAccessories([]); setAccType("Screws"); setAccSpec(ACCESSORY_SPECS.Screws[0]); setAccProfile(PROFILES[0]); setAccQty(1);
@@ -1989,12 +2972,13 @@ export default function ShopOrderApp() {
       id: uid(),
       name: partName.trim() || `Part ${basket.length + 1}`,
       points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
-      girth, partsPerSheet, sheetsNeeded, dropWidth,
+      girth, partsPerSheet, sheetsNeeded, dropWidth, photo: partPhoto,
       gaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
-      price: computePrice({ type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, colorName }),
+      price: computePrice({ type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, colorName }, priceList, coilWidthScale),
     };
     setBasket((b) => [...b, item]);
     clearDrawing();
+    setPartPhoto(null);
     setToast(`"${item.name}" added to the order — ${basket.length + 1} part${basket.length + 1 === 1 ? "" : "s"} so far.`);
     setTimeout(() => setToast(""), 3000);
   };
@@ -2036,7 +3020,7 @@ export default function ShopOrderApp() {
         items.push({
           id: uid(), name: partName.trim() || `Part ${basket.length + 1}`,
           points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
-          girth, partsPerSheet, sheetsNeeded, gaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
+          girth, partsPerSheet, sheetsNeeded, gaugeId, paintId, brand, colorName, colorHex: colorObj.hex, photo: partPhoto,
         });
       }
       if (items.length === 0) { setToast("Draw at least two points, or add a part to the order first."); return; }
@@ -2063,11 +3047,12 @@ export default function ShopOrderApp() {
           brand: it.brand,
           colorName: it.colorName,
           colorHex: it.colorHex,
+          photo: it.photo || null,
           notes: notes.trim(),
           status: "Pending",
           createdAt: new Date().toISOString(),
         };
-        order.price = computePrice(order);
+        order.price = computePrice(order, priceList, coilWidthScale);
         return order;
       });
       await saveOrders([...newOrders, ...orders]);
@@ -2130,7 +3115,7 @@ export default function ShopOrderApp() {
       status: "Pending",
       createdAt: new Date().toISOString(),
     };
-    order.price = computePrice(order);
+    order.price = computePrice(order, priceList, coilWidthScale);
     await saveOrders([order, ...orders]);
     setSubmitting(false);
     setToast(`Order sent — estimate ${money(order.price)}. The shop will confirm final pricing.`);
@@ -2166,15 +3151,56 @@ export default function ShopOrderApp() {
         .mac-btn:active {
           transform: scale(0.97);
         }
+        /* Bouncy press feedback for everyday buttons — a snappier, more playful tap than a flat click. */
+        .tap-bounce {
+          transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.12s ease;
+        }
+        .tap-bounce:active {
+          transform: scale(0.93);
+          filter: brightness(0.97);
+        }
+        @keyframes popIn {
+          0% { transform: scale(0.7); opacity: 0; }
+          60% { transform: scale(1.06); opacity: 1; }
+          100% { transform: scale(1); }
+        }
+        .pop-in { animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        @keyframes wiggle {
+          0%, 100% { transform: rotate(0deg); }
+          25% { transform: rotate(-4deg); }
+          75% { transform: rotate(4deg); }
+        }
+        .wiggle-hover:hover { animation: wiggle 0.3s ease; }
+        @keyframes slideUpFade {
+          0% { transform: translateY(14px); opacity: 0; }
+          100% { transform: translateY(0); opacity: 1; }
+        }
+        .slide-up-in { animation: slideUpFade 0.28s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        @keyframes celebrateSpin {
+          0% { transform: scale(0) rotate(-15deg); opacity: 0; }
+          50% { transform: scale(1.2) rotate(8deg); opacity: 1; }
+          100% { transform: scale(1) rotate(0deg); }
+        }
+        .celebrate { animation: celebrateSpin 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
       `}</style>
 
       {/* header */}
-      <div style={{ background: CHARCOAL, padding: "18px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ background: `linear-gradient(135deg, ${CHARCOAL}, #0F2C3F)`, padding: "18px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div>
           <div className="disp" style={{ color: "#fff", fontSize: 20, fontWeight: 700 }}>Fortified Sheet Metal</div>
           <div className="mono" style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>Custom Panels &amp; Trim — Shop Order Portal</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ textAlign: "right", marginRight: 4 }}>
+            <div style={{ color: "#fff", fontSize: 11, fontWeight: 600 }}>{customer?.name || user?.email}</div>
+            <div style={{ color: theme.textSecondary, fontSize: 9.5 }}>
+              {isStaff ? "Staff" : `Tier: ${customer?.tier === "tier1" ? "Tier 1" : customer?.tier === "greenleaf" ? "Greenleaf" : "Tier 2"}`}
+            </div>
+          </div>
+          <button onClick={signOut}
+            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+            Sign Out
+          </button>
           <button onClick={() => setDarkMode((d) => !d)}
             style={{ width: 30, height: 30, borderRadius: 15, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
             title={darkMode ? "Switch to light mode" : "Switch to dark mode"}>
@@ -2186,16 +3212,17 @@ export default function ShopOrderApp() {
 
       {/* tabs */}
       <div style={{ display: "flex", background: CHARCOAL, paddingBottom: 0 }}>
-        {[{ id: "order", label: "New Order", icon: PenTool }, { id: "dashboard", label: "Shop Floor", icon: ClipboardList }, { id: "pricelist", label: "Price List", icon: DollarSign }].map((t) => {
+        {[{ id: "order", label: "New Order", icon: PenTool }, ...(isStaff ? [{ id: "dashboard", label: "Shop Floor", icon: ClipboardList }] : []), { id: "pricelist", label: "Price List", icon: DollarSign }].map((t) => {
           const Icon = t.icon;
           const active = tab === t.id;
           return (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className="disp"
+              className="disp tap-bounce"
               style={{
                 flex: 1, padding: "12px 8px", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                background: active ? theme.pageBg : "transparent", color: active ? theme.text : "#9AA5AD",
+                background: active ? theme.pageBg : "transparent", color: active ? SAFETY : "#9AA5AD",
                 border: "none", borderTopLeftRadius: active ? 10 : 0, borderTopRightRadius: active ? 10 : 0,
+                borderTop: active ? `3px solid ${SAFETY}` : "3px solid transparent",
                 fontSize: 13, fontWeight: 600, cursor: "pointer",
               }}>
               <Icon size={15} /> {t.label}
@@ -2205,40 +3232,396 @@ export default function ShopOrderApp() {
       </div>
 
       {toast && (
-        <div style={{ background: "#FFF3E4", borderBottom: `2px solid ${SAFETY}`, color: theme.text, padding: "10px 20px", fontSize: 13 }}>
+        <div className="pop-in" style={{
+          background: `linear-gradient(90deg, #FBF3D9, #F5E6C3)`, borderBottom: `3px solid ${SAFETY}`, color: theme.text,
+          padding: "11px 20px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <span style={{ fontSize: 16 }}>✨</span>
           {toast}
         </div>
       )}
 
       {tab === "order" ? (
         <div style={{ padding: 16, maxWidth: 640, margin: "0 auto" }}>
-          {/* shape type toggle */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-            {[
-              { id: "metal", label: "Order Metal", icon: Layers, accent: "#3E7CB1" },
-              { id: "panel", label: "Roof Panel", icon: Square, accent: SAFETY },
-              { id: "trim", label: "Trim Profile", icon: PenTool, accent: "#4F9A63" },
-              { id: "part3d", label: "3D Parts", icon: Box, accent: "#8A5FBF" },
-            ].map((s) => {
-              const Icon = s.icon; const active = shapeType === s.id;
-              return (
-                <button key={s.id} onClick={() => setShapeType(s.id)} className="mac-btn"
+          {orderStep === "color" && (
+            <>
+              <button onClick={() => setOrderStep("details")}
+                style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, marginBottom: 10, display: "flex", alignItems: "center", gap: 4 }}>
+                <ChevronDown size={14} style={{ transform: "rotate(90deg)" }} /> Back to Order Details
+              </button>
+              <div className="disp" style={{ fontSize: 15, color: theme.text, marginBottom: 4 }}>Step 3 of 3 — Pick Your Finish</div>
+              <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 14 }}>Choose your manufacturer, gauge, and color.</div>
+          {/* color picker */}
+          <div style={{ background: theme.card, borderRadius: 10, padding: 12, marginTop: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+            <div className="disp" style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8 }}>Finish Color</div>
+            <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+              {[{ id: "painted", label: "Painted" }, { id: "unpainted", label: "Unpainted" }].map((c) => (
+                <button key={c.id} onClick={() => {
+                  setMaterialCategory(c.id);
+                  handleBrandChange(c.id === "unpainted" ? UNPAINTED_MATERIALS[0] : BRANDS[0]);
+                }}
                   style={{
-                    flex: 1, padding: "11px 6px", borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                    border: `1px solid ${active ? s.accent : theme.border}`,
-                    background: active
-                      ? `linear-gradient(180deg, ${s.accent}, ${s.accent}dd)`
-                      : (darkMode ? `linear-gradient(180deg, ${theme.inputBg}, ${theme.card})` : "linear-gradient(180deg, #ffffff, #f0eee6)"),
-                    color: active ? "#fff" : theme.text,
-                    fontWeight: 700, fontSize: 12.5, cursor: "pointer",
-                    boxShadow: active ? `0 3px 8px ${s.accent}55, inset 0 1px 0 rgba(255,255,255,0.35)` : "0 1px 2px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.4)",
+                    flex: 1, padding: "8px 4px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    border: `1px solid ${materialCategory === c.id ? INK : theme.border}`, background: materialCategory === c.id ? INK : theme.inputBg, color: materialCategory === c.id ? "#fff" : theme.text,
                   }}>
-                  <Icon size={16} /> {s.label}
+                  {c.label}
                 </button>
-              );
-            })}
-          </div>
+              ))}
+            </div>
 
+            {materialCategory === "unpainted" ? (
+              <>
+                <div style={{ fontSize: 10, color: theme.textSecondary, marginBottom: 8 }}>
+                  Bare/mill-finish materials — no paint, no color chart, just a few SKUs.
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 10 }}>
+                  {UNPAINTED_MATERIALS.map((mName) => {
+                    const swatch = COLORS_BY_BRAND[mName]?.[0]?.hex || "#999";
+                    const active = brand === mName;
+                    return (
+                      <button key={mName} onClick={() => handleBrandChange(mName)}
+                        style={{
+                          display: "flex", flexDirection: "column", alignItems: "stretch", gap: 4, padding: 5,
+                          border: `2px solid ${active ? INK : "transparent"}`, borderRadius: 8, background: active ? "#F0EDE3" : "transparent", cursor: "pointer",
+                        }}>
+                        <span style={{ width: "100%", height: 46, borderRadius: 5, background: swatch, border: "1px solid rgba(0,0,0,0.15)", position: "relative", display: "block" }}>
+                          {active && <Check size={16} color="#fff" style={{ position: "absolute", top: 5, right: 5, filter: "drop-shadow(0 0 1.5px #000)" }} />}
+                        </span>
+                        <span style={{ fontSize: 10, fontWeight: 600, textAlign: "center", lineHeight: 1.2, color: theme.text }}>{mName}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                    {brand === "Copper" ? "Copper Weight" : "Gauge"}
+                    <select value={gaugeId} onChange={(e) => setGaugeId(e.target.value)}
+                      style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: theme.inputBg }}>
+                      {(brand === "Copper" ? COPPER_WEIGHT_OPTIONS
+                        : brand === "G90 Galvanized" ? G90_GAUGE_OPTIONS
+                        : brand === "Galvalume" ? GALVALUME_GAUGE_OPTIONS
+                        : BONDERIZED_GAUGE_OPTIONS).map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, padding: 8, border: `1px solid ${theme.border}`, borderRadius: 7 }}>
+                  <span style={{ width: 40, height: 40, borderRadius: 6, background: colorObj?.hex || "#ccc", border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{colorName}</span>
+                </div>
+                {UNPAINTED_FLATS_ONLY_BRANDS.includes(brand) && (
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 8, marginTop: 8, padding: "8px 10px",
+                    background: darkMode ? "#332A0C" : "#FBF3D9", border: `1px solid ${SAFETY}`, borderRadius: 6,
+                  }}>
+                    <StickyNote size={16} color={SAFETY} style={{ flexShrink: 0 }} />
+                    <span style={{ fontSize: 11, color: theme.text, fontWeight: 600 }}>
+                      {brand} is only available as 4' × 10' flat sheet stock — go to Order Metal → Flat Sheet to order it.
+                    </span>
+                  </div>
+                )}
+                {brand === "Bonderized" && (
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 8, marginTop: 8, padding: "8px 10px",
+                    background: darkMode ? "#332A0C" : "#FBF3D9", border: `1px solid ${SAFETY}`, borderRadius: 6,
+                  }}>
+                    <StickyNote size={16} color={SAFETY} style={{ flexShrink: 0 }} />
+                    <span style={{ fontSize: 11, color: theme.text, fontWeight: 600 }}>
+                      Non-warranted finish — Bonderized is unpainted, so no paint warranty applies. It also typically runs Grade 33–45, softer than standard Grade 50, and is not recommended for roofing material.
+                    </span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                  <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                    Brand
+                    <select value={brand} onChange={(e) => handleBrandChange(e.target.value)}
+                      style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: theme.inputBg }}>
+                      {BRANDS.map((b) => <option key={b}>{b}</option>)}
+                    </select>
+                  </label>
+                  <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                    Gauge
+                    <select value={gaugeId} onChange={(e) => setGaugeId(e.target.value)} disabled={PVDF_24GA_ONLY_BRANDS.includes(brand)}
+                      style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: PVDF_24GA_ONLY_BRANDS.includes(brand) ? theme.pageBg : theme.inputBg, opacity: PVDF_24GA_ONLY_BRANDS.includes(brand) ? 0.7 : 1 }}>
+                      {(PVDF_24GA_ONLY_BRANDS.includes(brand) ? GAUGE_OPTIONS.filter((g) => g.id === "24ga") : GAUGE_OPTIONS).map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+                    </select>
+                  </label>
+                  <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                    Paint Type
+                    <select value={paintId} onChange={(e) => handlePaintChange(e.target.value)} disabled={PVDF_24GA_ONLY_BRANDS.includes(brand) || PVDF_ONLY_BRANDS.includes(brand)}
+                      style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: (PVDF_24GA_ONLY_BRANDS.includes(brand) || PVDF_ONLY_BRANDS.includes(brand)) ? theme.pageBg : theme.inputBg, opacity: (PVDF_24GA_ONLY_BRANDS.includes(brand) || PVDF_ONLY_BRANDS.includes(brand)) ? 0.7 : 1 }}>
+                      {(PVDF_24GA_ONLY_BRANDS.includes(brand) || PVDF_ONLY_BRANDS.includes(brand) ? PAINT_OPTIONS.filter((p) => p.id === "pvdf") : PAINT_OPTIONS).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                    </select>
+                  </label>
+                </div>
+                {PVDF_ONLY_BRANDS.includes(brand) && (
+                  <div style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: -4, marginBottom: 8 }}>
+                    {brand} is Kynar 500/Hylar 5000 (PVDF) only — no SMP.
+                  </div>
+                )}
+                {PVDF_24GA_ONLY_BRANDS.includes(brand) && (
+                  <div style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: -4, marginBottom: 8 }}>
+                    {brand} is Kynar 500/Hylar 5000 (PVDF), 24 gauge only.
+                  </div>
+                )}
+                <input
+                  value={colorSearch}
+                  onChange={(e) => setColorSearch(e.target.value)}
+                  placeholder="Search colors…"
+                  style={{ width: "100%", padding: 8, marginBottom: 8, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }}
+                />
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, maxHeight: 340, overflowY: "auto", paddingRight: 2 }}>
+                  {getColorsForBrand(brand, paintId).filter((c) => c.name.toLowerCase().includes(colorSearch.toLowerCase())).map((c) => {
+                    const active = colorName === c.name;
+                    return (
+                      <button key={c.name} onClick={() => setColorName(c.name)}
+                        style={{
+                          display: "flex", flexDirection: "column", alignItems: "stretch", gap: 4, padding: 5,
+                          border: `2px solid ${active ? INK : "transparent"}`, borderRadius: 8, background: active ? "#F0EDE3" : "transparent", cursor: "pointer",
+                        }}>
+                        <span style={{ width: "100%", height: 46, borderRadius: 5, background: c.hex, border: "1px solid rgba(0,0,0,0.15)", position: "relative", display: "block" }}>
+                          {active && <Check size={16} color="#fff" style={{ position: "absolute", top: 5, right: 5, filter: "drop-shadow(0 0 1.5px #000)" }} />}
+                        </span>
+                        <span style={{ fontSize: 10, fontWeight: 600, textAlign: "center", lineHeight: 1.2, color: theme.text }}>{c.name}{c.premium && " *"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {colorObj?.premium && (
+                  <div style={{
+                    display: "flex", alignItems: "center", gap: 8, marginTop: 8, padding: "8px 10px",
+                    background: darkMode ? "#332A0C" : "#FBF3D9", border: `1px solid ${SAFETY}`, borderRadius: 6,
+                  }}>
+                    <StickyNote size={16} color={SAFETY} style={{ flexShrink: 0 }} />
+                    <span style={{ fontSize: 11, color: theme.text, fontWeight: 600 }}>
+                      "{colorObj.name}" is a non-standard finish (Deep Tone, Metallic, Woodgrain, or Specialty) — this is not standard pricing. A +12% surcharge applies.
+                    </span>
+                  </div>
+                )}
+                <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 8 }}>* Premium/metallic finish, +12%. Screen colors are approximate — confirm with a physical chip before ordering.</div>
+                <button onClick={() => setShowColorMatch((s) => !s)}
+                  style={{
+                    width: "100%", marginTop: 10, padding: "9px", borderRadius: 8, cursor: "pointer",
+                    border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, fontSize: 12, fontWeight: 600,
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  }}>
+                  {showColorMatch ? "Hide" : "Can't find this color? Search other brands"}
+                </button>
+                {showColorMatch && (
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ fontSize: 10.5, color: theme.textSecondary, marginBottom: 8 }}>
+                      Closest matches to <strong style={{ color: theme.text }}>"{colorName}"</strong> from other manufacturers:
+                    </div>
+                    {findSimilarColorsAcrossBrands(colorObj?.hex || "#888888", brand, 8).map((m, i) => (
+                      <button key={`${m.brand}-${m.name}`}
+                        onClick={() => { handleBrandChange(m.brand); if (m.paintId) setPaintId(m.paintId); setColorName(m.name); setShowColorMatch(false); }}
+                        style={{
+                          width: "100%", display: "flex", alignItems: "center", gap: 10, padding: 8, marginBottom: 4,
+                          border: `1px solid ${i === 0 ? SAFETY : theme.border}`, borderRadius: 7, background: theme.card, cursor: "pointer", textAlign: "left",
+                        }}>
+                        <span className="mono" style={{
+                          width: 20, height: 20, borderRadius: "50%", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 9.5, fontWeight: 700, background: i === 0 ? SAFETY : theme.inputBg, color: i === 0 ? "#fff" : theme.textSecondary,
+                        }}>
+                          {i + 1}
+                        </span>
+                        <span style={{ width: 34, height: 34, borderRadius: 6, background: m.hex, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: theme.text }}>
+                            {m.name}{m.premium && " *"}
+                            {i === 0 && <span style={{ color: SAFETY, fontWeight: 700, fontSize: 9.5 }}> · Closest Match</span>}
+                          </div>
+                          <div style={{ fontSize: 10, color: theme.textSecondary }}>{m.brand}</div>
+                        </div>
+                        <span style={{ fontSize: 9.5, color: theme.textSecondary, textAlign: "right", maxWidth: 90, lineHeight: 1.25 }}>
+                          {describeColorShift(colorObj?.hex || "#888888", m.hex)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+              <button onClick={() => setOrderStep("details")}
+                style={{ width: "100%", marginTop: 14, padding: "13px", borderRadius: 10, border: "none", background: SAFETY, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                Done — Back to Order Details
+              </button>
+            </>
+          )}
+
+          {orderStep === "type" && (
+            <>
+              <div className="disp" style={{ fontSize: 15, color: theme.text, marginBottom: 4 }}>Step 1 of 3 — What Do You Need?</div>
+              <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 16 }}>We'll ask for your finish and color next.</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {[
+                  { id: "panel", label: "Roof Panel", desc: "Formed standing-seam or snap-lock panels", icon: Square, accent: SAFETY },
+                  { id: "trim", label: "Trim Profile", desc: "Custom-drawn flashing and trim pieces", icon: PenTool, accent: "#4F9A63" },
+                  { id: "metal", label: "Unfabricated Metal", desc: "Raw coil or 4x10 flat sheet stock", icon: Layers, accent: "#3E7CB1" },
+                  { id: "part3d", label: "3D Parts", desc: "Collector boxes, scuppers, chimney caps", icon: Box, accent: "#8A5FBF" },
+                ].map((t) => {
+                  const Icon = t.icon;
+                  return (
+                    <button key={t.id} onClick={() => { setShapeType(t.id); setOrderStep("details"); }} className="mac-btn"
+                      style={{
+                        display: "flex", alignItems: "center", gap: 14, padding: 16, borderRadius: 12, border: `1px solid ${t.accent}`,
+                        background: `linear-gradient(180deg, ${t.accent}, ${t.accent}dd)`, color: "#fff", cursor: "pointer", textAlign: "left",
+                        boxShadow: `0 3px 8px ${t.accent}44, inset 0 1px 0 rgba(255,255,255,0.3)`,
+                      }}>
+                      <Icon size={26} style={{ flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 700 }}>{t.label}</div>
+                        <div style={{ fontSize: 11, opacity: 0.9, marginTop: 2 }}>{t.desc}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+              <button onClick={() => setShowCoilCalc(true)}
+                className="tap-bounce"
+                style={{
+                  width: "100%", marginTop: 14, padding: "12px", borderRadius: 10, cursor: "pointer",
+                  border: `1px solid ${theme.border}`, background: theme.card, color: theme.text, fontSize: 13, fontWeight: 700,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                }}>
+                ⚖️ Coil Weight Calculator
+              </button>
+            </>
+          )}
+
+          {showCoilCalc && (() => {
+            const density = MATERIAL_DENSITIES[coilCalcMaterial].density;
+            const od = +coilCalcOD || 0, id = +coilCalcID || 0, width = +coilCalcWidth || 0;
+            const validGeometry = od > id && id >= 0 && width > 0;
+            // Standard coil weight formula: cross-sectional area of the annulus (OD² − ID²) × π/4,
+            // times width, times material density. This is basic geometry + material physics —
+            // the same math any coil weight calculator uses, not proprietary to any one app.
+            const weightLbs = validGeometry ? (Math.PI / 4) * (od * od - id * id) * width * density : 0;
+            // Approximate coil length, derived from weight ÷ (width × material thickness × density).
+            const thickness = +coilCalcGaugeThickness || 0;
+            const lengthFt = validGeometry && thickness > 0 ? weightLbs / (width * thickness * density * 12) : 0;
+            return (
+              <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+                onClick={() => setShowCoilCalc(false)}>
+                <div onClick={(e) => e.stopPropagation()}
+                  style={{ background: theme.card, borderRadius: 12, padding: 20, maxWidth: 420, width: "100%", boxShadow: "0 8px 30px rgba(0,0,0,0.3)", maxHeight: "90vh", overflowY: "auto" }}>
+                  <div className="disp" style={{ fontSize: 16, color: theme.text, marginBottom: 4 }}>⚖️ Coil Weight Calculator</div>
+                  <div style={{ fontSize: 11.5, color: theme.textSecondary, marginBottom: 14 }}>
+                    Figure a coil's weight from its measurements — no scale needed.
+                  </div>
+
+                  <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginBottom: 10 }}>
+                    Material
+                    <select value={coilCalcMaterial} onChange={(e) => setCoilCalcMaterial(e.target.value)}
+                      style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, background: theme.inputBg, color: theme.text }}>
+                      {Object.entries(MATERIAL_DENSITIES).map(([id2, m]) => <option key={id2} value={id2}>{m.label}</option>)}
+                    </select>
+                  </label>
+
+                  <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginBottom: 10 }}>
+                    Gauge / Thickness (in) — used for the length estimate below
+                    <select value={coilCalcGaugeThickness} onChange={(e) => setCoilCalcGaugeThickness(+e.target.value)}
+                      style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, background: theme.inputBg, color: theme.text }}>
+                      <option value={0.0299}>22 Gauge (0.0299")</option>
+                      <option value={0.0239}>24 Gauge (0.0239")</option>
+                      <option value={0.0179}>26 Gauge (0.0179")</option>
+                      <option value={0.0149}>28 Gauge (0.0149")</option>
+                    </select>
+                  </label>
+
+                  <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                    <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                      Outer Diameter (in)
+                      <input type="number" min={0} step="0.25" value={coilCalcOD} onChange={(e) => setCoilCalcOD(e.target.value)}
+                        style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box", background: theme.inputBg, color: theme.text }} />
+                    </label>
+                    <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                      Core / Inner Dia. (in)
+                      <input type="number" min={0} step="0.25" value={coilCalcID} onChange={(e) => setCoilCalcID(e.target.value)}
+                        style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box", background: theme.inputBg, color: theme.text }} />
+                    </label>
+                  </div>
+                  <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginBottom: 14 }}>
+                    Coil Width (in)
+                    <input type="number" min={0} step="0.25" value={coilCalcWidth} onChange={(e) => setCoilCalcWidth(e.target.value)}
+                      style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box", background: theme.inputBg, color: theme.text }} />
+                  </label>
+
+                  {!validGeometry ? (
+                    <div style={{ fontSize: 11.5, color: theme.textSecondary, padding: 10, textAlign: "center" }}>
+                      Outer Diameter needs to be larger than Core Diameter, and Width above zero.
+                    </div>
+                  ) : (
+                    <div style={{ background: theme.inputBg, borderRadius: 8, padding: 12, marginBottom: 4 }}>
+                      <div style={{ fontSize: 11, color: theme.textSecondary }}>Estimated Weight</div>
+                      <div className="mono" style={{ fontSize: 22, fontWeight: 700, color: theme.text }}>{weightLbs.toFixed(0)} lbs</div>
+                      <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>≈ {(weightLbs / 100).toFixed(2)} CWT</div>
+                      {lengthFt > 0 && (
+                        <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 2 }}>≈ {Math.round(lengthFt)} ft of material on the coil</div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="disp" style={{ fontSize: 11.5, color: SAFETY, marginTop: 16, marginBottom: 6 }}>
+                    Weight per Sq Ft — {MATERIAL_DENSITIES[coilCalcMaterial].label}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, fontSize: 10.5, marginBottom: 4, color: theme.textSecondary, fontWeight: 700 }}>
+                    <div>Gauge</div><div>Bare</div><div>Painted</div>
+                  </div>
+                  {[
+                    { label: "22 Ga", thickness: 0.0299 },
+                    { label: "24 Ga", thickness: 0.0239 },
+                    { label: "26 Ga", thickness: 0.0179 },
+                    { label: "28 Ga", thickness: 0.0149 },
+                  ].map((g) => {
+                    const bare = g.thickness * density * 144;
+                    const paintFilmAdd = 0.01; // approximate weight of a PVDF/SMP coating system — thin enough that this is a small, rough estimate, not a precise figure
+                    const painted = bare + paintFilmAdd;
+                    return (
+                      <div key={g.label} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, fontSize: 12, padding: "4px 0", borderTop: `1px solid ${theme.border}`, color: theme.text }}>
+                        <div className="mono">{g.label}</div>
+                        <div className="mono">{bare.toFixed(3)}</div>
+                        <div className="mono">{painted.toFixed(3)}</div>
+                      </div>
+                    );
+                  })}
+                  <div style={{ fontSize: 9, color: theme.textSecondary, marginTop: 6 }}>
+                    lbs/sq ft. Painted figures add an approximate coating film weight — the difference is small enough that it's a rough estimate, not a precise spec value.
+                  </div>
+
+                  <div style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 10 }}>
+                    Standard coil geometry formula — a real scale reading is always more accurate than an estimate from measurements.
+                  </div>
+
+                  <button onClick={() => setShowCoilCalc(false)}
+                    style={{ width: "100%", marginTop: 14, padding: "11px", borderRadius: 8, border: "none", background: SAFETY, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                    Close
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {orderStep === "details" && (
+            <>
+              <div className="disp" style={{ fontSize: 15, color: theme.text, marginBottom: 10 }}>Step 2 of 3 — Order Details</div>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <button onClick={() => setOrderStep("type")}
+                  style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 4 }}>
+                  <ChevronDown size={14} style={{ transform: "rotate(90deg)" }} /> Change Type
+                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ width: 14, height: 14, borderRadius: 4, background: colorObj?.hex || "#ccc", border: "1px solid rgba(0,0,0,0.2)" }} />
+                  <span style={{ fontSize: 10.5, color: theme.textSecondary }}>{brand} — {colorName}</span>
+                  <button onClick={() => setOrderStep("color")}
+                    style={{ border: "none", background: "none", color: SAFETY, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
+                    Edit
+                  </button>
+                </div>
+              </div>
           {/* drawing area */}
           <div style={{ background: theme.card, borderRadius: 10, padding: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
             {shapeType === "metal" ? (
@@ -2285,6 +3668,20 @@ export default function ShopOrderApp() {
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
                   </label>
                 </div>
+
+                {(() => {
+                  const coilFeet = (+metalCoilLength || 0) / 12;
+                  return (
+                    <div style={{ marginTop: 10, padding: 10, background: theme.inputBg, borderRadius: 8, border: `1px solid ${theme.border}` }}>
+                      <div style={{ fontSize: 11.5, color: theme.text, marginBottom: 4 }}>
+                        <strong>Flat Sheet:</strong> {money(flatSheetPrice)} each — {quantity || 0} × = <strong>{money(flatSheetPrice * (+quantity || 0))}</strong>
+                      </div>
+                      <div style={{ fontSize: 11.5, color: theme.text }}>
+                        <strong>Coil:</strong> {money(metalCoilPricePerFt)} per linear ft — {Math.round(coilFeet)} ft = <strong>{money(metalCoilPricePerFt * coilFeet)}</strong>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 10 }}>
                   Raw material — no profile or trim shape. Gauge, paint, and color are set below in Finish Color.
@@ -2658,6 +4055,45 @@ export default function ShopOrderApp() {
                   </div>
                 </div>
 
+                {(() => {
+                  const svg = generatePanelProfileSvg(profile, ribStyle || "none", width);
+                  const baseColor = colorObj?.hex || "#9CA3AF";
+                  const gid = "panelMetalGrad";
+                  return (
+                    <div style={{ marginTop: 12, background: "#EDEBE3", borderRadius: 8, padding: "10px 4px", border: `1px solid ${theme.border}` }}>
+                      <svg viewBox={`0 0 ${svg.w} ${svg.h}`} width="100%" height="230" style={{ display: "block" }}>
+                        <defs>
+                          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.55" />
+                            <stop offset="18%" stopColor={baseColor} stopOpacity="1" />
+                            <stop offset="60%" stopColor={baseColor} stopOpacity="1" />
+                            <stop offset="100%" stopColor="#000000" stopOpacity="0.28" />
+                          </linearGradient>
+                        </defs>
+                        {/* pan base */}
+                        <rect x={svg.panStart} y={svg.baseY - 2} width={svg.panEnd - svg.panStart} height={svg.thick + 2} fill={`url(#${gid})`} />
+                        {/* rib texture, raised */}
+                        <path d={svg.ribTop} fill="none" stroke={`url(#${gid})`} strokeWidth={svg.thick + 5} strokeLinejoin="round" strokeLinecap="round" />
+                        {svg.ribShade.map((d, i) => (
+                          <path key={i} d={d} fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
+                        ))}
+                        {/* seams */}
+                        <path d={svg.left.outer} fill={`url(#${gid})`} stroke="rgba(0,0,0,0.45)" strokeWidth="1.5" strokeLinejoin="round" />
+                        {svg.left.extra && <path d={svg.left.extra} fill={`url(#${gid})`} stroke="rgba(0,0,0,0.45)" strokeWidth="1.5" />}
+                        {svg.left.foldLines.map((d, i) => <path key={i} d={d} fill="none" stroke="rgba(0,0,0,0.4)" strokeWidth="1.2" />)}
+                        <path d={svg.right.outer} fill={`url(#${gid})`} stroke="rgba(0,0,0,0.45)" strokeWidth="1.5" strokeLinejoin="round" />
+                        {svg.right.extra && <path d={svg.right.extra} fill={`url(#${gid})`} stroke="rgba(0,0,0,0.45)" strokeWidth="1.5" />}
+                        {svg.right.foldLines.map((d, i) => <path key={i} d={d} fill="none" stroke="rgba(0,0,0,0.4)" strokeWidth="1.2" />)}
+                        {/* ground line */}
+                        <line x1="10" y1={svg.baseY + 6} x2={svg.w - 10} y2={svg.baseY + 6} stroke="rgba(0,0,0,0.15)" strokeWidth="1" strokeDasharray="4 3" />
+                      </svg>
+                      <div style={{ fontSize: 9.5, color: theme.textSecondary, textAlign: "center", marginTop: 2 }}>
+                        {PROFILE_INFO[profile]?.code || profile} seam detail — {ribStyle && ribStyle !== "none" ? RIB_LABELS[ribStyle] : "flat pan, no ribs"}. Zoomed in on one seam-to-seam module for clarity; not to true panel width.
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Length of Panel(s) (ft)
@@ -2753,7 +4189,7 @@ export default function ShopOrderApp() {
               <>
                 <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                   {Object.keys(TRIM_PRESETS).map((p) => (
-                    <button key={p} onClick={() => { setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt])); }}
+                    <button key={p} onClick={() => { setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt])); setViewResetKey((k) => k + 1); }}
                       style={{
                         padding: "5px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
                         border: `1px solid ${preset === p ? INK : "#D9D5C7"}`, background: preset === p ? INK : "#fff", color: preset === p ? "#fff" : INK_DEEP,
@@ -2761,8 +4197,45 @@ export default function ShopOrderApp() {
                       {p}
                     </button>
                   ))}
+                  {customPresetsLoaded && customPresets.map((cp) => (
+                    <span key={cp.id} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
+                      <button onClick={() => { setPreset(cp.name); setPoints(cp.points.map((pt) => [...pt])); setViewResetKey((k) => k + 1); }}
+                        style={{
+                          padding: "5px 8px 5px 10px", borderRadius: "999px 0 0 999px", fontSize: 11, cursor: "pointer",
+                          border: `1px solid ${SAFETY}`, borderRight: "none", background: preset === cp.name ? SAFETY : "#fff", color: preset === cp.name ? "#fff" : SAFETY,
+                        }}>
+                        ★ {cp.name}
+                      </button>
+                      <button onClick={() => deleteCustomPreset(cp.id)} title="Delete this saved preset"
+                        style={{
+                          padding: "5px 8px", borderRadius: "0 999px 999px 0", fontSize: 11, cursor: "pointer",
+                          border: `1px solid ${SAFETY}`, background: "#fff", color: SAFETY,
+                        }}>
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  <button onClick={saveCurrentAsPreset} title="Save the current drawing as a reusable preset"
+                    style={{
+                      padding: "5px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
+                      border: `1px dashed ${theme.textSecondary}`, background: "transparent", color: theme.textSecondary, display: "flex", alignItems: "center", gap: 4,
+                    }}>
+                    <Plus size={11} /> Save as Preset
+                  </button>
+                  <label title="Take or upload a photo of a hand-drawn sketch and let AI read it into the drawing tool"
+                    style={{
+                      padding: "5px 10px", borderRadius: 999, fontSize: 11, cursor: scanningSketch ? "default" : "pointer",
+                      border: `1px solid ${SAFETY}`, background: scanningSketch ? theme.inputBg : "#fff", color: SAFETY, display: "flex", alignItems: "center", gap: 4, opacity: scanningSketch ? 0.7 : 1,
+                    }}>
+                    📷 {scanningSketch ? "Reading sketch…" : "Scan a Sketch"}
+                    <input type="file" accept="image/*" capture="environment" disabled={scanningSketch} style={{ display: "none" }}
+                      onChange={(e) => { scanSketchToPoints(e.target.files?.[0]); e.target.value = ""; }} />
+                  </label>
                 </div>
-                <TrimCanvas points={points} setPoints={setPoints} colorHex={colorObj.hex} hemStart={hemStart} hemEnd={hemEnd} paintSide={paintSide} />
+                <div style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: -4, marginBottom: 6 }}>
+                  AI reads a best-effort shape from the photo — always check and adjust points/lengths before using it.
+                </div>
+                <TrimCanvas points={points} setPoints={setPoints} colorHex={colorObj.hex} hemStart={hemStart} hemEnd={hemEnd} paintSide={paintSide} viewResetKey={viewResetKey} />
                 <div style={{ display: "flex", alignItems: "center", marginTop: 8, gap: 8, flexWrap: "wrap" }}>
                   <button onClick={() => setPoints((p) => p.slice(0, -1))}
                     style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, padding: "5px 9px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, cursor: "pointer" }}>
@@ -2852,6 +4325,28 @@ export default function ShopOrderApp() {
                     style={{ width: "100%", padding: 7, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
                 </label>
 
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ fontSize: 10.5, color: theme.textSecondary, marginBottom: 4 }}>Reference photo (optional)</div>
+                  {partPhoto ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <img src={partPhoto} alt="Attached reference" style={{ width: 56, height: 56, objectFit: "cover", borderRadius: 8, border: `1px solid ${theme.border}` }} />
+                      <button onClick={() => setPartPhoto(null)}
+                        style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, padding: "6px 10px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.textSecondary, cursor: "pointer" }}>
+                        <Trash2 size={12} /> Remove Photo
+                      </button>
+                    </div>
+                  ) : (
+                    <label style={{
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px",
+                      border: `1px dashed ${theme.border}`, borderRadius: 8, cursor: "pointer", fontSize: 11.5, color: theme.textSecondary,
+                    }}>
+                      <Plus size={13} /> Attach a Photo
+                      <input type="file" accept="image/*" capture="environment" style={{ display: "none" }}
+                        onChange={(e) => handlePhotoAttach(e.target.files?.[0])} />
+                    </label>
+                  )}
+                </div>
+
                 <button onClick={addToBasket}
                   className="disp"
                   style={{
@@ -2871,13 +4366,16 @@ export default function ShopOrderApp() {
                       </span>
                     </div>
                     {basket.map((it, idx) => {
-                      const itGauge = GAUGE_OPTIONS.find((g) => g.id === it.gaugeId) || COPPER_WEIGHT_OPTIONS.find((g) => g.id === it.gaugeId);
+                      const itGauge = findGauge(it.gaugeId, it.brand);
                       const itBends = Math.max(0, it.points.length - 2);
                       return (
                         <div key={it.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0", borderBottom: idx < basket.length - 1 ? "1px solid #F3F0E7" : "none" }}>
                           <div style={{ background: INK, borderRadius: 5, padding: 3, flexShrink: 0 }}>
                             <ShapeThumb order={{ type: "trim", points: it.points, colorHex: it.colorHex }} size={28} />
                           </div>
+                          {it.photo && (
+                            <img src={it.photo} alt="Reference" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 5, border: `1px solid ${theme.border}`, flexShrink: 0 }} />
+                          )}
                           <span style={{ fontSize: 11.5, color: theme.text, flex: 1 }}>
                             <strong>{it.name}</strong> — Qty {it.quantity} · {it.girth.toFixed(2)}" girth · {it.sheetsNeeded} sheet{it.sheetsNeeded === 1 ? "" : "s"} · {it.dropWidth.toFixed(2)}" drop
                             <br />
@@ -2886,6 +4384,10 @@ export default function ShopOrderApp() {
                             </span>
                           </span>
                           <span className="mono" style={{ fontSize: 11, color: theme.textSecondary }}>{money(it.price)}</span>
+                          <button onClick={() => printPartAsPDF(it)} title="Export as PDF"
+                            style={{ border: "none", background: "none", color: theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
+                            <Printer size={13} />
+                          </button>
                           <button onClick={() => removeBasketItem(it.id)}
                             style={{ border: "none", background: "none", color: theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
                             <Trash2 size={12} />
@@ -2898,61 +4400,6 @@ export default function ShopOrderApp() {
               </>
             )}
           </div>
-
-          {/* color picker */}
-          <div style={{ background: theme.card, borderRadius: 10, padding: 12, marginTop: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
-            <div className="disp" style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8 }}>Finish Color</div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-              <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                Brand
-                <select value={brand} onChange={(e) => handleBrandChange(e.target.value)}
-                  style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: theme.inputBg }}>
-                  {BRANDS.map((b) => <option key={b}>{b}</option>)}
-                </select>
-              </label>
-              <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                {brand === "Copper" ? "Copper Weight" : "Gauge"}
-                <select value={gaugeId} onChange={(e) => setGaugeId(e.target.value)}
-                  style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: theme.inputBg }}>
-                  {(brand === "Copper" ? COPPER_WEIGHT_OPTIONS : GAUGE_OPTIONS).map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
-                </select>
-              </label>
-              {brand !== "Copper" && (
-                <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                  Paint Type
-                  <select value={paintId} onChange={(e) => setPaintId(e.target.value)}
-                    style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: theme.inputBg }}>
-                    {PAINT_OPTIONS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-                  </select>
-                </label>
-              )}
-            </div>
-            <input
-              value={colorSearch}
-              onChange={(e) => setColorSearch(e.target.value)}
-              placeholder="Search colors…"
-              style={{ width: "100%", padding: 8, marginBottom: 8, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }}
-            />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 3.4, maxHeight: 260, overflowY: "auto", paddingRight: 2 }}>
-              {COLORS_BY_BRAND[brand].filter((c) => c.name.toLowerCase().includes(colorSearch.toLowerCase())).map((c) => {
-                const active = colorName === c.name;
-                return (
-                  <button key={c.name} onClick={() => setColorName(c.name)}
-                    style={{
-                      display: "flex", flexDirection: "column", alignItems: "center", gap: 1.7, padding: 2.8,
-                      border: `2px solid ${active ? INK : "transparent"}`, borderRadius: 8, background: active ? "#F0EDE3" : "transparent", cursor: "pointer",
-                    }}>
-                    <span style={{ width: 22, height: 22, borderRadius: "50%", background: c.hex, border: "1px solid rgba(0,0,0,0.15)", position: "relative" }}>
-                      {active && <Check size={12} color="#fff" style={{ position: "absolute", top: 4, left: 4, filter: "drop-shadow(0 0 1px #000)" }} />}
-                    </span>
-                    <span style={{ fontSize: 8.5, textAlign: "center", lineHeight: 1.15, color: theme.text }}>{c.name}{c.premium && " *"}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 8 }}>* Premium/metallic finish, +12%. Screen colors are approximate — confirm with a physical chip before ordering.</div>
-          </div>
-
           {/* order details */}
           <div style={{ background: theme.card, borderRadius: 10, padding: 12, marginTop: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
             <div className="disp" style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8 }}>Order Details</div>
@@ -2983,36 +4430,149 @@ export default function ShopOrderApp() {
               <div className="mono" style={{ color: "#fff", fontSize: 22, fontWeight: 600 }}>{money(combinedEstimate)}</div>
             </div>
             <button onClick={submitOrder} disabled={submitting}
-              className="disp"
+              className="disp tap-bounce"
               style={{
-                background: SAFETY, color: "#fff", border: "none", padding: "12px 20px", borderRadius: 8,
-                fontSize: 13, fontWeight: 700, cursor: submitting ? "default" : "pointer", opacity: submitting ? 0.7 : 1,
+                background: `linear-gradient(135deg, ${SAFETY}, #F0C955)`, color: "#fff", border: "none", padding: "13px 22px", borderRadius: 10,
+                fontSize: 13.5, fontWeight: 700, cursor: submitting ? "default" : "pointer", opacity: submitting ? 0.7 : 1,
+                boxShadow: `0 4px 14px ${SAFETY}55`,
               }}>
-              {submitting ? "Sending…" : "Send Order"}
+              {submitting ? "Sending…" : "🚀 Send Order"}
             </button>
           </div>
           <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 8, textAlign: "center" }}>
             Estimate only — final pricing confirmed by the shop. Orders are visible to shop staff.
           </div>
+            </>
+          )}
+
+          <button onClick={() => setShowIdeaBox(true)}
+            className="tap-bounce"
+            style={{
+              width: "100%", marginTop: 16, padding: "12px", borderRadius: 10, border: "none",
+              background: `linear-gradient(135deg, ${INK}, ${INK_DEEP})`, color: "#fff", fontSize: 13.5, fontWeight: 700, cursor: "pointer",
+            }}>
+            💡 Idea Box
+          </button>
+          <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4, textAlign: "center" }}>
+            Feedback on this ordering app — feature ideas or bugs, not order/pricing requests.
+          </div>
+
+          {showIdeaBox && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}
+              onClick={() => setShowIdeaBox(false)}>
+              <div onClick={(e) => e.stopPropagation()}
+                style={{ background: theme.card, borderRadius: 12, padding: 20, maxWidth: 420, width: "100%", boxShadow: "0 8px 30px rgba(0,0,0,0.3)" }}>
+                <div className="disp" style={{ fontSize: 16, color: theme.text, marginBottom: 4 }}>💡 Idea Box</div>
+                <div style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 14 }}>
+                  Feedback about this ordering app — a feature that would help, or something that's not working right. This isn't the place for order or pricing requests; call the shop for those.
+                </div>
+                <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                  {[{ id: "idea", label: "💡 Idea" }, { id: "bug", label: "🐛 Bug Report" }].map((t) => (
+                    <button key={t.id} onClick={() => setIdeaType(t.id)}
+                      style={{
+                        flex: 1, padding: "8px 4px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                        border: `1px solid ${ideaType === t.id ? SAFETY : theme.border}`, background: ideaType === t.id ? SAFETY : theme.inputBg, color: ideaType === t.id ? "#fff" : theme.text,
+                      }}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+                <textarea value={ideaText} onChange={(e) => setIdeaText(e.target.value)}
+                  placeholder={ideaType === "bug" ? "What happened in the app? What were you trying to do?" : "What would make this ordering app easier to use?"}
+                  rows={5}
+                  style={{ width: "100%", padding: 10, border: `1px solid ${theme.border}`, borderRadius: 8, fontSize: 13.5, boxSizing: "border-box", resize: "vertical", background: theme.inputBg, color: theme.text }} />
+                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                  <button onClick={() => setShowIdeaBox(false)}
+                    style={{ flex: 1, padding: "11px", borderRadius: 8, border: `1px solid ${theme.border}`, background: "transparent", color: theme.text, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                    Cancel
+                  </button>
+                  <button onClick={submitIdea} disabled={ideaSubmitting}
+                    style={{ flex: 2, padding: "11px", borderRadius: 8, border: "none", background: SAFETY, color: "#fff", fontSize: 13, fontWeight: 700, cursor: ideaSubmitting ? "default" : "pointer", opacity: ideaSubmitting ? 0.7 : 1 }}>
+                    {ideaSubmitting ? "Sending…" : "Submit"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       ) : tab === "pricelist" ? (
         <div style={{ padding: 16, maxWidth: 640, margin: "0 auto" }}>
-          <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-            {[{ id: "customer", label: "Customer View" }, { id: "backend", label: "Backend (Edit)" }].map((v) => (
-              <button key={v.id} onClick={() => setPriceListView(v.id)}
-                style={{
-                  flex: 1, padding: "9px 6px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
-                  border: `1px solid ${priceListView === v.id ? INK : theme.border}`, background: priceListView === v.id ? INK : theme.card, color: priceListView === v.id ? "#fff" : theme.text,
-                }}>
-                {v.label}
-              </button>
-            ))}
-          </div>
+          {isStaff && (
+            <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+              {[{ id: "customer", label: "Customer View" }, { id: "backend", label: "Backend (Edit)" }].map((v) => (
+                <button key={v.id} onClick={() => setPriceListView(v.id)}
+                  style={{
+                    flex: 1, padding: "9px 6px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                    border: `1px solid ${priceListView === v.id ? INK : theme.border}`, background: priceListView === v.id ? INK : theme.card, color: priceListView === v.id ? "#fff" : theme.text,
+                  }}>
+                  {v.label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {!priceListLoaded ? (
             <div style={{ color: theme.textSecondary, fontSize: 13, textAlign: "center", padding: 40 }}>Loading price list…</div>
+          ) : priceListView === "backend" && !isStaff ? (
+            <div style={{ color: theme.textSecondary, fontSize: 13, textAlign: "center", padding: 40 }}>You don't have access to this view.</div>
           ) : priceListView === "backend" ? (
             <>
+              <div style={{ marginBottom: 18 }}>
+                <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>Customer Pricing Tiers</div>
+                {!customersLoaded ? (
+                  <div style={{ color: theme.textSecondary, fontSize: 12, padding: 10 }}>Loading…</div>
+                ) : customers.length === 0 ? (
+                  <div style={{ color: theme.textSecondary, fontSize: 12, padding: 10 }}>No customers have registered yet.</div>
+                ) : (
+                  customers.map((c) => (
+                    <div key={c.id} style={{ background: theme.card, borderRadius: 8, padding: 10, marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{c.name || "(no name)"}</div>
+                        <div style={{ fontSize: 10.5, color: theme.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.email}</div>
+                      </div>
+                      <select value={c.tier} onChange={(e) => updateCustomerTier(c.id, e.target.value)}
+                        style={{ padding: 6, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 11.5, fontWeight: 600, background: theme.inputBg, color: theme.text }}>
+                        <option value="tier1">Tier 1 — Preferred</option>
+                        <option value="greenleaf">Greenleaf</option>
+                        <option value="tier2">Tier 2 — Retail</option>
+                      </select>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div style={{ marginBottom: 18 }}>
+                <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>💡 Idea Box Submissions</div>
+                <div style={{ fontSize: 9.5, color: theme.textSecondary, marginBottom: 6 }}>
+                  Ideas and bug reports submitted from the bottom of New Order.
+                </div>
+                {!ideasLoaded ? (
+                  <div style={{ color: theme.textSecondary, fontSize: 12, padding: 10 }}>Loading…</div>
+                ) : ideas.length === 0 ? (
+                  <div style={{ color: theme.textSecondary, fontSize: 12, padding: 10 }}>Nothing submitted yet.</div>
+                ) : (
+                  ideas.map((idea) => (
+                    <div key={idea.id} style={{ background: theme.card, borderRadius: 8, padding: 10, marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{
+                          fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 999,
+                          background: idea.type === "bug" ? "#FDECEA" : "#EAF3E3", color: idea.type === "bug" ? "#B3261E" : "#3D7A2E",
+                        }}>
+                          {idea.type === "bug" ? "🐛 Bug" : "💡 Idea"}
+                        </span>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 10, color: theme.textSecondary }}>{idea.submittedBy} · {new Date(idea.createdAt).toLocaleDateString()}</span>
+                          <button onClick={() => deleteIdea(idea.id)} style={{ border: "none", background: "none", color: theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 12.5, color: theme.text, lineHeight: 1.4 }}>{idea.text}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+
               <div style={{ marginBottom: 18 }}>
                 <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>Raw Material Cost (per sq ft)</div>
                 {!materialCostsLoaded ? (
@@ -3027,6 +4587,7 @@ export default function ShopOrderApp() {
                         <input type="text" inputMode="decimal" value={draftValue(`mc-${m.id}`, m.costPerSqft)}
                           onChange={(e) => setDraft(`mc-${m.id}`, e.target.value)}
                           onBlur={() => commitDraft(`mc-${m.id}`, m.costPerSqft, (v) => updateMaterialCost(m.id, v))}
+                            onKeyDown={commitOnEnter}
                           className="mono" style={{ width: "100%", padding: 5, marginTop: 3, border: `1px solid ${theme.border}`, borderRadius: 5, fontSize: 12, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
                         <div className="mono" style={{ fontSize: 8.5, color: theme.textSecondary, marginTop: 3, textAlign: "center" }}>
                           {m.lastUpdated || "never"}
@@ -3035,6 +4596,70 @@ export default function ShopOrderApp() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              <div style={{ marginBottom: 18 }}>
+                <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>Production Cost</div>
+                {!productionCostsLoaded ? (
+                  <div style={{ color: theme.textSecondary, fontSize: 12, padding: 10 }}>Loading…</div>
+                ) : (
+                  <div style={{ background: theme.card, borderRadius: 8, padding: 10, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", gap: 8 }}>
+                    {productionCosts.map((p) => (
+                      <div key={p.id} style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 9.5, color: theme.textSecondary, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }} title={p.name}>
+                          {p.name}
+                        </div>
+                        <input type="text" inputMode="decimal" value={draftValue(`pc-${p.id}`, p.cost)}
+                          onChange={(e) => setDraft(`pc-${p.id}`, e.target.value)}
+                          onBlur={() => commitDraft(`pc-${p.id}`, p.cost, (v) => updateProductionCost(p.id, v))}
+                            onKeyDown={commitOnEnter}
+                          className="mono" style={{ width: "100%", padding: 5, marginTop: 3, border: `1px solid ${theme.border}`, borderRadius: 5, fontSize: 12, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
+                        <div className="mono" style={{ fontSize: 8.5, color: theme.textSecondary, marginTop: 3, textAlign: "center" }}>
+                          {p.lastUpdated || "never"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ marginBottom: 18 }}>
+                <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>Coil Width Price Scale</div>
+                <div style={{ fontSize: 9.5, color: theme.textSecondary, marginBottom: 6 }}>
+                  Real supplier price points ($/LF) at known widths — the app interpolates between them for any width in between, and extrapolates for anything outside the range. Add more points any time to make the scale more accurate.
+                </div>
+                {!coilWidthScaleLoaded ? (
+                  <div style={{ color: theme.textSecondary, fontSize: 12, padding: 10 }}>Loading…</div>
+                ) : (
+                  [...coilWidthScale].sort((a, b) => a.width - b.width).map((c) => (
+                    <div key={c.id} style={{ background: theme.card, borderRadius: 8, padding: 10, marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", alignItems: "flex-end", gap: 8 }}>
+                      <label style={{ flex: 1, fontSize: 9.5, color: theme.textSecondary }}>
+                        Width (in)
+                        <input type="text" inputMode="decimal" value={draftValue(`cws-${c.id}-w`, c.width)}
+                          onChange={(e) => setDraft(`cws-${c.id}-w`, e.target.value)}
+                          onBlur={() => commitDraft(`cws-${c.id}-w`, c.width, (v) => updateCoilScalePoint(c.id, "width", v))}
+                            onKeyDown={commitOnEnter}
+                          className="mono" style={{ width: "100%", padding: 6, marginTop: 2, border: `1px solid ${theme.border}`, borderRadius: 5, fontSize: 12, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
+                      </label>
+                      <label style={{ flex: 1, fontSize: 9.5, color: theme.textSecondary }}>
+                        Price ($/LF)
+                        <input type="text" inputMode="decimal" value={draftValue(`cws-${c.id}-p`, c.pricePerFt)}
+                          onChange={(e) => setDraft(`cws-${c.id}-p`, e.target.value)}
+                          onBlur={() => commitDraft(`cws-${c.id}-p`, c.pricePerFt, (v) => updateCoilScalePoint(c.id, "pricePerFt", v))}
+                            onKeyDown={commitOnEnter}
+                          className="mono" style={{ width: "100%", padding: 6, marginTop: 2, border: `1px solid ${theme.border}`, borderRadius: 5, fontSize: 12, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
+                      </label>
+                      <button onClick={() => removeCoilScalePoint(c.id)}
+                        style={{ border: "none", background: "none", color: theme.textSecondary, cursor: "pointer", padding: 4 }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))
+                )}
+                <button onClick={addCoilScalePoint}
+                  style={{ width: "100%", padding: "8px", borderRadius: 8, border: `1px dashed ${theme.border}`, background: "transparent", color: theme.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                  <Plus size={12} /> Add Width Point
+                </button>
               </div>
 
               <div style={{ fontSize: 10.5, color: theme.textSecondary, marginBottom: 10 }}>
@@ -3067,6 +4692,7 @@ export default function ShopOrderApp() {
                           <input type="text" inputMode="decimal" value={draftValue(`pl-${p.id}-${key}`, p[key])}
                             onChange={(e) => setDraft(`pl-${p.id}-${key}`, e.target.value)}
                             onBlur={() => commitDraft(`pl-${p.id}-${key}`, p[key], (v) => updatePriceListItem(p.id, key, v))}
+                            onKeyDown={commitOnEnter}
                             className="mono" style={{ width: "100%", padding: 5, marginTop: 2, border: `1px solid ${theme.border}`, borderRadius: 5, fontSize: 12, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
                         </label>
                         <label style={{ flex: 1, fontSize: 9, color: theme.textSecondary }}>
@@ -3074,6 +4700,7 @@ export default function ShopOrderApp() {
                           <input type="text" inputMode="decimal" value={draftValue(`plm-${p.id}-${key}`, marginOf(p[key]).toFixed(1))}
                             onChange={(e) => setDraft(`plm-${p.id}-${key}`, e.target.value)}
                             onBlur={() => commitDraft(`plm-${p.id}-${key}`, marginOf(p[key]), (v) => updatePriceListItem(p.id, key, +priceFromMargin(v).toFixed(2)))}
+                            onKeyDown={commitOnEnter}
                             disabled={cost <= 0} title={cost <= 0 ? "Set a Cost above to edit margin" : ""}
                             className="mono" style={{ width: "100%", padding: 5, marginTop: 2, border: `1px solid ${theme.border}`, borderRadius: 5, fontSize: 12, background: cost <= 0 ? theme.pageBg : theme.inputBg, color: theme.text, boxSizing: "border-box", opacity: cost <= 0 ? 0.5 : 1 }} />
                         </label>
@@ -3141,6 +4768,7 @@ export default function ShopOrderApp() {
                             <input type="text" inputMode="decimal" value={draftValue(`plc-${p.id}`, p.cost || 0)}
                               onChange={(e) => setDraft(`plc-${p.id}`, e.target.value)}
                               onBlur={() => commitDraft(`plc-${p.id}`, p.cost || 0, (v) => updatePriceListItem(p.id, "cost", v))}
+                            onKeyDown={commitOnEnter}
                               className="mono" style={{ width: "100%", padding: 5, marginTop: 2, border: `1px solid ${theme.border}`, borderRadius: 5, fontSize: 12, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
                           )}
                         </label>
@@ -3163,21 +4791,23 @@ export default function ShopOrderApp() {
             </>
           ) : (
             <>
-              <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-                {[
-                  { id: "tier1", label: "Tier 1 — Preferred" },
-                  { id: "greenleaf", label: "Greenleaf" },
-                  { id: "tier2", label: "Tier 2 — Retail" },
-                ].map((t) => (
-                  <button key={t.id} onClick={() => setPriceListTier(t.id)}
-                    style={{
-                      flex: 1, padding: "8px 4px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer",
-                      border: `1px solid ${priceListTier === t.id ? SAFETY : theme.border}`, background: priceListTier === t.id ? SAFETY : theme.card, color: priceListTier === t.id ? "#fff" : theme.text,
-                    }}>
-                    {t.label}
-                  </button>
-                ))}
-              </div>
+              {isStaff ? (
+                <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+                  {[
+                    { id: "tier1", label: "Tier 1 — Preferred" },
+                    { id: "greenleaf", label: "Greenleaf" },
+                    { id: "tier2", label: "Tier 2 — Retail" },
+                  ].map((t) => (
+                    <button key={t.id} onClick={() => setPriceListTier(t.id)}
+                      style={{
+                        flex: 1, padding: "8px 4px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                        border: `1px solid ${priceListTier === t.id ? SAFETY : theme.border}`, background: priceListTier === t.id ? SAFETY : theme.card, color: priceListTier === t.id ? "#fff" : theme.text,
+                      }}>
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <div style={{ background: theme.card, borderRadius: 10, padding: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                 <div className="disp" style={{ fontSize: 16, color: theme.text, textAlign: "center", marginBottom: 2 }}>Fortified Sheet Metal</div>
                 <div style={{ fontSize: 11, color: theme.textSecondary, textAlign: "center", marginBottom: 10 }}>
@@ -3208,6 +4838,69 @@ export default function ShopOrderApp() {
         </div>
       ) : (
         <div style={{ padding: 16, maxWidth: 640, margin: "0 auto" }}>
+          <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
+            {[{ id: "jobs", label: "Jobs" }, { id: "materials", label: "Master Materials List" }].map((v) => (
+              <button key={v.id} onClick={() => setShopFloorView(v.id)}
+                style={{
+                  flex: 1, padding: "9px 6px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
+                  border: `1px solid ${shopFloorView === v.id ? INK : "#D9D5C7"}`, background: shopFloorView === v.id ? INK : "#fff", color: shopFloorView === v.id ? "#fff" : INK_DEEP,
+                }}>
+                {v.label}
+              </button>
+            ))}
+          </div>
+
+          {shopFloorView === "materials" ? (
+            (() => {
+              const activeOrders = orders.filter((o) => o.status !== "Completed");
+              const materials = computeJobMaterials(activeOrders);
+              return !loaded ? (
+                <div style={{ color: theme.textSecondary, fontSize: 13, textAlign: "center", padding: 40 }}>Loading orders…</div>
+              ) : materials.flatSheets.length === 0 && materials.coil.length === 0 ? (
+                <div style={{ color: theme.textSecondary, fontSize: 13, textAlign: "center", padding: 40 }}>
+                  Nothing needed right now — no active jobs with trackable material needs.
+                </div>
+              ) : (
+                <div>
+                  <div style={{ fontSize: 10.5, color: theme.textSecondary, marginBottom: 12 }}>
+                    Every flat sheet and coil needed across all active (non-Completed) jobs, combined into one shopping list.
+                  </div>
+                  {materials.flatSheets.length > 0 && (
+                    <div style={{ marginBottom: 16 }}>
+                      <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>Flat Sheets</div>
+                      {materials.flatSheets.map((f, i) => (
+                        <div key={`mfs-${i}`} style={{ background: theme.card, borderRadius: 8, padding: 10, marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
+                          <span style={{ width: 16, height: 16, borderRadius: 4, background: f.colorHex, border: "1px solid rgba(0,0,0,0.2)", flexShrink: 0 }} />
+                          <div style={{ flex: 1 }}>
+                            <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{f.count} sheets — {formatDim(f.width / 12)}' × {formatDim(f.length / 12)}'</div>
+                            <div style={{ fontSize: 10.5, color: theme.textSecondary }}>{f.brand}, {f.colorName}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {materials.coil.length > 0 && (
+                    <div style={{ marginBottom: 16 }}>
+                      <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>Coil</div>
+                      {materials.coil.map((c, i) => (
+                        <div key={`mcoil-${i}`} style={{ background: theme.card, borderRadius: 8, padding: 10, marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
+                          <span style={{ width: 16, height: 16, borderRadius: 4, background: c.colorHex, border: "1px solid rgba(0,0,0,0.2)", flexShrink: 0 }} />
+                          <div style={{ flex: 1 }}>
+                            <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{formatDim(c.width)}" wide — {Math.ceil(c.feet)} ft</div>
+                            <div style={{ fontSize: 10.5, color: theme.textSecondary }}>{c.brand}, {c.colorName}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 4 }}>
+                    3D Parts (collector boxes, scuppers, chimney caps) aren't included — their material need isn't tracked as a simple sheet/coil quantity yet.
+                  </div>
+                </div>
+              );
+            })()
+          ) : (
+            <>
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
             <button onClick={seedSampleOrders}
               style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, padding: "6px 10px", borderRadius: 6, border: `1px solid ${SAFETY}`, background: theme.inputBg, color: SAFETY, fontWeight: 600, cursor: "pointer" }}>
@@ -3253,6 +4946,7 @@ export default function ShopOrderApp() {
                   const trimPieceTotal = trimItems.reduce((s, o) => s + (+o.quantity || 0), 0);
                   const panelFeetTotal = panelItems.reduce((s, o) => s + ((+o.height || 0) / 12) * (+o.quantity || 0), 0);
                   const panelLocations = [...new Set(panelItems.map((o) => o.runLocation).filter(Boolean))];
+                  const materials = computeJobMaterials(group.items);
                   return (
                     <div key={group.key} style={{ background: theme.card, borderRadius: 10, padding: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
@@ -3315,8 +5009,26 @@ export default function ShopOrderApp() {
                         </div>
                       </button>
 
+                      {isOpen && (materials.flatSheets.length > 0 || materials.coil.length > 0) && (
+                        <div style={{ margin: "8px 0", padding: 10, background: darkMode ? "#2A2E22" : "#F0F4E8", border: `1px solid ${darkMode ? "#4A5238" : "#C9D9AE"}`, borderRadius: 8 }}>
+                          <div className="disp" style={{ fontSize: 10.5, color: darkMode ? "#B9D08A" : "#4C6B22", marginBottom: 6 }}>Materials Needed</div>
+                          {materials.flatSheets.map((f, i) => (
+                            <div key={`fs-${i}`} style={{ fontSize: 11.5, color: theme.text, marginBottom: 3, display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ width: 12, height: 12, borderRadius: 3, background: f.colorHex, border: "1px solid rgba(0,0,0,0.2)", flexShrink: 0 }} />
+                              <span><strong>{f.count}</strong> flat sheet{f.count === 1 ? "" : "s"} — {formatDim(f.width / 12)}' × {formatDim(f.length / 12)}' — {f.brand}, {f.colorName}</span>
+                            </div>
+                          ))}
+                          {materials.coil.map((c, i) => (
+                            <div key={`coil-${i}`} style={{ fontSize: 11.5, color: theme.text, marginBottom: 3, display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ width: 12, height: 12, borderRadius: 3, background: c.colorHex, border: "1px solid rgba(0,0,0,0.2)", flexShrink: 0 }} />
+                              <span><strong>{formatDim(c.width)}"</strong> wide coil — <strong>{Math.ceil(c.feet)} ft</strong> needed — {c.brand}, {c.colorName}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
                       {isOpen && group.items.map((o, idx) => {
-                        const gauge = GAUGE_OPTIONS.find((g) => g.id === o.gaugeId) || COPPER_WEIGHT_OPTIONS.find((g) => g.id === o.gaugeId);
+                        const gauge = findGauge(o.gaugeId, o.brand);
                         const paint = PAINT_OPTIONS.find((p) => p.id === o.paintId);
                         const StatusIcon = STATUS_ICON[o.status];
                         return (
@@ -3324,19 +5036,26 @@ export default function ShopOrderApp() {
                             <div style={{ background: INK, borderRadius: 8, padding: 6, flexShrink: 0 }}>
                               <ShapeThumb order={o} size={52} />
                             </div>
+                            {o.photo && (
+                              <img src={o.photo} alt="Reference" style={{ width: 52, height: 52, objectFit: "cover", borderRadius: 8, border: `1px solid ${theme.border}`, flexShrink: 0 }} />
+                            )}
                             <div style={{ flex: 1, minWidth: 0 }}>
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
                                 {o.partName && <div style={{ fontSize: 12, color: SAFETY, fontWeight: 600 }}>{o.partName}</div>}
                                 <div className="mono" style={{ fontWeight: 600, fontSize: 13, color: theme.text, whiteSpace: "nowrap" }}>{money(o.price)}</div>
                               </div>
                               <div style={{ fontSize: 11.5, color: theme.text, marginTop: 2 }}>
-                                {o.type === "panel"
-                                  ? `${o.width}" × ${o.height}" panel — ${o.profile}`
-                                  : o.type === "metal"
-                                  ? `Flat ${o.flatWidth}" × ${(o.flatLength / 12).toFixed(1)}' + Coil ${o.coilWidth}" × ${(o.coilLength / 12).toFixed(0)}'`
-                                  : o.type === "part3d"
-                                  ? `${PART3D_LABELS[o.partType] || o.partType}${o.capStyle ? ` (${CAP_STYLE_LABELS[o.capStyle] || o.capStyle})` : ""} — ${o.partW}"W × ${o.partD}"D × ${o.partH}"H${o.partType === "chimney" ? ` (cap ${o.partCapH}")` : ""}`
-                                  : `Trim profile — ${o.lengthPerPiece} ft/pc`} · Qty {o.quantity}
+                                {o.type === "panel" ? (
+                                  <>Qty {o.quantity} × {o.width}" panel, {formatFeetInches(o.height)} long — {o.profile}</>
+                                ) : (
+                                  <>
+                                    {o.type === "metal"
+                                      ? `Flat ${o.flatWidth}" × ${(o.flatLength / 12).toFixed(1)}' + Coil ${o.coilWidth}" × ${(o.coilLength / 12).toFixed(0)}'`
+                                      : o.type === "part3d"
+                                      ? `${PART3D_LABELS[o.partType] || o.partType}${o.capStyle ? ` (${CAP_STYLE_LABELS[o.capStyle] || o.capStyle})` : ""} — ${o.partW}"W × ${o.partD}"D × ${o.partH}"H${o.partType === "chimney" ? ` (cap ${o.partCapH}")` : ""}`
+                                      : `Trim profile — ${o.lengthPerPiece} ft/pc`} · Qty {o.quantity}
+                                  </>
+                                )}
                               </div>
                               {o.type === "panel" && o.runLocation && (
                                 <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 1 }}>
@@ -3384,6 +5103,12 @@ export default function ShopOrderApp() {
                                   </select>
                                   <ChevronDown size={11} style={{ position: "absolute", right: 7, top: 7, pointerEvents: "none", color: STATUS_COLOR[o.status] }} />
                                 </div>
+                                {o.type === "trim" && (
+                                  <button onClick={() => printPartAsPDF(o)} title="Export as PDF"
+                                    style={{ border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.textSecondary, cursor: "pointer", padding: 5, borderRadius: 6, display: "flex" }}>
+                                    <Printer size={13} />
+                                  </button>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -3394,6 +5119,8 @@ export default function ShopOrderApp() {
                 });
               })()}
             </div>
+          )}
+            </>
           )}
         </div>
       )}
