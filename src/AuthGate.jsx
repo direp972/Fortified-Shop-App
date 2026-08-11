@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useAuth } from "./lib/AuthProvider";
 
 const INK = "#1C1C1E";
-const SAFETY = "#E8600C";
+const SAFETY = "#D4AF37";
 
 export default function AuthGate({ children }) {
   const { user, loading, signUp, signIn } = useAuth();
