@@ -4055,45 +4055,6 @@ export default function ShopOrderApp() {
                   </div>
                 </div>
 
-                {(() => {
-                  const svg = generatePanelProfileSvg(profile, ribStyle || "none", width);
-                  const baseColor = colorObj?.hex || "#9CA3AF";
-                  const gid = "panelMetalGrad";
-                  return (
-                    <div style={{ marginTop: 12, background: "#EDEBE3", borderRadius: 8, padding: "10px 4px", border: `1px solid ${theme.border}` }}>
-                      <svg viewBox={`0 0 ${svg.w} ${svg.h}`} width="100%" height="230" style={{ display: "block" }}>
-                        <defs>
-                          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.55" />
-                            <stop offset="18%" stopColor={baseColor} stopOpacity="1" />
-                            <stop offset="60%" stopColor={baseColor} stopOpacity="1" />
-                            <stop offset="100%" stopColor="#000000" stopOpacity="0.28" />
-                          </linearGradient>
-                        </defs>
-                        {/* pan base */}
-                        <rect x={svg.panStart} y={svg.baseY - 2} width={svg.panEnd - svg.panStart} height={svg.thick + 2} fill={`url(#${gid})`} />
-                        {/* rib texture, raised */}
-                        <path d={svg.ribTop} fill="none" stroke={`url(#${gid})`} strokeWidth={svg.thick + 5} strokeLinejoin="round" strokeLinecap="round" />
-                        {svg.ribShade.map((d, i) => (
-                          <path key={i} d={d} fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="1.5" />
-                        ))}
-                        {/* seams */}
-                        <path d={svg.left.outer} fill={`url(#${gid})`} stroke="rgba(0,0,0,0.45)" strokeWidth="1.5" strokeLinejoin="round" />
-                        {svg.left.extra && <path d={svg.left.extra} fill={`url(#${gid})`} stroke="rgba(0,0,0,0.45)" strokeWidth="1.5" />}
-                        {svg.left.foldLines.map((d, i) => <path key={i} d={d} fill="none" stroke="rgba(0,0,0,0.4)" strokeWidth="1.2" />)}
-                        <path d={svg.right.outer} fill={`url(#${gid})`} stroke="rgba(0,0,0,0.45)" strokeWidth="1.5" strokeLinejoin="round" />
-                        {svg.right.extra && <path d={svg.right.extra} fill={`url(#${gid})`} stroke="rgba(0,0,0,0.45)" strokeWidth="1.5" />}
-                        {svg.right.foldLines.map((d, i) => <path key={i} d={d} fill="none" stroke="rgba(0,0,0,0.4)" strokeWidth="1.2" />)}
-                        {/* ground line */}
-                        <line x1="10" y1={svg.baseY + 6} x2={svg.w - 10} y2={svg.baseY + 6} stroke="rgba(0,0,0,0.15)" strokeWidth="1" strokeDasharray="4 3" />
-                      </svg>
-                      <div style={{ fontSize: 9.5, color: theme.textSecondary, textAlign: "center", marginTop: 2 }}>
-                        {PROFILE_INFO[profile]?.code || profile} seam detail — {ribStyle && ribStyle !== "none" ? RIB_LABELS[ribStyle] : "flat pan, no ribs"}. Zoomed in on one seam-to-seam module for clarity; not to true panel width.
-                      </div>
-                    </div>
-                  );
-                })()}
-
                 <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Length of Panel(s) (ft)
