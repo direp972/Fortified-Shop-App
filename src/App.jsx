@@ -58,7 +58,7 @@ const PAINT_OPTIONS = [
 ];
 
 const BRAND_GROUPS = {
-  Painted: ["Fortified Metal", "Una-Clad", "Adax Metals", "Berridge", "Quality Metals"],
+  Painted: ["Fortified Metal", "Una-Clad", "Adax Metals", "Berridge"],
 };
 const BRANDS = [...BRAND_GROUPS.Painted]; // painted brands only — unpainted materials live in their own dropdown
 const UNPAINTED_MATERIALS = ["G90 Galvanized", "Copper", "Galvalume", "Bonderized"];
@@ -491,80 +491,6 @@ const COLORS_BY_BRAND = {
     // Natural Metal Finish
     { name: "Acrylic-Coated Galvalume", hex: "#C9CACA" },
   ],
-  "Quality Metals": {
-    pvdf: [
-      // Standard Colors
-      { name: "Regal White", hex: "#E7E4DC" },
-      { name: "Almond", hex: "#D6CDB5" },
-      { name: "Sandstone", hex: "#C7BFA6" },
-      { name: "Surrey Beige", hex: "#A8907A" },
-      { name: "Sierra Tan", hex: "#A08D78" },
-      { name: "Ash Gray", hex: "#A5A093" },
-      { name: "Slate Gray", hex: "#625E56" },
-      { name: "Musket Gray", hex: "#4F4C46" },
-      { name: "Charcoal Gray", hex: "#55555A" },
-      { name: "Dark Charcoal", hex: "#3A3B3D" },
-      { name: "Patina Green", hex: "#6E7C5E" },
-      { name: "Slate Blue", hex: "#4F6C7C" },
-      { name: "Evergreen", hex: "#38453A" },
-      { name: "Terra Cotta", hex: "#8B4A3B" },
-      { name: "Colonial Red", hex: "#4A2B26" },
-      { name: "Buckskin", hex: "#6F6459" },
-      { name: "Medium Bronze", hex: "#453A32" },
-      { name: "Aged Bronze", hex: "#3D3730" },
-      { name: "Copper Brown", hex: "#3A2A20" },
-      { name: "Dark Bronze", hex: "#2E2622" },
-      // Premium Colors
-      { name: "Matte Black", hex: "#26282A", premium: true },
-      { name: "Hartford Green", hex: "#303E37", premium: true },
-      { name: "Brite Red", hex: "#7A2530", premium: true },
-      { name: "Burgundy", hex: "#3E2A2C", premium: true },
-      { name: "Regal Blue", hex: "#1B3252", premium: true },
-      // Metallic Colors
-      { name: "Galvalume", hex: "#B8BBB8", premium: true },
-      { name: "Silver Metallic", hex: "#A9ACA8", premium: true },
-      { name: "Champagne", hex: "#9C9678", premium: true },
-      { name: "Weathered Galvalume", hex: "#7C837E", premium: true },
-      { name: "Copper Metallic", hex: "#A9702F", premium: true },
-      // Low Gloss - Low Sheen Colors
-      { name: "Slate Gray (Low Sheen)", hex: "#6B6A63", premium: true },
-      { name: "Aged Bronze (Low Sheen)", hex: "#443C33", premium: true },
-      { name: "Dark Bronze (Low Sheen)", hex: "#322A24", premium: true },
-      { name: "Medium Bronze (Low Sheen)", hex: "#453C34", premium: true },
-      { name: "Matte Black (Low Sheen)", hex: "#2A2B2C", premium: true },
-    ],
-    smp: [
-      // Standard Colors
-      { name: "Polar White", hex: "#EDEBE1" },
-      { name: "Rustic Red", hex: "#6E2A2E" },
-      { name: "Saddle Tan", hex: "#C7A97C" },
-      { name: "Colony Green", hex: "#7B8D74" },
-      { name: "Desert Sand", hex: "#B7A583" },
-      { name: "Burnished Slate", hex: "#3E362E" },
-      { name: "Light Stone", hex: "#D2C4A5" },
-      { name: "Charcoal Gray", hex: "#4A413C" },
-      { name: "Ash Gray", hex: "#9C9689" },
-      { name: "Cocoa Brown", hex: "#3E332C" },
-      // Premium Colors
-      { name: "Fern Green", hex: "#303B30", premium: true },
-      { name: "Hawaiian Blue", hex: "#5B6478", premium: true },
-      { name: "Evergreen", hex: "#384433", premium: true },
-      { name: "Burgundy", hex: "#3E2E2E", premium: true },
-      { name: "Brite Red", hex: "#8B2530", premium: true },
-      { name: "Regal Blue", hex: "#1F2E5C", premium: true },
-      { name: "Matte Black", hex: "#211E1A", premium: true },
-      // Metallic Colors
-      { name: "Copper Metallic", hex: "#A9743A", premium: true },
-      { name: "Weathered Galvalume", hex: "#8B8983", premium: true },
-      { name: "Silver Metallic", hex: "#C4C1B6", premium: true },
-      // Low Gloss Colors
-      { name: "Slate Gray (Low Gloss)", hex: "#6E6E64", premium: true },
-      { name: "Copper Brown (Low Gloss)", hex: "#3A2E28", premium: true },
-      { name: "Aged Bronze (Low Gloss)", hex: "#35302A", premium: true },
-      { name: "Dark Bronze (Low Gloss)", hex: "#2C2823", premium: true },
-      { name: "Medium Bronze (Low Gloss)", hex: "#3E362E", premium: true },
-    ],
-  },
 };
 
 const TRIM_PRESETS = {
@@ -613,7 +539,7 @@ function bendAngle(prev, cur, next) {
   return Math.round(180 - (Math.acos(cos) * 180) / Math.PI);
 }
 
-// Most brands have one flat color list. A few (like Quality Metals) have genuinely
+// Most brands have one flat color list. Some (Quality Metals, currently delisted) have
 // different palettes for PVDF vs SMP, stored as { pvdf: [...], smp: [...] } instead —
 // this always returns a flat array either way.
 function getColorsForBrand(brand, paintId) {
@@ -3056,7 +2982,7 @@ export default function ShopOrderApp() {
   };
   const handlePaintChange = (nextPaintId) => {
     setPaintId(nextPaintId);
-    // A few brands (like Quality Metals) have genuinely different color palettes for
+    // Some brands carry genuinely different color palettes for
     // PVDF vs SMP — if the current color doesn't exist under the new paint type, fall
     // back to that palette's first color instead of leaving an invalid selection.
     const nextColors = getColorsForBrand(brand, nextPaintId);
