@@ -58,11 +58,11 @@ const PAINT_OPTIONS = [
 ];
 
 const BRAND_GROUPS = {
-  Painted: ["Fortified Metal", "McElroy", "Una-Clad", "Adax Metals", "Berridge", "Quality Metals"],
+  Painted: ["Fortified Metal", "Una-Clad", "Adax Metals", "Berridge", "Quality Metals"],
 };
 const BRANDS = [...BRAND_GROUPS.Painted]; // painted brands only — unpainted materials live in their own dropdown
 const UNPAINTED_MATERIALS = ["G90 Galvanized", "Copper", "Galvalume", "Bonderized"];
-const PVDF_24GA_ONLY_BRANDS = ["Berridge", "McElroy"];
+const PVDF_24GA_ONLY_BRANDS = ["Berridge"];
 const PVDF_ONLY_BRANDS = ["Una-Clad"]; // no SMP, but any gauge is fine
 const UNPAINTED_FLATS_ONLY_BRANDS = ["G90 Galvanized"];
 
@@ -248,49 +248,6 @@ const COLORS_BY_BRAND = {
     { name: "Paint Grip Ultra SMP", hex: "#8B8B8B", premium: true },
     { name: "Galvalume", hex: "#D8D6D0", premium: true },
     { name: "Texas Silver Metallic", hex: "#B0B4B7", premium: true },
-  ],
-  McElroy: [
-    // Standard Options
-    { name: "Regal White", hex: "#E8EBEA" },
-    { name: "Bone White", hex: "#F0EDE4" },
-    { name: "Surrey Beige", hex: "#BFA98C" },
-    { name: "Sandstone", hex: "#C9C2B0" },
-    { name: "Almond", hex: "#DED0BC" },
-    { name: "Buckskin", hex: "#6E5C52" },
-    { name: "Ash Gray", hex: "#A2A09E" },
-    { name: "Slate Gray", hex: "#75767A" },
-    { name: "Charcoal", hex: "#55555C" },
-    { name: "Dark Charcoal", hex: "#33323A" },
-    { name: "Matte Black", hex: "#0F1420" },
-    { name: "Medium Bronze", hex: "#6F625E" },
-    { name: "Dark Bronze", hex: "#2B2621" },
-    { name: "Patina Green", hex: "#8FAF8B" },
-    { name: "Evergreen", hex: "#1F4A2C" },
-    { name: "Mansard Brown", hex: "#3F2B21" },
-    { name: "Colonial Red", hex: "#7B1F24" },
-    { name: "Roman Blue", hex: "#4A7896" },
-    { name: "Patrician Bronze", hex: "#3A2E22" },
-    { name: "Terra Cotta", hex: "#B85736" },
-    { name: "Galvalume Plus", hex: "#A8ABAA" },
-    // Deep Tone Premium Colors
-    { name: "Regal Blue", hex: "#1D4577", premium: true },
-    { name: "Brite Red", hex: "#C1321F", premium: true },
-    { name: "Hartford Green", hex: "#16342A", premium: true },
-    { name: "Brandywine", hex: "#4A1620", premium: true },
-    // Metallic Colors
-    { name: "Preweathered Galvalume", hex: "#8D9092", premium: true },
-    { name: "Leadcoat", hex: "#9B9B9C", premium: true },
-    { name: "Silver Metallic", hex: "#A6A9AC", premium: true },
-    { name: "Copper Penny Metallic", hex: "#A9682E", premium: true },
-    { name: "Texas Silver Metallic", hex: "#A2A6A8", premium: true },
-    { name: "Champagne Metallic", hex: "#9C9478", premium: true },
-    // Woodgrains
-    { name: "Chestnut", hex: "#7A4A2C", premium: true },
-    { name: "Driftwood", hex: "#6B6B68", premium: true },
-    { name: "Golden Pecan", hex: "#A9702F", premium: true },
-    // Specialty Finishes
-    { name: "Brushed Metal", hex: "#4B4E52", premium: true },
-    { name: "COR-TEN AZP Raw", hex: "#6B4A3A", premium: true },
   ],
   "Una-Clad": [
     { name: "Stone White", hex: "#EDEBE3" },
@@ -2832,16 +2789,16 @@ export default function ShopOrderApp() {
       // Dave Rutherford — 2 trim pieces + 1 panel run, all Pending
       mkTrim({ jobId: jobDave, partName: "Eave — North Slope", customerName: "Dave Rutherford", phone: "(817) 555-0142",
         points: TRIM_PRESETS["Eave"], quantity: 12, lengthPerPiece: 10, hemStart: "closed-left",
-        brand: "McElroy", ...trimColor("McElroy", "Charcoal"), status: "Pending", createdAt: daysAgo(1) }),
+        brand: "Berridge", ...trimColor("Berridge", "Charcoal Grey"), status: "Pending", createdAt: daysAgo(1) }),
       mkTrim({ jobId: jobDave, partName: "Rake — West Gable", customerName: "Dave Rutherford", phone: "(817) 555-0142",
         points: TRIM_PRESETS["Rake"], quantity: 8, lengthPerPiece: 10, hemEnd: "open-right",
-        brand: "McElroy", ...trimColor("McElroy", "Charcoal"), status: "Pending", createdAt: daysAgo(1) }),
+        brand: "Berridge", ...trimColor("Berridge", "Charcoal Grey"), status: "Pending", createdAt: daysAgo(1) }),
       mkTrim({ jobId: jobDave, partName: "Ridge Cap — North Slope", customerName: "Dave Rutherford", phone: "(817) 555-0142",
         points: TRIM_PRESETS["Ridge Cap"], quantity: 4, lengthPerPiece: 10,
-        brand: "McElroy", ...trimColor("McElroy", "Charcoal"), status: "Pending", createdAt: daysAgo(1) }),
+        brand: "Berridge", ...trimColor("Berridge", "Charcoal Grey"), status: "Pending", createdAt: daysAgo(1) }),
       mkPanel({ jobId: jobDave, customerName: "Dave Rutherford", phone: "(817) 555-0142", profile: "SS150 – 1.5\" Mechanical Seam",
         width: 16, height: 216, quantity: 22,
-        brand: "McElroy", ...trimColor("McElroy", "Charcoal"), status: "Pending", createdAt: daysAgo(1) }),
+        brand: "Berridge", ...trimColor("Berridge", "Charcoal Grey"), status: "Pending", createdAt: daysAgo(1) }),
 
       // Priya Anand — 2 trim pieces + 2 panel runs, all In Production
       mkTrim({ jobId: jobPriya, partName: "Ridge Cap — Main House", customerName: "Priya Anand", phone: "(972) 555-0118",
@@ -3251,6 +3208,25 @@ export default function ShopOrderApp() {
               </button>
               <div className="disp" style={{ fontSize: 15, color: theme.text, marginBottom: 4 }}>Step 3 of 3 — Pick Your Finish</div>
               <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 14 }}>Choose your manufacturer, gauge, and color.</div>
+              {/* quick links into the panel calculator / trim drawing tool */}
+              <div style={{ display: "flex", gap: 8 }}>
+                {[
+                  { id: "panel", label: "Panel Calculator", icon: Square, accent: SAFETY },
+                  { id: "trim", label: "Trim Drawing Tool", icon: PenTool, accent: "#4F9A63" },
+                ].map((q) => {
+                  const Icon = q.icon;
+                  return (
+                    <button key={q.id} onClick={() => { setShapeType(q.id); setOrderStep("details"); }} className="tap-bounce"
+                      style={{
+                        flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 8px",
+                        borderRadius: 8, border: `1px solid ${q.accent}`, background: theme.card, color: q.accent,
+                        fontSize: 12, fontWeight: 700, cursor: "pointer",
+                      }}>
+                      <Icon size={14} /> {q.label}
+                    </button>
+                  );
+                })}
+              </div>
           {/* color picker */}
           <div style={{ background: theme.card, borderRadius: 10, padding: 12, marginTop: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
             <div className="disp" style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8 }}>Finish Color</div>
