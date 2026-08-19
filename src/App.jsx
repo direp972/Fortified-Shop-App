@@ -81,6 +81,18 @@ const PROFILE_INFO = {
   'FF100 – 1" Snap-Lock, Slotted Flange': { code: "FF100", family: "flange", takeup: 3, desc: "Fastened through a flange on the male leg, then the female leg snaps over it — no clips." },
   'FF150 – 1.5" Snap-Lock, Slotted Flange': { code: "FF150", family: "flange", takeup: 4.5, desc: "Taller fastener-flange snap-lock, no clips required." },
   'SSQ275 – 2" Snap-Lock / Mech. Seam': { code: "SSQ275", family: "newlock", takeup: 6, desc: "Proprietary two-in-one profile — install as snap-lock, seam it later if the job calls for it." },
+  // Adax Metals (Weatherford, TX) — licensed Ultra Seam profiles they roll in-house.
+  // vendor: "adax" routes these into the Adax section of the panel catalog; entries
+  // without a vendor field are Fortified's own machines. Takeups mirror the equivalent
+  // seam geometry above (same seam height and lock type), not published Adax specs.
+  'US-100CS – 1" Snap-On Cap Seam': { code: "US-100CS", family: "batten", takeup: 3, vendor: "adax", desc: 'Snap-on cap over a 1" seam; 12–20" pan widths, flat or striated.' },
+  'US-100NS – 1" Nail Strip': { code: "US-100NS", family: "flange", takeup: 3, vendor: "adax", desc: 'Fastener-flange nail strip for roof or siding; Class 4 hail rated.' },
+  'US-150 – 1.5" Mechanical Seam': { code: "US-150", family: "mech", takeup: 4.5, vendor: "adax", desc: 'Single- or double-lock mechanical seam; UL-90, curved version available.' },
+  'US-150LS – 1.5" Snap-Lock': { code: "US-150LS", family: "snap", takeup: 4.5, vendor: "adax", desc: "Lok-Seam snap-together — no field seaming; HVHZ approved, Class 4 hail." },
+  'US-175LS – 1.75" Snap-Lock': { code: "US-175LS", family: "snap", takeup: 4.375, vendor: "adax", desc: "Taller Lok-Seam snap-lock with concealed clips; UL-90, Class A fire." },
+  'US-200 – 2" Mechanical Seam': { code: "US-200", family: "mech", takeup: 6, vendor: "adax", desc: 'Heavy 2" mechanical seam for long, low-slope commercial runs; UL-90.' },
+  'US-200SB – 2" Seam + Snap-On Batten': { code: "US-200SB", family: "batten", takeup: 6, vendor: "adax", desc: "US-200 pan with a decorative snap-on batten cap over the seam." },
+  'US-100FP – 1" Flush Wall / Soffit': { code: "US-100FP", family: "flush", takeup: 4, vendor: "adax", desc: "Flush wall and soffit panel; plain, beaded, or vented versions." },
 };
 const PROFILES = Object.keys(PROFILE_INFO);
 
@@ -224,6 +236,121 @@ function generatePanelProfileSvg(profileLabel, ribStyle, widthIn) {
 function profileSearchUrl(profile) {
   const code = PROFILE_INFO[profile]?.code || profile;
   return `https://newtechmachinery.com/?s=${encodeURIComponent(code)}`;
+}
+
+/* ---------------------------------- panel catalog (vendor menu) ---------------------------------- */
+
+// McElroy-style isometric rendering of a panel: an oblique-projected extrusion of a
+// simplified full-width cross-section. Length runs lower-left → upper-right, width
+// recedes down-right, seam height rises straight up. Painter's order: extruded strips
+// far → near, then a sheen sweep along the length, then the near cut edge on top.
+// Geometry is exaggerated for thumbnail legibility, same trade-off as the old
+// cross-section drawing — the fold SHAPE matters more than true scale.
+function generatePanelIsoSvg(profileLabel, ribStyle, idSuffix) {
+  const family = PROFILE_INFO[profileLabel]?.family || "mech";
+  const seamMatch = profileLabel.match(/(\d+(\.\d+)?)"/);
+  const seamIn = Math.max(1.0, Math.min(2.6, seamMatch ? parseFloat(seamMatch[1]) : 1.5));
+
+  // Cross-section in inches: u across the panel (0 = far seam edge), v above the pan.
+  const W = 16;
+  const sec = [];
+  const S = (u, v) => sec.push([u, v]);
+  if (family === "batten") {
+    S(0, 0); S(0, seamIn); S(1.6, seamIn); S(1.6, 0); S(2.0, 0);
+  } else if (family === "trapezoid") {
+    S(0, 0); S(0.9, seamIn); S(2.1, seamIn); S(3.0, 0);
+  } else if (family === "flush" || family === "flange") {
+    S(0, 0); S(0, 0.55); S(0.5, 0.55); S(0.5, 0); S(1.0, 0);
+  } else if (family === "mech" || family === "mecharmco") {
+    S(0, 0); S(0, seamIn); S(0.75, seamIn); S(0.75, seamIn * 0.62); S(1.05, seamIn * 0.62); S(1.05, 0);
+  } else { // snap / snapbump / newlock
+    S(0, 0); S(0, seamIn); S(0.85, seamIn); S(0.85, seamIn * 0.72); S(0.55, seamIn * 0.72); S(0.55, 0);
+  }
+  const panStart = sec[sec.length - 1][0];
+  const span = W - panStart;
+  if (ribStyle === "bead") {
+    [0.33, 0.62].forEach((f) => {
+      const c = panStart + span * f;
+      S(c - 0.55, 0); S(c - 0.35, 0.16); S(c + 0.35, 0.16); S(c + 0.55, 0);
+    });
+  } else if (ribStyle === "pencil") {
+    [0.28, 0.5, 0.72].forEach((f) => { const c = panStart + span * f; S(c - 0.4, 0); S(c, 0.14); S(c + 0.4, 0); });
+  } else if (ribStyle === "v") {
+    [0.36, 0.64].forEach((f) => { const c = panStart + span * f; S(c - 0.4, 0); S(c, -0.16); S(c + 0.4, 0); });
+  } else if (ribStyle === "striations") {
+    const n = 14;
+    for (let i = 1; i < n; i++) {
+      const u = panStart + (span * i) / n;
+      S(u - span / (n * 4), 0); S(u, i % 2 ? 0.05 : -0.05); S(u + span / (n * 4), 0);
+    }
+  }
+  S(W, 0);
+
+  // Projection: screen = O + u*A + v*V + t*B  (u,v in inches; t 0..1 along the length).
+  const w = 300, h = 210, SC = 10.2;
+  const A = [0.60 * SC, 0.335 * SC];
+  const V = [-0.08 * SC, -1.35 * SC];
+  const B = [176, -102];
+  const O = [26, 180];
+  const px = (u, v, t) => (O[0] + u * A[0] + v * V[0] + t * B[0]).toFixed(1);
+  const py = (u, v, t) => (O[1] + u * A[1] + v * V[1] + t * B[1]).toFixed(1);
+
+  // Lighting by strip orientation: flat pan bright, seam side-walls dark, back-facing
+  // folds darker still — that contrast is what makes the fold shape read at card size.
+  const BASE_H = 208, BASE_S = 40;
+  const shade = (du, dv) => {
+    const flat = Math.abs(du) / (Math.abs(du) + Math.abs(dv) * 2.2 + 1e-6);
+    const facing = du >= 0 ? 1 : 0.55;
+    return `hsl(${BASE_H} ${BASE_S}% ${(30 + flat * 34 * facing).toFixed(0)}%)`;
+  };
+
+  let strips = "";
+  for (let i = 0; i < sec.length - 1; i++) {
+    const [u1, v1] = sec[i], [u2, v2] = sec[i + 1];
+    if (u1 === u2 && v1 === v2) continue;
+    strips += `<polygon points="${px(u1, v1, 0)},${py(u1, v1, 0)} ${px(u2, v2, 0)},${py(u2, v2, 0)} ${px(u2, v2, 1)},${py(u2, v2, 1)} ${px(u1, v1, 1)},${py(u1, v1, 1)}" fill="${shade(u2 - u1, v2 - v1)}"/>`;
+  }
+
+  const TH = 0.16;
+  const edgeTop = sec.map(([u, v]) => `${px(u, v, 0)},${py(u, v, 0)}`).join(" ");
+  const edgeBot = sec.slice().reverse().map(([u, v]) => `${px(u, v - TH, 0)},${py(u, v - TH, 0)}`).join(" ");
+  const edge = `<polygon points="${edgeTop} ${edgeBot}" fill="hsl(${BASE_H} ${BASE_S + 6}% 20%)"/>`;
+
+  // Gradient ids must be unique per rendered SVG or same-page cards bleed into each other.
+  const gid = `pcs${(PROFILE_INFO[profileLabel]?.code || "x")}${ribStyle || "none"}${idSuffix || ""}`;
+  const panQuad = `${px(0, 0, 0)},${py(0, 0, 0)} ${px(W, 0, 0)},${py(W, 0, 0)} ${px(W, 0, 1)},${py(W, 0, 1)} ${px(0, 0, 1)},${py(0, 0, 1)}`;
+  const sheen = `<defs><linearGradient id="${gid}" x1="0" y1="1" x2="1" y2="0">` +
+    `<stop offset="0.15" stop-color="#fff" stop-opacity="0"/><stop offset="0.45" stop-color="#fff" stop-opacity="0.22"/>` +
+    `<stop offset="0.62" stop-color="#fff" stop-opacity="0.05"/><stop offset="1" stop-color="#fff" stop-opacity="0.16"/>` +
+    `</linearGradient></defs><polygon points="${panQuad}" fill="url(#${gid})"/>`;
+
+  const shadow = `<ellipse cx="${w * 0.52}" cy="${h * 0.92}" rx="${w * 0.44}" ry="8" fill="rgba(0,0,0,0.10)"/>`;
+
+  return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">${shadow}${strips}${sheen}${edge}</svg>`;
+}
+
+// Which vendor's lineup each catalog section shows, and where that vendor is, so a
+// contractor browsing panels sees who offers what and how far away they are.
+// Coordinates are city-center approximations for the distance estimate — edit the
+// profiles arrays here as vendor lineups change.
+const PANEL_VENDORS = [
+  {
+    id: "fortified", name: "Fortified Metal", tagline: "Rolled in-house on our own machines",
+    city: "Fort Worth", state: "TX", lat: 32.6913, lng: -97.5193, // 1420 Markum Ranch Rd, Fort Worth, TX 76126
+    profiles: PROFILES.filter((p) => !PROFILE_INFO[p].vendor),
+  },
+  {
+    id: "adax", name: "Adax Metals", tagline: "Licensed Ultra Seam profiles",
+    city: "Weatherford", state: "TX", lat: 32.7593, lng: -97.7972, // 1901 B Mineral Wells Hwy, Weatherford, TX 76088
+    profiles: PROFILES.filter((p) => PROFILE_INFO[p].vendor === "adax"),
+  },
+];
+
+function distanceMiles(a, b) {
+  const R = 3958.8, toRad = (d) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat), dLng = toRad(b.lng - a.lng);
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
 }
 
 
@@ -2215,11 +2342,16 @@ export default function ShopOrderApp() {
   const [ribStyle, setRibStyle] = useState(null);
   const [clipRelief, setClipRelief] = useState(null);
   const [profile, setProfile] = useState(PROFILES[0]);
+  const [showPanelCatalog, setShowPanelCatalog] = useState(false);
+  const [catalogUserLoc, setCatalogUserLoc] = useState(null); // {lat,lng} once the contractor shares their location
+  const [catalogLocStatus, setCatalogLocStatus] = useState("idle"); // "idle" | "asking" | "denied"
 
   useEffect(() => {
     const takeup = PROFILE_INFO[profile]?.takeup || 0;
     setWidth(Math.max(0, Math.round((coilWidth - takeup) * 100) / 100));
   }, [coilWidth, profile]);
+  // Clips default to the panel profile being ordered, so "Clips — <profile>" matches the panel.
+  useEffect(() => { if (shapeType === "panel") setAccProfile(profile); }, [shapeType, profile]);
   const [points, setPoints] = useState(TRIM_PRESETS["Eave"]);
   const [preset, setPreset] = useState("Eave");
   const [viewResetKey, setViewResetKey] = useState(0);
@@ -2984,12 +3116,14 @@ export default function ShopOrderApp() {
       setSubmitting(true);
       const jobId = uid();
       const poNumber = nextPoNumber();
-      const newOrders = items.map((it) => {
+      const newOrders = items.map((it, idx) => {
         const order = {
           id: uid(),
           jobId,
           poNumber,
           type: "trim",
+          // accessories ride on the job's first part only, so quantities aren't duplicated per part
+          accessories: idx === 0 && accessories.length > 0 ? accessories : undefined,
           partName: it.name,
           customerName: customerName.trim(),
           phone: phone.trim(),
@@ -3038,7 +3172,7 @@ export default function ShopOrderApp() {
       flatWidth: isMetal ? flatWidth : undefined,
       flatLength: isMetal ? flatLength : undefined,
       coilWidth: isMetal ? metalCoilWidth : undefined,
-      accessories: isMetal ? accessories : undefined,
+      accessories: !isPart3d && accessories.length > 0 ? accessories : undefined,
       coilLength: isMetal ? metalCoilLength : undefined,
       partType: isPart3d ? partType : undefined,
       partW: isPart3d ? partW : undefined,
@@ -3143,13 +3277,13 @@ export default function ShopOrderApp() {
 
       {/* header */}
       <div style={{ background: `linear-gradient(135deg, ${CHARCOAL}, #0F2C3F)`, padding: "18px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div>
-          <div className="disp" style={{ color: "#fff", fontSize: 20, fontWeight: 700 }}>Fortified Sheet Metal</div>
-          <div className="mono" style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>Custom Panels &amp; Trim — Shop Order Portal</div>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="disp" style={{ color: "#fff", fontSize: 20, fontWeight: 700 }}>Panel &amp; Trim Calculator</div>
+          <div className="mono" style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>Shop Order Portal</div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ textAlign: "right", marginRight: 4 }}>
-            <div style={{ color: "#fff", fontSize: 11, fontWeight: 600 }}>{customer?.name || user?.email}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          <div style={{ textAlign: "right", marginRight: 4, maxWidth: 150, overflow: "hidden" }}>
+            <div style={{ color: "#fff", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{customer?.name || user?.email}</div>
             <div style={{ color: theme.textSecondary, fontSize: 9.5 }}>
               {isStaff ? "Staff" : `Tier: ${customer?.tier === "tier1" ? "Tier 1" : customer?.tier === "greenleaf" ? "Greenleaf" : "Tier 2"}`}
             </div>
@@ -3441,7 +3575,7 @@ export default function ShopOrderApp() {
                 ].map((t) => {
                   const Icon = t.icon;
                   return (
-                    <button key={t.id} onClick={() => { setShapeType(t.id); setOrderStep("details"); }} className="mac-btn"
+                    <button key={t.id} onClick={() => { if (t.id === "part3d") setAccessories([]); setShapeType(t.id); setOrderStep("details"); }} className="mac-btn"
                       style={{
                         display: "flex", alignItems: "center", gap: 14, padding: 16, borderRadius: 12, border: `1px solid ${t.accent}`,
                         background: `linear-gradient(180deg, ${t.accent}, ${t.accent}dd)`, color: "#fff", cursor: "pointer", textAlign: "left",
@@ -3663,73 +3797,6 @@ export default function ShopOrderApp() {
                   Raw material — no profile or trim shape. Gauge, paint, and color are set below in Finish Color.
                 </div>
 
-                <div className="disp" style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 14 }}>Accessories</div>
-                <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-                  {ACCESSORY_TYPES.map((t) => (
-                    <button key={t} type="button"
-                      onClick={() => { setAccType(t); setAccSpec(ACCESSORY_SPECS[t]?.[0] || ""); }}
-                      style={{
-                        padding: "6px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
-                        border: `1px solid ${accType === t ? INK : "#D9D5C7"}`, background: accType === t ? INK : "#fff", color: accType === t ? "#fff" : INK_DEEP,
-                      }}>
-                      {t}
-                    </button>
-                  ))}
-                </div>
-
-                <div style={{ display: "flex", gap: 10, marginTop: 8, alignItems: "flex-end" }}>
-                  {accType === "Sealant" ? (
-                    <div style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                      Spec
-                      <div className="mono" style={{ padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, background: theme.highlight }}>
-                        Color-matched to {colorName}
-                      </div>
-                    </div>
-                  ) : accType === "Clips" ? (
-                    <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                      Panel Profile
-                      <select value={accProfile} onChange={(e) => setAccProfile(e.target.value)}
-                        style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, background: theme.inputBg }}>
-                        {PROFILES.map((p) => <option key={p}>{p}</option>)}
-                      </select>
-                    </label>
-                  ) : (
-                    <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                      Spec
-                      <select value={accSpec} onChange={(e) => setAccSpec(e.target.value)}
-                        style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, background: theme.inputBg }}>
-                        {ACCESSORY_SPECS[accType].map((s) => <option key={s}>{s}</option>)}
-                      </select>
-                    </label>
-                  )}
-                  <label style={{ width: 70, fontSize: 11, color: theme.textSecondary }}>
-                    Qty
-                    <input type="number" min={1} value={accQty}
-                      onChange={(e) => setAccQty(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
-                      onBlur={(e) => { if (e.target.value === "") setAccQty(1); }}
-                      className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
-                  </label>
-                  <button type="button" onClick={addAccessory}
-                    style={{ padding: "8px 12px", borderRadius: 6, border: `1px solid ${SAFETY}`, background: theme.inputBg, color: SAFETY, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-                    + Add
-                  </button>
-                </div>
-
-                {accessories.length > 0 && (
-                  <div style={{ marginTop: 10, borderTop: "1px solid #EEE9DC", paddingTop: 8 }}>
-                    {accessories.map((a) => (
-                      <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
-                        <span style={{ fontSize: 11.5, color: theme.text, flex: 1 }}>
-                          {a.label} <span className="mono" style={{ color: theme.textSecondary }}>× {a.qty}</span>
-                        </span>
-                        <button onClick={() => removeAccessory(a.id)}
-                          style={{ border: "none", background: "none", color: theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </>
             ) : shapeType === "part3d" ? (
               <>
@@ -3976,13 +4043,100 @@ export default function ShopOrderApp() {
               </>
             ) : shapeType === "panel" ? (
               <>
-                <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 10 }}>
-                  Panel profile
-                  <select value={profile} onChange={(e) => setProfile(e.target.value)}
-                    style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.inputBg }}>
-                    {PROFILES.map((p) => <option key={p}>{p}</option>)}
-                  </select>
-                </label>
+                <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 10 }}>Panel profile</div>
+                <button onClick={() => setShowPanelCatalog(true)} className="tap-bounce"
+                  style={{
+                    width: "100%", marginTop: 4, padding: "8px 10px", borderRadius: 8, border: `1px solid ${theme.border}`,
+                    background: theme.inputBg, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, textAlign: "left",
+                  }}>
+                  <span style={{ width: 88, flexShrink: 0, display: "block" }} dangerouslySetInnerHTML={{ __html: generatePanelIsoSvg(profile, ribStyle, "pk") }} />
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 13, fontWeight: 700, color: theme.text }}>{profile}</span>
+                    <span style={{ display: "block", fontSize: 10, color: theme.textSecondary, marginTop: 2 }}>
+                      {(PANEL_VENDORS.find((v) => v.profiles.includes(profile))?.name || "Special order")} — tap to browse all panels
+                    </span>
+                  </span>
+                  <ChevronDown size={16} color={theme.textSecondary} style={{ flexShrink: 0 }} />
+                </button>
+
+                {showPanelCatalog && (
+                  <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 50, display: "flex", alignItems: "center", justifyContent: "center", padding: 14 }}
+                    onClick={() => setShowPanelCatalog(false)}>
+                    <div onClick={(e) => e.stopPropagation()}
+                      style={{ background: theme.pageBg, borderRadius: 12, padding: 16, maxWidth: 560, width: "100%", maxHeight: "92vh", overflowY: "auto", boxShadow: "0 8px 30px rgba(0,0,0,0.3)" }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                        <div className="disp" style={{ fontSize: 16, color: theme.text }}>Panel Catalog</div>
+                        <button onClick={() => setShowPanelCatalog(false)}
+                          style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 18, cursor: "pointer", padding: 4, lineHeight: 1 }}>✕</button>
+                      </div>
+                      <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 10 }}>
+                        What each vendor offers — tap a panel to use it for this order.
+                      </div>
+                      {!catalogUserLoc && (
+                        <button
+                          onClick={() => {
+                            if (!navigator.geolocation) { setCatalogLocStatus("denied"); return; }
+                            setCatalogLocStatus("asking");
+                            navigator.geolocation.getCurrentPosition(
+                              (pos) => { setCatalogUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }); setCatalogLocStatus("idle"); },
+                              () => setCatalogLocStatus("denied"),
+                              { timeout: 8000 }
+                            );
+                          }}
+                          style={{
+                            width: "100%", marginBottom: 12, padding: "9px", borderRadius: 8, cursor: "pointer",
+                            border: `1px solid ${theme.border}`, background: theme.card, color: theme.text, fontSize: 11.5, fontWeight: 600,
+                          }}>
+                          📍 {catalogLocStatus === "asking" ? "Locating…" : catalogLocStatus === "denied" ? "Location unavailable — check browser permissions" : "Show each vendor's distance from me"}
+                        </button>
+                      )}
+                      {PANEL_VENDORS.map((vend) => (
+                        <div key={vend.id} style={{ marginBottom: 16 }}>
+                          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, borderBottom: `2px solid ${SAFETY}`, paddingBottom: 5, marginBottom: 8 }}>
+                            <div style={{ minWidth: 0 }}>
+                              <span className="disp" style={{ fontSize: 13, color: theme.text }}>{vend.name}</span>
+                              <span style={{ fontSize: 9.5, color: theme.textSecondary, marginLeft: 6 }}>{vend.tagline}</span>
+                            </div>
+                            <span style={{ fontSize: 10, color: theme.textSecondary, whiteSpace: "nowrap", flexShrink: 0 }}>
+                              {vend.city}, {vend.state}
+                              {catalogUserLoc && (
+                                <span className="mono" style={{ color: SAFETY, fontWeight: 700 }}> · ~{Math.round(distanceMiles(catalogUserLoc, vend))} mi</span>
+                              )}
+                            </span>
+                          </div>
+                          {vend.profiles.length === 0 ? (
+                            <div style={{ fontSize: 11, color: theme.textSecondary, padding: "6px 0 2px" }}>
+                              Lineup coming soon — call the shop for current {vend.name} availability.
+                            </div>
+                          ) : (
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 8 }}>
+                              {vend.profiles.map((p) => {
+                                const active = profile === p;
+                                const dash = p.indexOf("–");
+                                const pCode = dash > 0 ? p.slice(0, dash).trim() : p;
+                                const pSpec = dash > 0 ? p.slice(dash + 1).trim() : (PROFILE_INFO[p]?.desc || "");
+                                return (
+                                  <button key={p} onClick={() => { setProfile(p); setShowPanelCatalog(false); }} className="tap-bounce"
+                                    style={{
+                                      padding: 0, borderRadius: 10, overflow: "hidden", cursor: "pointer", textAlign: "center",
+                                      border: active ? `2px solid ${SAFETY}` : `1px solid ${theme.border}`, background: theme.card,
+                                    }}>
+                                    <span style={{ display: "block", background: darkMode ? "#20262B" : "#F7F5EE" }}
+                                      dangerouslySetInnerHTML={{ __html: generatePanelIsoSvg(p, "none") }} />
+                                    <span style={{ display: "block", padding: "5px 8px 9px" }}>
+                                      <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: theme.text }}>{pCode}</span>
+                                      <span style={{ display: "block", fontSize: 9.5, color: theme.textSecondary, marginTop: 1 }}>{pSpec}</span>
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                   <div style={{ flex: 2, fontSize: 11, color: theme.textSecondary }}>
@@ -4337,6 +4491,82 @@ export default function ShopOrderApp() {
               </>
             )}
           </div>
+          {/* accessories — offered with every panel, trim, and metal order, not just raw metal */}
+          {shapeType !== "part3d" && (
+            <div style={{ background: theme.card, borderRadius: 10, padding: 12, marginTop: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+              <div className="disp" style={{ fontSize: 12, color: theme.textSecondary }}>Accessories</div>
+              <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 2 }}>
+                Screws, clips, sealant, and closures to finish the job — added to this order.
+              </div>
+              <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                {ACCESSORY_TYPES.map((t) => (
+                  <button key={t} type="button"
+                    onClick={() => { setAccType(t); setAccSpec(ACCESSORY_SPECS[t]?.[0] || ""); }}
+                    style={{
+                      padding: "6px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
+                      border: `1px solid ${accType === t ? INK : "#D9D5C7"}`, background: accType === t ? INK : "#fff", color: accType === t ? "#fff" : INK_DEEP,
+                    }}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+
+              <div style={{ display: "flex", gap: 10, marginTop: 8, alignItems: "flex-end" }}>
+                {accType === "Sealant" ? (
+                  <div style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                    Spec
+                    <div className="mono" style={{ padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, background: theme.highlight }}>
+                      Color-matched to {colorName}
+                    </div>
+                  </div>
+                ) : accType === "Clips" ? (
+                  <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                    Panel Profile
+                    <select value={accProfile} onChange={(e) => setAccProfile(e.target.value)}
+                      style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, background: theme.inputBg }}>
+                      {PROFILES.map((p) => <option key={p}>{p}</option>)}
+                    </select>
+                  </label>
+                ) : (
+                  <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                    Spec
+                    <select value={accSpec} onChange={(e) => setAccSpec(e.target.value)}
+                      style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, background: theme.inputBg }}>
+                      {ACCESSORY_SPECS[accType].map((s) => <option key={s}>{s}</option>)}
+                    </select>
+                  </label>
+                )}
+                <label style={{ width: 70, fontSize: 11, color: theme.textSecondary }}>
+                  Qty
+                  <input type="number" min={1} value={accQty}
+                    onChange={(e) => setAccQty(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
+                    onBlur={(e) => { if (e.target.value === "") setAccQty(1); }}
+                    className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
+                </label>
+                <button type="button" onClick={addAccessory}
+                  style={{ padding: "8px 12px", borderRadius: 6, border: `1px solid ${SAFETY}`, background: theme.inputBg, color: SAFETY, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                  + Add
+                </button>
+              </div>
+
+              {accessories.length > 0 && (
+                <div style={{ marginTop: 10, borderTop: "1px solid #EEE9DC", paddingTop: 8 }}>
+                  {accessories.map((a) => (
+                    <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
+                      <span style={{ fontSize: 11.5, color: theme.text, flex: 1 }}>
+                        {a.label} <span className="mono" style={{ color: theme.textSecondary }}>× {a.qty}</span>
+                      </span>
+                      <button onClick={() => removeAccessory(a.id)}
+                        style={{ border: "none", background: "none", color: theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* order details */}
           <div style={{ background: theme.card, borderRadius: 10, padding: 12, marginTop: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
             <div className="disp" style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8 }}>Order Details</div>
@@ -5001,7 +5231,7 @@ export default function ShopOrderApp() {
                                   {o.clipRelief && " · Clip Relief"}
                                 </div>
                               )}
-                              {o.type === "metal" && o.accessories && o.accessories.length > 0 && (
+                              {o.accessories && o.accessories.length > 0 && (
                                 <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 2 }}>
                                   Accessories: {o.accessories.map((a) => `${a.label} ×${a.qty}`).join(", ")}
                                 </div>
