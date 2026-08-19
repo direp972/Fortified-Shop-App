@@ -341,7 +341,7 @@ function generatePanelIsoSvg(profileLabel, ribStyle, idSuffix) {
 const PANEL_VENDORS = [
   {
     id: "fortified", name: "Fortified Metal", tagline: "Rolled in-house on our own machines",
-    city: "Fort Worth", state: "TX", lat: 32.6913, lng: -97.5193, // 1420 Markum Ranch Rd, Fort Worth, TX 76126
+    city: "Sherman", state: "TX", lat: 33.6357, lng: -96.6089, // 605 E Mulberry St, Sherman, TX (per the shop)
     profiles: PROFILES.filter((p) => !PROFILE_INFO[p].vendor),
   },
   {
