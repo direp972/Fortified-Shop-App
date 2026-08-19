@@ -2258,6 +2258,8 @@ export default function ShopOrderApp() {
   const [customersLoaded, setCustomersLoaded] = useState(false);
   const [siteLeads, setSiteLeads] = useState([]); // staff-only: signups from the roofcoil.com member gate
   const [siteLeadsLoaded, setSiteLeadsLoaded] = useState(false);
+  const [mfrApps, setMfrApps] = useState([]); // staff-only: manufacturer "get listed" applications from the site
+  const [mfrAppsLoaded, setMfrAppsLoaded] = useState(false);
   const [tab, setTab] = useState("order");
   const [orderStep, setOrderStep] = useState("type"); // "color" | "type" | "details"
   const [showColorMatch, setShowColorMatch] = useState(false);
@@ -2558,6 +2560,23 @@ export default function ShopOrderApp() {
   const deleteSiteLead = async (id) => {
     setSiteLeads((prev) => prev.filter((l) => l.id !== id));
     const { error } = await supabase.from("leads").delete().eq("id", id);
+    if (error) console.error(error);
+  };
+
+  // Staff-only: manufacturer applications from roofcoil.com/get-listed.html
+  // (public.manufacturer_applications, same RLS shape as leads).
+  useEffect(() => {
+    if (!isStaff) return;
+    (async () => {
+      const { data, error } = await supabase.from("manufacturer_applications").select("*").order("created_at", { ascending: false });
+      if (!error) setMfrApps(data || []);
+      setMfrAppsLoaded(true);
+    })();
+  }, [isStaff]);
+
+  const deleteMfrApp = async (id) => {
+    setMfrApps((prev) => prev.filter((a) => a.id !== id));
+    const { error } = await supabase.from("manufacturer_applications").delete().eq("id", id);
     if (error) console.error(error);
   };
 
@@ -4752,6 +4771,49 @@ export default function ShopOrderApp() {
                       <button onClick={() => deleteSiteLead(l.id)} style={{ border: "none", background: "none", color: theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
                         <Trash2 size={12} />
                       </button>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div style={{ marginBottom: 18 }}>
+                <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>🏭 Manufacturer Applications</div>
+                <div style={{ fontSize: 9.5, color: theme.textSecondary, marginBottom: 6 }}>
+                  Manufacturers who applied to be listed through roofcoil.com — lines, gauges, and their color chart.
+                </div>
+                {!mfrAppsLoaded ? (
+                  <div style={{ color: theme.textSecondary, fontSize: 12, padding: 10 }}>Loading…</div>
+                ) : mfrApps.length === 0 ? (
+                  <div style={{ color: theme.textSecondary, fontSize: 12, padding: 10 }}>No applications yet.</div>
+                ) : (
+                  mfrApps.map((a) => (
+                    <div key={a.id} style={{ background: theme.card, borderRadius: 8, padding: 10, marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>
+                            {a.company || "(no company)"}
+                            {a.website && <a href={a.website.startsWith("http") ? a.website : `https://${a.website}`} target="_blank" rel="noopener noreferrer" style={{ fontSize: 10, color: SAFETY, marginLeft: 6, fontWeight: 600 }}>site ↗</a>}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: theme.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {a.contact_name}{a.email ? ` · ${a.email}` : ""}{a.phone ? ` · ${a.phone}` : ""}
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 10, color: theme.textSecondary, whiteSpace: "nowrap" }}>{new Date(a.created_at).toLocaleDateString()}</span>
+                        <button onClick={() => deleteMfrApp(a.id)} style={{ border: "none", background: "none", color: theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                      <div style={{ fontSize: 10.5, color: theme.text, marginTop: 5, lineHeight: 1.5 }}>
+                        {(a.panel_types || []).join(" · ")}
+                        {(a.gauges || []).length > 0 && <span style={{ color: theme.textSecondary }}> — {(a.gauges || []).join(", ")}</span>}
+                      </div>
+                      {(a.plants || a.colorchart_url || a.notes) && (
+                        <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 3 }}>
+                          {a.plants && <span>Plants: {a.plants.split("\n").join("; ")} </span>}
+                          {a.colorchart_url && <a href={a.colorchart_url} target="_blank" rel="noopener noreferrer" style={{ color: SAFETY, fontWeight: 700 }}>Color chart ↗</a>}
+                          {a.notes && <div style={{ marginTop: 2 }}>{a.notes}</div>}
+                        </div>
+                      )}
                     </div>
                   ))
                 )}
