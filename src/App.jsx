@@ -2256,6 +2256,8 @@ export default function ShopOrderApp() {
   const { user, customer, isStaff, signOut } = useAuth();
   const [customers, setCustomers] = useState([]); // staff-only: every registered customer, for tier assignment
   const [customersLoaded, setCustomersLoaded] = useState(false);
+  const [siteLeads, setSiteLeads] = useState([]); // staff-only: signups from the roofcoil.com member gate
+  const [siteLeadsLoaded, setSiteLeadsLoaded] = useState(false);
   const [tab, setTab] = useState("order");
   const [orderStep, setOrderStep] = useState("type"); // "color" | "type" | "details"
   const [showColorMatch, setShowColorMatch] = useState(false);
@@ -2540,6 +2542,23 @@ export default function ShopOrderApp() {
       setToast("Couldn't save that — try again.");
       console.error(error);
     }
+  };
+
+  // Staff-only: leads submitted through the roofcoil.com member gate (public.leads,
+  // RLS lets anon insert but only staff read/delete).
+  useEffect(() => {
+    if (!isStaff) return;
+    (async () => {
+      const { data, error } = await supabase.from("leads").select("*").order("created_at", { ascending: false });
+      if (!error) setSiteLeads(data || []);
+      setSiteLeadsLoaded(true);
+    })();
+  }, [isStaff]);
+
+  const deleteSiteLead = async (id) => {
+    setSiteLeads((prev) => prev.filter((l) => l.id !== id));
+    const { error } = await supabase.from("leads").delete().eq("id", id);
+    if (error) console.error(error);
   };
 
   // Drag-to-reorder for price list items — touch-friendly, reorders live within the
@@ -4708,6 +4727,31 @@ export default function ShopOrderApp() {
                         <option value="greenleaf">Greenleaf</option>
                         <option value="tier2">Tier 2 — Retail</option>
                       </select>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <div style={{ marginBottom: 18 }}>
+                <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>🌐 RoofCoil Site Leads</div>
+                <div style={{ fontSize: 9.5, color: theme.textSecondary, marginBottom: 6 }}>
+                  Everyone who signed up through the roofcoil.com member gate — name, company, and email, newest first.
+                </div>
+                {!siteLeadsLoaded ? (
+                  <div style={{ color: theme.textSecondary, fontSize: 12, padding: 10 }}>Loading…</div>
+                ) : siteLeads.length === 0 ? (
+                  <div style={{ color: theme.textSecondary, fontSize: 12, padding: 10 }}>No site signups yet.</div>
+                ) : (
+                  siteLeads.map((l) => (
+                    <div key={l.id} style={{ background: theme.card, borderRadius: 8, padding: 10, marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{l.name || "(no name)"}{l.company ? <span style={{ fontWeight: 400, color: theme.textSecondary }}> — {l.company}</span> : null}</div>
+                        <div style={{ fontSize: 10.5, color: theme.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.email}</div>
+                      </div>
+                      <span style={{ fontSize: 10, color: theme.textSecondary, whiteSpace: "nowrap" }}>{new Date(l.created_at).toLocaleDateString()}</span>
+                      <button onClick={() => deleteSiteLead(l.id)} style={{ border: "none", background: "none", color: theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
+                        <Trash2 size={12} />
+                      </button>
                     </div>
                   ))
                 )}
