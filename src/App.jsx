@@ -67,24 +67,29 @@ const PVDF_ONLY_BRANDS = ["Una-Clad"]; // no SMP, but any gauge is fine
 const UNPAINTED_FLATS_ONLY_BRANDS = ["G90 Galvanized"];
 
 const PROFILE_INFO = {
-  'SS450 – 1.5" Snap-Lock': { code: "SS450", family: "snap", takeup: 4.5, desc: "Popular residential snap-lock; the clip flares over the male leg." },
-  'SS150 – 1.5" Mechanical Seam': { code: "SS150", family: "mech", takeup: 4.5, desc: "Taller mechanical seam for added rigidity on architectural runs." },
-  'SSQ200 – 2" Mechanical Seam': { code: "SSQ200", family: "mech", takeup: 6, desc: "Commercial workhorse mechanical seam, rated for open-purlin spans down to 2:12 slope." },
-  'SSQ675 – 1.75" Snap-Lock': { code: "SSQ675", family: "snap", takeup: 4.375, desc: "Taller snap-lock profile for a more pronounced seam line." },
+  // Takeups (coil width − finished coverage) are NTM's published "material usage" figures,
+  // taken from the official profile drawings / Material Usage Guide (verified 2026-08-19).
+  // NTM marks them APPROX., measured with clip relief engaged where that's standard.
+  'SS450 – 1.5" Snap-Lock': { code: "SS450", family: "snap", takeup: 4.125, desc: "Popular residential snap-lock; the clip flares over the male leg." },
+  'SS150 – 1.5" Mechanical Seam': { code: "SS150", family: "mech", takeup: 4, desc: "Taller mechanical seam for added rigidity on architectural runs." },
+  'SSQ200 – 2" Mechanical Seam': { code: "SSQ200", family: "mech", takeup: 5.8125, desc: "Commercial workhorse mechanical seam, rated for open-purlin spans down to 2:12 slope." },
+  'SSQ675 – 1.75" Snap-Lock': { code: "SSQ675", family: "snap", takeup: 6.125, desc: "Taller snap-lock profile for a more pronounced seam line." },
   'FWQ100 – 1" Flush Wall / Soffit': { code: "FWQ100", family: "flush", takeup: 4, desc: "Flat panel with adjustable reveal for soffits, fascia, underdeck, and flush wall siding." },
-  "BB750 – Board and Batten": { code: "BB750", family: "batten", takeup: 4, desc: "Vertical board-and-batten wall siding profile with a farmhouse look." },
+  "BB750 – Board and Batten": { code: "BB750", family: "batten", takeup: 3.625, desc: "Vertical board-and-batten wall siding profile with a farmhouse look." },
   'SS100 – 1" Mechanical Seam': { code: "SS100", family: "mech", takeup: 3, desc: "Low-profile double-lock mechanical seam. 28–22 ga. steel, aluminum, or copper." },
-  'SSQ210A – 2" ARMCO Mechanical Seam': { code: "SSQ210A", family: "mecharmco", takeup: 6.5, desc: "SSQ200 seam plus an extra down leg for added strength in high-wind, severe-weather markets." },
-  'SSQ550 – 1.5" Snap-Lock': { code: "SSQ550", family: "snap", takeup: 4.5, desc: "1.5\" snap-lock, alternate roller set." },
-  'TRQ250 – 2.5" Mechanical Seam Trapezoid': { code: "TRQ250", family: "trapezoid", takeup: 7.5, desc: "Tallest seam in the lineup, with an anti-capillary leg for commercial/industrial roofs." },
-  'SS450SL – 1.5" Snap-Lock': { code: "SS450SL", family: "snapbump", takeup: 4.5, desc: "Same profile as SS450 with a self-locking bump on the male leg." },
-  'FF100 – 1" Snap-Lock, Slotted Flange': { code: "FF100", family: "flange", takeup: 3, desc: "Fastened through a flange on the male leg, then the female leg snaps over it — no clips." },
-  'FF150 – 1.5" Snap-Lock, Slotted Flange': { code: "FF150", family: "flange", takeup: 4.5, desc: "Taller fastener-flange snap-lock, no clips required." },
-  'SSQ275 – 2" Snap-Lock / Mech. Seam': { code: "SSQ275", family: "newlock", takeup: 6, desc: "Proprietary two-in-one profile — install as snap-lock, seam it later if the job calls for it." },
+  'SSQ210A – 2" ARMCO Mechanical Seam': { code: "SSQ210A", family: "mecharmco", takeup: 6.125, desc: "SSQ200 seam plus an extra down leg for added strength in high-wind, severe-weather markets." },
+  'SSQ550 – 1.5" Snap-Lock': { code: "SSQ550", family: "snap", takeup: 5.125, desc: "1.5\" snap-lock, alternate roller set." },
+  'TRQ250 – 2.5" Mechanical Seam Trapezoid': { code: "TRQ250", family: "trapezoid", takeup: 5.625, desc: "Tallest seam in the lineup, with an anti-capillary leg for commercial/industrial roofs." },
+  'SS450SL – 1.5" Snap-Lock': { code: "SS450SL", family: "snapbump", takeup: 4.375, desc: "Same profile as SS450 with a self-locking bump on the male leg." },
+  'FF100 – 1" Snap-Lock, Slotted Flange': { code: "FF100", family: "flange", takeup: 4.0625, desc: "Fastened through a flange on the male leg, then the female leg snaps over it — no clips." },
+  'FF150 – 1.5" Snap-Lock, Slotted Flange': { code: "FF150", family: "flange", takeup: 5.3125, desc: "Taller fastener-flange snap-lock, no clips required." },
+  'SSQ275 – 2" Snap-Lock / Mech. Seam': { code: "SSQ275", family: "newlock", takeup: 6.5, desc: "Proprietary two-in-one profile — install as snap-lock, seam it later if the job calls for it." },
   // Adax Metals (Weatherford, TX) — licensed Ultra Seam profiles they roll in-house.
   // vendor: "adax" routes these into the Adax section of the panel catalog; entries
-  // without a vendor field are Fortified's own machines. Takeups mirror the equivalent
-  // seam geometry above (same seam height and lock type), not published Adax specs.
+  // without a vendor field are Fortified's own machines. Ultra Seam publishes NO
+  // coil-width/material-usage specs (checked every data sheet 2026-08-19), so these
+  // takeups are estimates borrowed from the equivalent NTM seam geometry above —
+  // replace with Adax's real numbers when the shop gets them.
   'US-100CS – 1" Snap-On Cap Seam': { code: "US-100CS", family: "batten", takeup: 3, vendor: "adax", desc: 'Snap-on cap over a 1" seam; 12–20" pan widths, flat or striated.' },
   'US-100NS – 1" Nail Strip': { code: "US-100NS", family: "flange", takeup: 3, vendor: "adax", desc: 'Fastener-flange nail strip for roof or siding; Class 4 hail rated.' },
   'US-150 – 1.5" Mechanical Seam': { code: "US-150", family: "mech", takeup: 4.5, vendor: "adax", desc: 'Single- or double-lock mechanical seam; UL-90, curved version available.' },
