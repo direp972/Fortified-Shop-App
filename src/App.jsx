@@ -4059,14 +4059,14 @@ export default function ShopOrderApp() {
                   <ChevronDown size={14} style={{ transform: "rotate(90deg)" }} /> Change Type
                 </button>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: theme.text, lineHeight: 1.3 }}>{brand} — {colorName}</div>
+                  <span style={{ fontSize: 11, fontWeight: 600, color: theme.text, lineHeight: 1.3, textAlign: "right" }}>
+                    {brand} — {colorName}{" "}
                     <button onClick={() => setOrderStep("color")}
                       style={{ border: "none", background: "none", color: SAFETY, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
                       Edit
                     </button>
-                  </div>
-                  <span style={{ width: 88, height: 46, borderRadius: 5, background: colorObj?.hex || "#ccc", border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
+                  </span>
+                  <span style={{ width: 132, height: 46, borderRadius: 5, background: colorObj?.hex || "#ccc", border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
                 </div>
               </div>
           {/* drawing area */}
