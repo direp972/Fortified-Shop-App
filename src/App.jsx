@@ -2375,7 +2375,8 @@ export default function ShopOrderApp() {
   }, []);
 
   const insertOrders = async (newOrders) => {
-    setOrders((prev) => [...newOrders, ...prev]);
+    // attach userId locally so a just-submitted order shows in Past Orders without a reload
+    setOrders((prev) => [...newOrders.map((o) => ({ ...o, userId: user?.id || null })), ...prev]);
     const rows = newOrders.map((o) => ({ id: o.id, user_id: user?.id || null, data: o, created_at: o.createdAt }));
     const { error } = await supabase.from("orders").insert(rows);
     if (error) {
@@ -3247,6 +3248,10 @@ export default function ShopOrderApp() {
   const vaultAlertCount = priceListLoaded ? vaultItems.filter((v) => vaultIncrease(v) > 0).length : 0;
   const vaultJobNames = [...new Set(vaultItems.map((v) => v.job_name))];
 
+  // Past Orders: only this member's own submissions (staff use Shop Floor for the rest)
+  const myOrders = orders.filter((o) => o.userId === (user?.id || ""));
+  const myJobKeys = [...new Set(myOrders.map((o) => o.jobId || o.id))];
+
   const vaultItemLabel = (v) => {
     const p = v.payload || {};
     if (p.type === "trim") return p.partName || "Trim part";
@@ -3353,7 +3358,8 @@ export default function ShopOrderApp() {
   };
 
   // Restore a saved item back into the order flow so the member can adjust and send it.
-  const loadVaultItem = (item) => {
+  // Also powers "Reorder" from Past Orders — order objects are payload-shaped.
+  const loadVaultItem = (item, sourceLabel = "your Job Vault") => {
     const p = item.payload || {};
     const kind = p.type || item.kind;
     setTab("order");
@@ -3378,7 +3384,10 @@ export default function ShopOrderApp() {
       setViewResetKey((k) => k + 1);
     } else if (kind === "panel") {
       if (p.profile) setProfile(p.profile);
-      if (p.coilWidth != null) setCoilWidth(p.coilWidth); // width re-derives from coilWidth + profile
+      // width re-derives from coilWidth + profile; submitted orders store only width,
+      // so reconstruct coilWidth from it when reordering
+      if (p.coilWidth != null) setCoilWidth(p.coilWidth);
+      else if (p.width != null) setCoilWidth(p.width + (PROFILE_INFO[p.profile]?.takeup ?? 0));
       if (p.height != null) setHeight(p.height);
       setRibStyle(p.ribStyle ?? null);
       setClipRelief(p.clipRelief ?? null);
@@ -3409,7 +3418,7 @@ export default function ShopOrderApp() {
       if (p.taperStart != null) setTaperStart(p.taperStart);
       if (p.taperLength != null) setTaperLength(p.taperLength);
     }
-    setToast(`Loaded "${vaultItemLabel(item)}" from your Job Vault — adjust anything and send when ready.`);
+    setToast(`Loaded "${vaultItemLabel(item)}" from ${sourceLabel} — adjust anything and send when ready.`);
     setTimeout(() => setToast(""), 4000);
   };
 
@@ -3502,7 +3511,7 @@ export default function ShopOrderApp() {
 
       {/* tabs */}
       <div style={{ display: "flex", background: CHARCOAL, paddingBottom: 0 }}>
-        {[{ id: "order", label: "New Order", icon: PenTool }, { id: "vault", label: "Job Vault", icon: Briefcase }, ...(isStaff ? [{ id: "dashboard", label: "Shop Floor", icon: ClipboardList }] : []), { id: "pricelist", label: "Price List", icon: DollarSign }].map((t) => {
+        {[{ id: "order", label: "New Order", icon: PenTool }, { id: "vault", label: "Job Vault", icon: Briefcase }, { id: "past", label: "Past Orders", icon: Clock }, ...(isStaff ? [{ id: "dashboard", label: "Shop Floor", icon: ClipboardList }] : []), { id: "pricelist", label: "Price List", icon: DollarSign }].map((t) => {
           const Icon = t.icon;
           const active = tab === t.id;
           return (
@@ -5418,6 +5427,67 @@ export default function ShopOrderApp() {
           )}
           <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4, textAlign: "center" }}>
             Vault prices follow the shop's current price list — the shop still confirms final pricing on every order.
+          </div>
+        </div>
+      ) : tab === "past" ? (
+        <div style={{ padding: 16, maxWidth: 640, margin: "0 auto" }}>
+          <div className="disp" style={{ fontSize: 16, fontWeight: 700, color: theme.text, marginBottom: 2 }}>🕐 Past Orders</div>
+          <div style={{ fontSize: 11.5, color: theme.textSecondary, marginBottom: 14 }}>
+            Every order you've sent to the shop, newest first — with where it stands. Tap Reorder to run one again.
+          </div>
+          {!loaded ? (
+            <div style={{ color: theme.textSecondary, fontSize: 13, padding: 20, textAlign: "center" }}>Loading your orders…</div>
+          ) : myOrders.length === 0 ? (
+            <div style={{ background: theme.card, borderRadius: 10, padding: 24, textAlign: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+              <div style={{ fontSize: 30, marginBottom: 8 }}>🕐</div>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: theme.text, marginBottom: 4 }}>No orders yet</div>
+              <div style={{ fontSize: 12, color: theme.textSecondary, lineHeight: 1.6 }}>
+                Orders you send from New Order will show up here with their shop status — Pending, In Production, Ready for Pickup, Completed.
+              </div>
+            </div>
+          ) : (
+            myJobKeys.map((jobKey) => {
+              const items = myOrders.filter((o) => (o.jobId || o.id) === jobKey);
+              const first = items[0];
+              const total = items.reduce((s, o) => s + (o.price || 0), 0);
+              return (
+                <div key={jobKey} style={{ background: theme.card, borderRadius: 10, marginBottom: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", overflow: "hidden" }}>
+                  <div style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, borderBottom: `1px solid ${theme.border}` }}>
+                    <Clock size={16} color={SAFETY} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="disp" style={{ fontSize: 13.5, fontWeight: 700, color: theme.text }}>{first.poNumber || "Order"}</div>
+                      <div className="mono" style={{ fontSize: 10, color: theme.textSecondary }}>
+                        {new Date(first.createdAt).toLocaleDateString()} · {items.length} item{items.length === 1 ? "" : "s"} · est. {money(total)}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ padding: "4px 14px 10px" }}>
+                    {items.map((o) => (
+                      <div key={o.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 0", borderBottom: `1px dotted ${theme.border}` }}>
+                        <ShapeThumb order={o} size={44} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{vaultItemLabel({ payload: o })}</div>
+                          <div className="mono" style={{ fontSize: 9.5, color: theme.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            Qty {o.quantity ?? 1} · {o.gaugeId || ""} · {o.colorName || ""}
+                          </div>
+                        </div>
+                        <span className="disp" style={{ background: STATUS_COLOR[o.status] || STEEL, color: "#fff", borderRadius: 999, fontSize: 8.5, padding: "3px 9px", fontWeight: 700, letterSpacing: "0.05em", whiteSpace: "nowrap", flexShrink: 0 }}>
+                          {o.status || "Pending"}
+                        </span>
+                        <div className="mono" style={{ fontSize: 12.5, fontWeight: 700, color: theme.text, flexShrink: 0 }}>{money(o.price || 0)}</div>
+                        <button onClick={() => loadVaultItem({ payload: o }, "your past orders")} className="tap-bounce"
+                          style={{ padding: "5px 10px", borderRadius: 7, border: "none", background: `linear-gradient(135deg, ${SAFETY}, #F0C955)`, color: "#fff", fontSize: 10.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
+                          Reorder
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })
+          )}
+          <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4, textAlign: "center" }}>
+            Estimates shown — the shop confirms final pricing on every order.
           </div>
         </div>
       ) : (
