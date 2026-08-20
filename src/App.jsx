@@ -4429,17 +4429,21 @@ export default function ShopOrderApp() {
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Finished Sq Ft
-                    <input type="number" min={0} step="0.01" disabled={coilOverMax}
-                      value={coilOverMax ? "" : (sqftEditing !== null ? sqftEditing : (isFinite((width * height) / 144) ? (+((width * height) / 144).toFixed(2)) : 0))}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setSqftEditing(val);
-                        if (val !== "" && +width > 0) {
-                          setHeight(Math.max(0, (+val * 144) / width));
-                        }
-                      }}
-                      onBlur={(e) => { setSqftEditing(null); if (e.target.value === "") setHeight(36); }}
-                      className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
+                    {coilOverMax ? (
+                      <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${AMBER}`, borderRadius: 6, fontSize: 13, background: theme.highlight, boxSizing: "border-box", color: AMBER, fontWeight: 700 }}>Call for price</div>
+                    ) : (
+                      <input type="number" min={0} step="0.01"
+                        value={sqftEditing !== null ? sqftEditing : (isFinite((width * height) / 144) ? (+((width * height) / 144).toFixed(2)) : 0)}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setSqftEditing(val);
+                          if (val !== "" && +width > 0) {
+                            setHeight(Math.max(0, (+val * 144) / width));
+                          }
+                        }}
+                        onBlur={(e) => { setSqftEditing(null); if (e.target.value === "") setHeight(36); }}
+                        className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
+                    )}
                   </label>
                 </div>
 
@@ -4453,8 +4457,11 @@ export default function ShopOrderApp() {
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Pan Width (in)
-                    <input type="number" min={0} step="0.01" disabled={coilOverMax}
-                      value={coilOverMax ? "" : (widthEditing !== null ? widthEditing : (isFinite(width) ? +Number(width).toFixed(2) : 0))}
+                    {coilOverMax ? (
+                      <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${AMBER}`, borderRadius: 6, fontSize: 13, background: theme.highlight, boxSizing: "border-box", color: AMBER, fontWeight: 700 }}>Call for price</div>
+                    ) : (
+                    <input type="number" min={0} step="0.01"
+                      value={widthEditing !== null ? widthEditing : (isFinite(width) ? +Number(width).toFixed(2) : 0)}
                       onChange={(e) => {
                         const val = e.target.value;
                         setWidthEditing(val);
@@ -4467,16 +4474,21 @@ export default function ShopOrderApp() {
                       }}
                       onBlur={(e) => { setWidthEditing(null); if (e.target.value === "") setCoilWidth(24); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
+                    )}
                   </label>
                 </div>
 
                 <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Coil $/LF
-                    <input type="number" min={0} step="0.01" disabled={coilOverMax} value={coilOverMax ? "" : coilPricePerFt}
-                      onChange={(e) => setCoilPricePerFt(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
-                      onBlur={(e) => { if (e.target.value === "" && !coilOverMax) setCoilPricePerFt(panelCoilPerFt() ?? 2.5); }}
-                      className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
+                    {coilOverMax ? (
+                      <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${AMBER}`, borderRadius: 6, fontSize: 13, background: theme.highlight, boxSizing: "border-box", color: AMBER, fontWeight: 700 }}>Call for price</div>
+                    ) : (
+                      <input type="number" min={0} step="0.01" value={coilPricePerFt}
+                        onChange={(e) => setCoilPricePerFt(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
+                        onBlur={(e) => { if (e.target.value === "") setCoilPricePerFt(panelCoilPerFt() ?? 2.5); }}
+                        className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
+                    )}
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Fabrication $/LF
@@ -4487,7 +4499,7 @@ export default function ShopOrderApp() {
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Total Price
-                    <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.highlight, boxSizing: "border-box", color: theme.text, fontWeight: 600 }}>
+                    <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${coilOverMax ? AMBER : theme.border}`, borderRadius: 6, fontSize: coilOverMax ? 13 : 14, background: theme.highlight, boxSizing: "border-box", color: coilOverMax ? AMBER : theme.text, fontWeight: coilOverMax ? 700 : 600 }}>
                       {coilOverMax ? "Call for price" : money(((+coilPricePerFt || 0) + (+fabPricePerFt || 0)) * ((+height || 0) / 12))}
                     </div>
                   </label>
