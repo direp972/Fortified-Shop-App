@@ -2394,9 +2394,13 @@ export default function ShopOrderApp() {
     })();
   }, [user]);
 
+  // Coil wider than 24" isn't auto-priced — the form blanks out and says call for price.
+  const coilOverMax = (+coilWidth || 0) > 24;
+
   // The panel form's Coil $/LF reference follows the bracket scale for the selected
   // coil width and finish (scale prices are PVDF; SMP gets the ratio). Still editable.
   const panelCoilPerFt = () => {
+    if (coilOverMax) return null;
     const per = coilPriceForWidth(+coilWidth || 0, coilWidthScale);
     if (per === null) return null;
     const pvdfM = PAINT_OPTIONS.find((p) => p.id === "pvdf")?.mult || 1;
@@ -2406,6 +2410,7 @@ export default function ShopOrderApp() {
   useEffect(() => {
     const v = panelCoilPerFt();
     if (v !== null) setCoilPricePerFt(v);
+    else if (coilOverMax) setCoilPricePerFt("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coilWidth, paintId, brand, coilWidthScale]);
 
@@ -3137,6 +3142,7 @@ export default function ShopOrderApp() {
     if (shapeType === "panel") {
       if (ribStyle === null) { setToast("Pick a rib style (or None) before sending the order."); return; }
       if (clipRelief === null) { setToast("Choose whether Clip Relief is ON or OFF before sending the order."); return; }
+      if (coilOverMax) { setToast("Coil over 24\" can't be priced online — call the shop and we'll quote it."); setTimeout(() => setToast(""), 5000); return; }
     }
 
     if (shapeType === "trim") {
@@ -3340,6 +3346,7 @@ export default function ShopOrderApp() {
     const jobName = (jobNameRaw || "").trim() || "My Job";
     const payloads = buildVaultPayloads();
     if (payloads.length === 0) { setToast("Nothing to save yet — draw a part or set up a panel first."); setTimeout(() => setToast(""), 3000); return; }
+    if (shapeType === "panel" && coilOverMax) { setToast("Coil over 24\" can't be priced online — call the shop for a quote before saving it."); setTimeout(() => setToast(""), 5000); return; }
     setSavingVault(true);
     const rows = payloads.map((p) => ({
       user_id: user.id,
@@ -4422,8 +4429,8 @@ export default function ShopOrderApp() {
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Finished Sq Ft
-                    <input type="number" min={0} step="0.01"
-                      value={sqftEditing !== null ? sqftEditing : (isFinite((width * height) / 144) ? (+((width * height) / 144).toFixed(2)) : 0)}
+                    <input type="number" min={0} step="0.01" disabled={coilOverMax}
+                      value={coilOverMax ? "" : (sqftEditing !== null ? sqftEditing : (isFinite((width * height) / 144) ? (+((width * height) / 144).toFixed(2)) : 0))}
                       onChange={(e) => {
                         const val = e.target.value;
                         setSqftEditing(val);
@@ -4446,8 +4453,8 @@ export default function ShopOrderApp() {
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Pan Width (in)
-                    <input type="number" min={0} step="0.01"
-                      value={widthEditing !== null ? widthEditing : (isFinite(width) ? +Number(width).toFixed(2) : 0)}
+                    <input type="number" min={0} step="0.01" disabled={coilOverMax}
+                      value={coilOverMax ? "" : (widthEditing !== null ? widthEditing : (isFinite(width) ? +Number(width).toFixed(2) : 0))}
                       onChange={(e) => {
                         const val = e.target.value;
                         setWidthEditing(val);
@@ -4466,9 +4473,9 @@ export default function ShopOrderApp() {
                 <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Coil $/LF
-                    <input type="number" min={0} step="0.01" value={coilPricePerFt}
+                    <input type="number" min={0} step="0.01" disabled={coilOverMax} value={coilOverMax ? "" : coilPricePerFt}
                       onChange={(e) => setCoilPricePerFt(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
-                      onBlur={(e) => { if (e.target.value === "") setCoilPricePerFt(panelCoilPerFt() ?? 2.5); }}
+                      onBlur={(e) => { if (e.target.value === "" && !coilOverMax) setCoilPricePerFt(panelCoilPerFt() ?? 2.5); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
@@ -4481,10 +4488,15 @@ export default function ShopOrderApp() {
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Total Price
                     <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.highlight, boxSizing: "border-box", color: theme.text, fontWeight: 600 }}>
-                      {money(((+coilPricePerFt || 0) + (+fabPricePerFt || 0)) * ((+height || 0) / 12))}
+                      {coilOverMax ? "Call for price" : money(((+coilPricePerFt || 0) + (+fabPricePerFt || 0)) * ((+height || 0) / 12))}
                     </div>
                   </label>
                 </div>
+                {coilOverMax && (
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: AMBER, marginTop: 6 }}>
+                    Coil over 24" — call the shop for pricing on wide panels.
+                  </div>
+                )}
                 <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
                   Fabrication minimum: $150 shop-rolled · $600 rolled on site — applied automatically in the order estimate.
                 </div>
@@ -4831,7 +4843,7 @@ export default function ShopOrderApp() {
               <div style={{ color: "#CFE3EF", fontSize: 11 }}>
                 {shapeType === "trim" ? `Estimated total${basket.length > 0 ? ` · ${basket.length + (points.length >= 2 ? 1 : 0)} part(s)` : ""}` : "Estimated total"}
               </div>
-              <div className="mono" style={{ color: "#fff", fontSize: 22, fontWeight: 600 }}>{money(combinedEstimate)}</div>
+              <div className="mono" style={{ color: "#fff", fontSize: 22, fontWeight: 600 }}>{shapeType === "panel" && coilOverMax ? "Call for price" : money(combinedEstimate)}</div>
             </div>
             <button onClick={submitOrder} disabled={submitting}
               className="disp tap-bounce"
