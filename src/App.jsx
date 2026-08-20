@@ -4053,13 +4053,13 @@ export default function ShopOrderApp() {
           {orderStep === "details" && (
             <>
               <div className="disp" style={{ fontSize: 15, color: theme.text, marginBottom: 10 }}>Step 2 of 3 — Order Details</div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 2 }}>
                 <button onClick={() => setOrderStep("type")}
-                  style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 4 }}>
-                  <ChevronDown size={14} style={{ transform: "rotate(90deg)" }} /> Change Type
+                  style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 14, fontWeight: 600, cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 4 }}>
+                  <ChevronDown size={16} style={{ transform: "rotate(90deg)" }} /> Change Type
                 </button>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: theme.text, lineHeight: 1.3, textAlign: "right" }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: theme.text, lineHeight: 1.3, textAlign: "right" }}>
                     {brand} — {colorName}{" "}
                     <button onClick={() => setOrderStep("color")}
                       style={{ border: "none", background: "none", color: SAFETY, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
