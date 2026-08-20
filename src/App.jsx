@@ -75,7 +75,7 @@ const PROFILE_INFO = {
   'SSQ200 – 2" Mechanical Seam': { code: "SSQ200", family: "mech", takeup: 5.8125, desc: "Commercial workhorse mechanical seam, rated for open-purlin spans down to 2:12 slope." },
   'SSQ675 – 1.75" Snap-Lock': { code: "SSQ675", family: "snap", takeup: 6.125, desc: "Taller snap-lock profile for a more pronounced seam line." },
   'FWQ100 – 1" Flush Wall / Soffit': { code: "FWQ100", family: "flush", takeup: 4, desc: "Flat panel with adjustable reveal for soffits, fascia, underdeck, and flush wall siding." },
-  "BB750 – Board and Batten": { code: "BB750", family: "batten", takeup: 3.625, desc: "Vertical board-and-batten wall siding profile with a farmhouse look." },
+  "BB750 – Board and Batten": { code: "BB750", family: "batten", takeup: 3.625, delisted: true, desc: "Vertical board-and-batten wall siding profile with a farmhouse look." },
   'SS100 – 1" Mechanical Seam': { code: "SS100", family: "mech", takeup: 3, desc: "Low-profile double-lock mechanical seam. 28–22 ga. steel, aluminum, or copper." },
   'SSQ210A – 2" ARMCO Mechanical Seam': { code: "SSQ210A", family: "mecharmco", takeup: 6.125, delisted: true, desc: "SSQ200 seam plus an extra down leg for added strength in high-wind, severe-weather markets." },
   'SSQ550 – 1.5" Snap-Lock': { code: "SSQ550", family: "snap", takeup: 5.125, delisted: true, desc: "1.5\" snap-lock, alternate roller set." },
