@@ -804,33 +804,16 @@ function computeJobMaterials(items) {
 // needed. Falls back to the old hardcoded rates for materials the Price List doesn't
 // have a matching entry for yet (Copper only if no matching entry, G90/Galvalume/
 // Bonderized always, since those aren't in the Price List at all currently).
-// Real supplier pricing for coil doesn't scale as a flat $/sqft rate — wider coil tends
-// to be a bit cheaper per inch of width than narrower coil, not exactly proportional.
-// This interpolates between known price points (e.g. "16in costs $2.56/LF, 21in costs
-// $3.03/LF") for any width in between, and extrapolates using the slope of the two
-// nearest points for anything outside the known range. Returns null if there aren't at
-// least 2 points to work with, so callers can fall back to the flat-rate calculation.
-function interpolateCoilPrice(widthIn, scale) {
-  if (!scale || scale.length < 2 || !widthIn) return null;
+// Coil sells in width BRACKETS, not on a sliding scale: each scale point means
+// "anything up to this width costs this much per LF". With points at 16/21/24,
+// a 15" coil prices at the 16" rate, 16.01"–21" at the 21" rate, 21.01"–24" at
+// the 24" rate. Wider than the top bracket uses the top bracket's price.
+// Returns null when the scale is empty so callers can fall back to flat-rate.
+function coilPriceForWidth(widthIn, scale) {
+  if (!scale || scale.length === 0 || !widthIn) return null;
   const sorted = [...scale].sort((a, b) => a.width - b.width);
-  if (widthIn <= sorted[0].width) {
-    const [a, b] = sorted;
-    const slope = (b.pricePerFt - a.pricePerFt) / (b.width - a.width);
-    return Math.max(0, a.pricePerFt + slope * (widthIn - a.width));
-  }
-  if (widthIn >= sorted[sorted.length - 1].width) {
-    const a = sorted[sorted.length - 2], b = sorted[sorted.length - 1];
-    const slope = (b.pricePerFt - a.pricePerFt) / (b.width - a.width);
-    return Math.max(0, b.pricePerFt + slope * (widthIn - b.width));
-  }
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const a = sorted[i], b = sorted[i + 1];
-    if (widthIn >= a.width && widthIn <= b.width) {
-      const t = (widthIn - a.width) / (b.width - a.width);
-      return a.pricePerFt + t * (b.pricePerFt - a.pricePerFt);
-    }
-  }
-  return null;
+  const bracket = sorted.find((p) => widthIn <= p.width) || sorted[sorted.length - 1];
+  return Math.max(0, bracket.pricePerFt);
 }
 
 function getSellRates(gaugeId, brand, priceList) {
@@ -887,7 +870,7 @@ function computePrice(order, priceList, coilWidthScale) {
     // PVDF pricing, so they apply as-is for PVDF orders and get scaled down by the
     // PVDF/SMP ratio for SMP orders, rather than getting the PVDF multiplier stacked
     // on top of an already-PVDF price.
-    const interpolatedPerFt = interpolateCoilPrice(order.coilWidth, coilWidthScale);
+    const interpolatedPerFt = coilPriceForWidth(order.coilWidth, coilWidthScale);
     const pvdfMult = PAINT_OPTIONS.find((p) => p.id === "pvdf")?.mult || 1;
     const coilFeet = (order.coilLength || 0) / 12;
     const coilCost = interpolatedPerFt !== null
@@ -2405,6 +2388,21 @@ export default function ShopOrderApp() {
     })();
   }, [user]);
 
+  // The panel form's Coil $/LF reference follows the bracket scale for the selected
+  // coil width and finish (scale prices are PVDF; SMP gets the ratio). Still editable.
+  const panelCoilPerFt = () => {
+    const per = coilPriceForWidth(+coilWidth || 0, coilWidthScale);
+    if (per === null) return null;
+    const pvdfM = PAINT_OPTIONS.find((p) => p.id === "pvdf")?.mult || 1;
+    const m = brand === "Copper" ? 1 : (PAINT_OPTIONS.find((p) => p.id === paintId) || PAINT_OPTIONS[0]).mult;
+    return Math.round(per * (m / pvdfM) * 100) / 100;
+  };
+  useEffect(() => {
+    const v = panelCoilPerFt();
+    if (v !== null) setCoilPricePerFt(v);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coilWidth, paintId, brand, coilWidthScale]);
+
   const DEFAULT_PRICE_LIST = [
     // Roof Panel
     { id: "p1", category: "Roof Panel", name: '24 Gauge Coil (per linear ft)', derivedFromMaterialId: "m1", coverageWidth: 16, cost: 0, tier1: 4.10, tier2: 4.55, greenleaf: 3.95 },
@@ -2687,6 +2685,7 @@ export default function ShopOrderApp() {
   const DEFAULT_COIL_WIDTH_SCALE = [
     { id: "cw1", width: 16, pricePerFt: 2.56 },
     { id: "cw2", width: 21, pricePerFt: 3.03 },
+    { id: "cw3", width: 24, pricePerFt: 3.31 },
   ];
 
   useEffect(() => {
@@ -2998,7 +2997,7 @@ export default function ShopOrderApp() {
   const activeFlatMaterialRate = activeFlatMaterialItem ? activeFlatMaterialItem.greenleaf : activeRates.coilSqft;
   const activeFlatProcessingFee = activeFlatProcessingItem ? activeFlatProcessingItem.greenleaf : 0;
   const flatSheetPrice = (((+flatWidth || 0) * (+flatLength || 0)) / 144) * activeFlatMaterialRate * activePaint.mult * activePremiumMult + activeFlatProcessingFee;
-  const interpolatedCoilPerFt = interpolateCoilPrice(+metalCoilWidth || 0, coilWidthScale);
+  const interpolatedCoilPerFt = coilPriceForWidth(+metalCoilWidth || 0, coilWidthScale);
   const pvdfMultRef = PAINT_OPTIONS.find((p) => p.id === "pvdf")?.mult || 1;
   const metalCoilPricePerFt = interpolatedCoilPerFt !== null
     ? interpolatedCoilPerFt * (activePaint.mult / pvdfMultRef)
@@ -4452,7 +4451,7 @@ export default function ShopOrderApp() {
                     Coil $/Linear Ft
                     <input type="number" min={0} step="0.01" value={coilPricePerFt}
                       onChange={(e) => setCoilPricePerFt(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
-                      onBlur={(e) => { if (e.target.value === "") setCoilPricePerFt(2.5); }}
+                      onBlur={(e) => { if (e.target.value === "") setCoilPricePerFt(panelCoilPerFt() ?? 2.5); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
@@ -5108,7 +5107,7 @@ export default function ShopOrderApp() {
               <div style={{ marginBottom: 18 }}>
                 <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>Coil Width Price Scale</div>
                 <div style={{ fontSize: 9.5, color: theme.textSecondary, marginBottom: 6 }}>
-                  Real supplier price points ($/LF) at known widths — the app interpolates between them for any width in between, and extrapolates for anything outside the range. Add more points any time to make the scale more accurate.
+                  Bracket pricing ($/LF): each row means "anything up to this width costs this much per linear foot". With rows at 16", 21", and 24" — a 15" coil prices at the 16" row, an 18" coil at the 21" row, a 22" coil at the 24" row. Prices are PVDF; SMP orders get the SMP/PVDF ratio automatically.
                 </div>
                 {!coilWidthScaleLoaded ? (
                   <div style={{ color: theme.textSecondary, fontSize: 12, padding: 10 }}>Loading…</div>
