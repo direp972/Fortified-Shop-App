@@ -77,13 +77,13 @@ const PROFILE_INFO = {
   'FWQ100 – 1" Flush Wall / Soffit': { code: "FWQ100", family: "flush", takeup: 4, desc: "Flat panel with adjustable reveal for soffits, fascia, underdeck, and flush wall siding." },
   "BB750 – Board and Batten": { code: "BB750", family: "batten", takeup: 3.625, desc: "Vertical board-and-batten wall siding profile with a farmhouse look." },
   'SS100 – 1" Mechanical Seam': { code: "SS100", family: "mech", takeup: 3, desc: "Low-profile double-lock mechanical seam. 28–22 ga. steel, aluminum, or copper." },
-  'SSQ210A – 2" ARMCO Mechanical Seam': { code: "SSQ210A", family: "mecharmco", takeup: 6.125, desc: "SSQ200 seam plus an extra down leg for added strength in high-wind, severe-weather markets." },
-  'SSQ550 – 1.5" Snap-Lock': { code: "SSQ550", family: "snap", takeup: 5.125, desc: "1.5\" snap-lock, alternate roller set." },
-  'TRQ250 – 2.5" Mechanical Seam Trapezoid': { code: "TRQ250", family: "trapezoid", takeup: 5.625, desc: "Tallest seam in the lineup, with an anti-capillary leg for commercial/industrial roofs." },
-  'SS450SL – 1.5" Snap-Lock': { code: "SS450SL", family: "snapbump", takeup: 4.375, desc: "Same profile as SS450 with a self-locking bump on the male leg." },
+  'SSQ210A – 2" ARMCO Mechanical Seam': { code: "SSQ210A", family: "mecharmco", takeup: 6.125, delisted: true, desc: "SSQ200 seam plus an extra down leg for added strength in high-wind, severe-weather markets." },
+  'SSQ550 – 1.5" Snap-Lock': { code: "SSQ550", family: "snap", takeup: 5.125, delisted: true, desc: "1.5\" snap-lock, alternate roller set." },
+  'TRQ250 – 2.5" Mechanical Seam Trapezoid': { code: "TRQ250", family: "trapezoid", takeup: 5.625, delisted: true, desc: "Tallest seam in the lineup, with an anti-capillary leg for commercial/industrial roofs." },
+  'SS450SL – 1.5" Snap-Lock': { code: "SS450SL", family: "snapbump", takeup: 4.375, delisted: true, desc: "Same profile as SS450 with a self-locking bump on the male leg." },
   'FF100 – 1" Snap-Lock, Slotted Flange': { code: "FF100", family: "flange", takeup: 4.0625, desc: "Fastened through a flange on the male leg, then the female leg snaps over it — no clips." },
-  'FF150 – 1.5" Snap-Lock, Slotted Flange': { code: "FF150", family: "flange", takeup: 5.3125, desc: "Taller fastener-flange snap-lock, no clips required." },
-  'SSQ275 – 2" Snap-Lock / Mech. Seam': { code: "SSQ275", family: "newlock", takeup: 6.5, desc: "Proprietary two-in-one profile — install as snap-lock, seam it later if the job calls for it." },
+  'FF150 – 1.5" Snap-Lock, Slotted Flange': { code: "FF150", family: "flange", takeup: 5.3125, delisted: true, desc: "Taller fastener-flange snap-lock, no clips required." },
+  'SSQ275 – 2" Snap-Lock / Mech. Seam': { code: "SSQ275", family: "newlock", takeup: 6.5, delisted: true, desc: "Proprietary two-in-one profile — install as snap-lock, seam it later if the job calls for it." },
   // Adax Metals (Weatherford, TX) — licensed Ultra Seam profiles they roll in-house.
   // vendor: "adax" routes these into the Adax section of the panel catalog; entries
   // without a vendor field are Fortified's own machines. Ultra Seam publishes NO
@@ -99,7 +99,9 @@ const PROFILE_INFO = {
   'US-200SB – 2" Seam + Snap-On Batten': { code: "US-200SB", family: "batten", takeup: 6, vendor: "adax", desc: "US-200 pan with a decorative snap-on batten cap over the seam." },
   'US-100FP – 1" Flush Wall / Soffit': { code: "US-100FP", family: "flush", takeup: 4, vendor: "adax", desc: "Flush wall and soffit panel; plain, beaded, or vented versions." },
 };
-const PROFILES = Object.keys(PROFILE_INFO);
+// Delisted profiles stay in PROFILE_INFO so old orders and vault items still
+// render and reprice, but they're hidden from every picker and the catalog.
+const PROFILES = Object.keys(PROFILE_INFO).filter((k) => !PROFILE_INFO[k].delisted);
 
 function profileFamily(profile) {
   return PROFILE_INFO[profile]?.family || "mech";
@@ -830,7 +832,15 @@ function coilPriceForWidth(widthIn, scale) {
   return Math.max(0, bracket.pricePerFt);
 }
 
-function getSellRates(gaugeId, brand, priceList) {
+// Fabrication $/LF from the Price List — a profile-specific row (name starting with
+// the profile code, e.g. "FWQ100 Fabrication") beats the generic "Panel Fabrication".
+function findFabItem(priceList, profile) {
+  const fabItems = (priceList || []).filter((p) => p.category === "Roof Panel" && p.name.toLowerCase().includes("fabrication") && typeof p.greenleaf === "number");
+  const code = profile ? profile.split(" ")[0].toLowerCase() : "";
+  return (code && fabItems.find((p) => p.name.toLowerCase().startsWith(code))) || fabItems.find((p) => p.name.toLowerCase().startsWith("panel")) || fabItems[0] || null;
+}
+
+function getSellRates(gaugeId, brand, priceList, profile) {
   const gauge = findGauge(gaugeId, brand);
   const fallback = { coilSqft: gauge.panelSqft, panelSqft: gauge.panelSqft, fabSqft: 0, trimFt: gauge.trimFt };
   if (!priceList || priceList.length === 0) return fallback;
@@ -850,7 +860,7 @@ function getSellRates(gaugeId, brand, priceList) {
   // raw coil/flat metal orders should only ever be charged the coil rate, never
   // fabrication, since nothing's being formed.
   const coilItem = priceList.find((p) => p.category === "Roof Panel" && p.name.startsWith(gaugeLabel) && typeof p.greenleaf === "number");
-  const fabItem = priceList.find((p) => p.category === "Roof Panel" && p.name.toLowerCase().includes("fabrication") && typeof p.greenleaf === "number");
+  const fabItem = findFabItem(priceList, profile);
   const trimItem = priceList.find((p) => p.category === "Trim / Flashing" && p.name.startsWith(gaugeLabel) && typeof p.greenleaf === "number");
 
   const coilWidthIn = coilItem?.coverageWidth || 12;
@@ -862,7 +872,7 @@ function getSellRates(gaugeId, brand, priceList) {
 }
 
 function computePrice(order, priceList, coilWidthScale) {
-  const rates = getSellRates(order.gaugeId, order.brand, priceList);
+  const rates = getSellRates(order.gaugeId, order.brand, priceList, order.profile);
   const paint = order.brand === "Copper" ? { mult: 1 } : (PAINT_OPTIONS.find((p) => p.id === order.paintId) || PAINT_OPTIONS[0]);
   const colorObj = findColor(order.colorName, order.brand, order.paintId);
   const premiumMult = colorObj?.premium ? 1.12 : 1;
@@ -913,7 +923,7 @@ function computePrice(order, priceList, coilWidthScale) {
     const fabCost = sqft * (rates.fabSqft || 0) * paint.mult * order.quantity;
     // Fabrication minimums: hauling the roll former to a job site floors the
     // fabrication charge at $600; shop-rolled runs floor at $150.
-    const fabMin = order.runLocation === "Job Site" ? 600 : 150;
+    const fabMin = order.runLocation === "Job Site" ? 600 : 200;
     // $2/mile one way past 40 miles from the nearest roll-forming base
     const mileage = order.runLocation === "Job Site" ? mileageCharge(order.jobSiteMiles) : 0;
     const base = coilCost + Math.max(fabCost, fabMin) + mileage;
@@ -2471,22 +2481,24 @@ export default function ShopOrderApp() {
     setMilesLookupBusy(false);
   };
 
-  // Fabrication $/LF reference follows the Price List's "Panel Fabrication" row.
+  // Fabrication $/LF reference follows the Price List — profile-specific rows
+  // (e.g. FWQ100 Fabrication) beat the generic Panel Fabrication rate.
   const panelFabPerFt = () => {
-    const fabItem = priceList.find((p) => p.category === "Roof Panel" && p.name.toLowerCase().includes("fabrication") && typeof p.greenleaf === "number");
+    const fabItem = findFabItem(priceList, profile);
     return fabItem ? fabItem.greenleaf : null;
   };
   useEffect(() => {
     const v = panelFabPerFt();
     if (v !== null) setFabPricePerFt(v);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [priceList]);
+  }, [priceList, profile]);
 
   const DEFAULT_PRICE_LIST = [
     // Roof Panel
     { id: "p1", category: "Roof Panel", name: '24 Gauge Coil (per linear ft)', derivedFromMaterialId: "m1", coverageWidth: 16, cost: 0, tier1: 4.10, tier2: 4.55, greenleaf: 3.95 },
     { id: "p2", category: "Roof Panel", name: '26 Gauge Coil (per linear ft)', cost: 0, tier1: 3.30, tier2: 3.65, greenleaf: 3.15 },
     { id: "p1f", category: "Roof Panel", name: 'Panel Fabrication (per linear ft)', cost: 0, tier1: 1.00, tier2: 1.15, greenleaf: 0.65 },
+    { id: "p1f2", category: "Roof Panel", name: 'FWQ100 Fabrication (per linear ft)', cost: 0, tier1: 1.75, tier2: 2.00, greenleaf: 1.50 },
     { id: "p2b", category: "Roof Panel", name: "Flat Sheet Material (per sq ft)", cost: 0, tier1: 1.40, tier2: 1.40, greenleaf: 1.40 },
     { id: "p2c", category: "Roof Panel", name: "Flat Sheet Processing (per sheet)", cost: 0, tier1: 7.50, tier2: 7.50, greenleaf: 7.50 },
     // Trim / Flashing
@@ -3069,7 +3081,7 @@ export default function ShopOrderApp() {
   const activeGauge = findGauge(gaugeId, brand);
   const activePaint = brand === "Copper" ? { mult: 1 } : (PAINT_OPTIONS.find((p) => p.id === paintId) || PAINT_OPTIONS[0]);
   const activePremiumMult = colorObj?.premium ? 1.12 : 1;
-  const activeRates = getSellRates(gaugeId, brand, priceList);
+  const activeRates = getSellRates(gaugeId, brand, priceList, profile);
   const ratePerSqft = activeRates.coilSqft * activePaint.mult * activePremiumMult;
   const activeFlatMaterialItem = priceList?.find((p) => p.name.toLowerCase().includes("flat sheet material") && typeof p.greenleaf === "number");
   const activeFlatProcessingItem = priceList?.find((p) => p.name.toLowerCase().includes("flat sheet processing") && typeof p.greenleaf === "number");
@@ -4572,7 +4584,7 @@ export default function ShopOrderApp() {
                   </div>
                 )}
                 <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
-                  Fabrication minimum: $150 shop-rolled · $600 rolled on site — applied automatically in the order estimate.
+                  Fabrication minimum: $200 shop-rolled · $600 rolled on site — applied automatically in the order estimate.
                 </div>
 
                 <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 10 }}>
