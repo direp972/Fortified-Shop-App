@@ -2321,14 +2321,23 @@ export default function ShopOrderApp() {
   const [tabLoaded, setTabLoaded] = useState(false);
 
   // Remember which section you were last on (personal, not shared — everyone gets their own).
+  // ?view=color deep link (the site's Color Lab button) opens straight to Pick Your
+  // Finish — and wins over the saved last-tab restore below.
+  const deepLinkColor = new URLSearchParams(window.location.search).get("view") === "color";
+  useEffect(() => {
+    if (deepLinkColor) { setTab("order"); setOrderStep("color"); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     (async () => {
       try {
         const res = await storage.get("last-tab", false);
-        if (res?.value) setTab(res.value);
+        if (res?.value && !deepLinkColor) setTab(res.value);
       } catch (e) { /* first time opening, no saved tab yet */ }
       setTabLoaded(true);
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
