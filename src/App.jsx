@@ -4058,13 +4058,15 @@ export default function ShopOrderApp() {
                   style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 4 }}>
                   <ChevronDown size={14} style={{ transform: "rotate(90deg)" }} /> Change Type
                 </button>
-                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ width: 14, height: 14, borderRadius: 4, background: colorObj?.hex || "#ccc", border: "1px solid rgba(0,0,0,0.2)" }} />
-                  <span style={{ fontSize: 10.5, color: theme.textSecondary }}>{brand} — {colorName}</span>
-                  <button onClick={() => setOrderStep("color")}
-                    style={{ border: "none", background: "none", color: SAFETY, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
-                    Edit
-                  </button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: theme.text, lineHeight: 1.3 }}>{brand} — {colorName}</div>
+                    <button onClick={() => setOrderStep("color")}
+                      style={{ border: "none", background: "none", color: SAFETY, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
+                      Edit
+                    </button>
+                  </div>
+                  <span style={{ width: 88, height: 46, borderRadius: 5, background: colorObj?.hex || "#ccc", border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
                 </div>
               </div>
           {/* drawing area */}
