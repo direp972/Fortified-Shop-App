@@ -4456,8 +4456,8 @@ export default function ShopOrderApp() {
                 <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Coil Width (in)
-                    <input type="number" min={1} value={coilWidth}
-                      onChange={(e) => setCoilWidth(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
+                    <input type="number" min={1} max={48} value={coilWidth}
+                      onChange={(e) => setCoilWidth(e.target.value === "" ? "" : Math.max(0, Math.min(48, +e.target.value)))}
                       onBlur={(e) => { if (e.target.value === "") setCoilWidth(24); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
                   </label>
@@ -4475,7 +4475,7 @@ export default function ShopOrderApp() {
                           const newWidth = Math.max(0, +val);
                           const takeup = PROFILE_INFO[profile]?.takeup || 0;
                           setWidth(newWidth);
-                          setCoilWidth(Math.max(0, Math.round((newWidth + takeup) * 100) / 100));
+                          setCoilWidth(Math.max(0, Math.min(48, Math.round((newWidth + takeup) * 100) / 100)));
                         }
                       }}
                       onBlur={(e) => { setWidthEditing(null); if (e.target.value === "") setCoilWidth(24); }}
