@@ -3511,7 +3511,7 @@ export default function ShopOrderApp() {
 
       {/* tabs */}
       <div style={{ display: "flex", background: CHARCOAL, paddingBottom: 0 }}>
-        {[{ id: "order", label: "New Order", icon: PenTool }, { id: "vault", label: "Job Vault", icon: Briefcase }, { id: "past", label: "Past Orders", icon: Clock }, ...(isStaff ? [{ id: "dashboard", label: "Shop Floor", icon: ClipboardList }] : []), { id: "pricelist", label: "Price List", icon: DollarSign }].map((t) => {
+        {[{ id: "order", label: "New Order", icon: PenTool }, { id: "vault", label: "Job Vault", icon: Briefcase }, ...(isStaff ? [{ id: "dashboard", label: "Shop Floor", icon: ClipboardList }] : []), { id: "past", label: "Past Orders", icon: Clock }, { id: "pricelist", label: "Price List", icon: DollarSign }].map((t) => {
           const Icon = t.icon;
           const active = tab === t.id;
           return (
