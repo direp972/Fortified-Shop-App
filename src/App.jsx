@@ -4620,21 +4620,6 @@ export default function ShopOrderApp() {
                 </div>
 
                 <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 10 }}>
-                  Metal Supplied By
-                  <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                    {FAB_COMPANIES.map((c) => (
-                      <button key={c.name} type="button" onClick={() => setSupplierCo(c.name)}
-                        style={{
-                          flex: 1, padding: "7px", borderRadius: 6, fontSize: 12, cursor: "pointer",
-                          border: `1px solid ${supplierCo === c.name ? INK : "#D9D5C7"}`,
-                          background: supplierCo === c.name ? INK : "#fff", color: supplierCo === c.name ? "#fff" : INK_DEEP, fontWeight: 600,
-                        }}>
-                        {c.name}
-                      </button>
-                    ))}
-                  </div>
-                </label>
-                <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 10 }}>
                   Fabricated By
                   <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                     {FAB_COMPANIES.map((c) => (
