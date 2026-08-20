@@ -4600,7 +4600,7 @@ export default function ShopOrderApp() {
                     </label>
                     <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "flex-end" }}>
                       <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                        Miles from Shop (one way)
+                        Miles from Roll Former Shop (one way)
                         <input type="number" min={0} value={jobSiteMiles}
                           onChange={(e) => setJobSiteMiles(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
                           className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
