@@ -4066,7 +4066,10 @@ export default function ShopOrderApp() {
                       Edit
                     </button>
                   </span>
-                  <span style={{ width: 132, height: 46, borderRadius: 5, background: colorObj?.hex || "#ccc", border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2, flexShrink: 0 }}>
+                    <span className="disp" style={{ fontSize: 9.5, color: theme.textSecondary, letterSpacing: "0.06em" }}>Selected Color</span>
+                    <span style={{ width: 132, height: 46, borderRadius: 5, background: colorObj?.hex || "#ccc", border: "1px solid rgba(0,0,0,0.15)" }} />
+                  </div>
                 </div>
               </div>
           {/* drawing area */}
