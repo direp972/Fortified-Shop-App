@@ -90,13 +90,13 @@ const PROFILE_INFO = {
   // coil-width/material-usage specs (checked every data sheet 2026-08-19), so these
   // takeups are estimates borrowed from the equivalent NTM seam geometry above —
   // replace with Adax's real numbers when the shop gets them.
-  'US-100CS – 1" Snap-On Cap Seam': { code: "US-100CS", family: "batten", takeup: 3, vendor: "adax", desc: 'Snap-on cap over a 1" seam; 12–20" pan widths, flat or striated.' },
+  'US-100CS – 1" Snap-On Cap Seam': { code: "US-100CS", family: "batten", takeup: 3, vendor: "adax", delisted: true, desc: 'Snap-on cap over a 1" seam; 12–20" pan widths, flat or striated.' },
   'US-100NS – 1" Nail Strip': { code: "US-100NS", family: "flange", takeup: 3, vendor: "adax", desc: 'Fastener-flange nail strip for roof or siding; Class 4 hail rated.' },
   'US-150 – 1.5" Mechanical Seam': { code: "US-150", family: "mech", takeup: 4.5, vendor: "adax", desc: 'Single- or double-lock mechanical seam; UL-90, curved version available.' },
   'US-150LS – 1.5" Snap-Lock': { code: "US-150LS", family: "snap", takeup: 4.5, vendor: "adax", desc: "Lok-Seam snap-together — no field seaming; HVHZ approved, Class 4 hail." },
   'US-175LS – 1.75" Snap-Lock': { code: "US-175LS", family: "snap", takeup: 4.375, vendor: "adax", desc: "Taller Lok-Seam snap-lock with concealed clips; UL-90, Class A fire." },
   'US-200 – 2" Mechanical Seam': { code: "US-200", family: "mech", takeup: 6, vendor: "adax", desc: 'Heavy 2" mechanical seam for long, low-slope commercial runs; UL-90.' },
-  'US-200SB – 2" Seam + Snap-On Batten': { code: "US-200SB", family: "batten", takeup: 6, vendor: "adax", desc: "US-200 pan with a decorative snap-on batten cap over the seam." },
+  'US-200SB – 2" Seam + Snap-On Batten': { code: "US-200SB", family: "batten", takeup: 6, vendor: "adax", delisted: true, desc: "US-200 pan with a decorative snap-on batten cap over the seam." },
   'US-100FP – 1" Flush Wall / Soffit': { code: "US-100FP", family: "flush", takeup: 4, vendor: "adax", desc: "Flush wall and soffit panel; plain, beaded, or vented versions." },
 };
 // Delisted profiles stay in PROFILE_INFO so old orders and vault items still
