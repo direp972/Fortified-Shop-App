@@ -44,8 +44,8 @@ export default function AuthGate({ children }) {
 
   if (signupDone) {
     return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F4F1EA", fontFamily: "system-ui", padding: 20 }}>
-        <div style={{ maxWidth: 380, textAlign: "center", background: "#fff", borderRadius: 12, padding: 28, boxShadow: "0 2px 10px rgba(0,0,0,0.08)" }}>
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(180deg, #0B1E2C, #0F3D5C)", fontFamily: "'Inter', system-ui, sans-serif", padding: 20 }}>
+        <div style={{ maxWidth: 380, textAlign: "center", background: "#fff", borderRadius: 16, padding: 28, boxShadow: "0 30px 80px rgba(0,0,0,0.5)" }}>
           <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 10, color: INK }}>Check your email</div>
           <div style={{ fontSize: 13.5, color: "#555", lineHeight: 1.5 }}>
             We sent a confirmation link to <strong>{email}</strong>. Click it, then come back and sign in.
@@ -60,9 +60,9 @@ export default function AuthGate({ children }) {
   }
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#F4F1EA", fontFamily: "system-ui", padding: 20 }}>
-      <form onSubmit={handleSubmit} style={{ width: "100%", maxWidth: 380, background: "#fff", borderRadius: 12, padding: 28, boxShadow: "0 2px 10px rgba(0,0,0,0.08)" }}>
-        <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 4, color: INK, textAlign: "center" }}>RoofCoil.com Tools</div>
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(180deg, #0B1E2C, #0F3D5C)", fontFamily: "'Inter', system-ui, sans-serif", padding: 20 }}>
+      <form onSubmit={handleSubmit} style={{ width: "100%", maxWidth: 380, background: "#fff", borderRadius: 16, padding: 28, boxShadow: "0 30px 80px rgba(0,0,0,0.5)" }}>
+        <div style={{ fontFamily: "'Oswald', sans-serif", textTransform: "uppercase", letterSpacing: "0.03em", fontSize: 22, fontWeight: 700, marginBottom: 4, color: "#0A2B41", textAlign: "center" }}>RoofCoil.com Tools</div>
         <div style={{ fontSize: 12.5, color: "#777", marginBottom: 22, textAlign: "center" }}>
           {mode === "signin" ? "Sign in to place or view orders" : "Create an account to get started"}
         </div>

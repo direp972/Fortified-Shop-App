@@ -8,8 +8,8 @@ import { useAuth } from "./lib/AuthProvider";
 /* ---------------------------------- tokens ---------------------------------- */
 const INK = "#0F3D5C";        // blueprint ink
 const INK_DEEP = "#0A2B41";
-const CHARCOAL = "#1C2126";
-const PAPER = "#F4F2EA";
+const CHARCOAL = "#0B1E2C";   // matches roofcoil.com --night so the app reads as part of the site
+const PAPER = "#F6F4EE";      // matches roofcoil.com --paper
 const STEEL = "#8A94A6";
 const SAFETY = "#D4AF37";     // gold accent (was orange)
 const AMBER = "#EFA623";      // brighter gold
@@ -3245,7 +3245,7 @@ export default function ShopOrderApp() {
       `}</style>
 
       {/* header */}
-      <div style={{ background: `linear-gradient(135deg, ${CHARCOAL}, #0F2C3F)`, padding: "18px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+      <div style={{ background: `linear-gradient(135deg, ${CHARCOAL}, ${INK})`, borderBottom: `1px solid rgba(212,175,55,0.25)`, padding: "18px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div className="disp" style={{ color: "#fff", fontSize: 20, fontWeight: 700 }}>Panel &amp; Trim Calculator</div>
           <div className="mono" style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>Shop Order Portal</div>
