@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer } from "lucide-react";
+import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase } from "lucide-react";
 import * as THREE from "three";
 import { storage } from "./lib/storage";
 import { supabase } from "./lib/supabaseClient";
@@ -2319,6 +2319,13 @@ export default function ShopOrderApp() {
   const [submitting, setSubmitting] = useState(false);
   const [basket, setBasket] = useState([]);
   const [tabLoaded, setTabLoaded] = useState(false);
+  // Job Vault — each member's saved trim/panel configs (Supabase vault_items, owner-only)
+  const [vaultItems, setVaultItems] = useState([]);
+  const [vaultLoaded, setVaultLoaded] = useState(false);
+  const [vaultSaveOpen, setVaultSaveOpen] = useState(false);
+  const [vaultJobName, setVaultJobName] = useState("");
+  const [vaultExpanded, setVaultExpanded] = useState({});
+  const [savingVault, setSavingVault] = useState(false);
 
   // Remember which section you were last on (personal, not shared — everyone gets their own).
   // ?view=color deep link (the site's Color Lab button) opens straight to Pick Your
@@ -2370,6 +2377,16 @@ export default function ShopOrderApp() {
     try { await storage.set("shop-orders", JSON.stringify(next), true); }
     catch (e) { console.error("storage error", e); }
   };
+
+  // Load this member's Job Vault (RLS limits rows to their own).
+  useEffect(() => {
+    if (!user) return;
+    (async () => {
+      const { data, error } = await supabase.from("vault_items").select("*").order("created_at", { ascending: false });
+      if (!error) setVaultItems(data || []);
+      setVaultLoaded(true);
+    })();
+  }, [user]);
 
   const DEFAULT_PRICE_LIST = [
     // Roof Panel
@@ -2999,13 +3016,15 @@ export default function ShopOrderApp() {
       setColorName(nextColors[0].name);
     }
   };
+  // brand matters: Copper/G90/Galvalume/Bonderized price from their own rate tables,
+  // and submitOrder computes the real order price WITH brand — the estimate must match it.
   const draft = shapeType === "panel"
-    ? { type: "panel", width, height, quantity, gaugeId, paintId, colorName }
+    ? { type: "panel", width, height, quantity, gaugeId, paintId, brand, colorName }
     : shapeType === "metal"
-    ? { type: "metal", flatWidth, flatLength, coilWidth: metalCoilWidth, coilLength: metalCoilLength, quantity, gaugeId, paintId, colorName }
+    ? { type: "metal", flatWidth, flatLength, coilWidth: metalCoilWidth, coilLength: metalCoilLength, quantity, gaugeId, paintId, brand, colorName }
     : shapeType === "part3d"
-    ? { type: "part3d", partType, partW, partD, partH, partCapH, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, quantity, gaugeId, paintId, colorName }
-    : { type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, colorName };
+    ? { type: "part3d", partType, partW, partD, partH, partCapH, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, quantity, gaugeId, paintId, brand, colorName }
+    : { type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, brand, colorName };
   const estimate = computePrice(draft, priceList, coilWidthScale);
   const girth = points.reduce((s, p, i) => s + (i > 0 ? dist(points[i - 1], p) : 0), 0);
   const partsPerSheet = girth > 0 ? Math.floor(sheetWidth / girth) : 0;
@@ -3041,7 +3060,7 @@ export default function ShopOrderApp() {
       points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
       girth, partsPerSheet, sheetsNeeded, dropWidth, photo: partPhoto,
       gaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
-      price: computePrice({ type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, colorName }, priceList, coilWidthScale),
+      price: computePrice({ type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, brand, colorName }, priceList, coilWidthScale),
     };
     setBasket((b) => [...b, item]);
     clearDrawing();
@@ -3192,6 +3211,186 @@ export default function ShopOrderApp() {
     setTimeout(() => setToast(""), 5000);
   };
 
+  /* ---------- Job Vault ---------- */
+  const vaultCurrentPrice = (item) => computePrice(item.payload || {}, priceList, coilWidthScale);
+  // An item alerts when today's price is above the last price the member acknowledged
+  // (or the price at save time, if they never dismissed an alert).
+  const vaultIncrease = (item) => {
+    const cur = vaultCurrentPrice(item);
+    const ref = item.acked_price != null ? Number(item.acked_price) : Number(item.saved_price);
+    return cur - ref > 0.005 ? cur - ref : 0;
+  };
+  // Until the price list arrives, computePrice runs on hardcoded fallback rates —
+  // don't raise (or count) price alerts against those transient numbers.
+  const vaultAlertCount = priceListLoaded ? vaultItems.filter((v) => vaultIncrease(v) > 0).length : 0;
+  const vaultJobNames = [...new Set(vaultItems.map((v) => v.job_name))];
+
+  const vaultItemLabel = (v) => {
+    const p = v.payload || {};
+    if (p.type === "trim") return p.partName || "Trim part";
+    if (p.type === "panel") return p.profile || "Roof panel";
+    if (p.type === "metal") return "Flat sheet + coil";
+    if (p.type === "part3d") return PART3D_LABELS[p.partType] || "3D part";
+    return "Saved item";
+  };
+
+  // Mirrors submitOrder's item construction, minus customer/status fields — the payload
+  // is order-shaped so computePrice and ShapeThumb both accept it as-is.
+  const buildVaultPayloads = () => {
+    if (shapeType === "trim") {
+      const parts = [...basket];
+      if (points.length >= 2) {
+        parts.push({
+          name: partName.trim() || `Part ${basket.length + 1}`,
+          points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
+          gaugeId, paintId, brand, colorName, colorHex: colorObj.hex, photo: partPhoto,
+        });
+      }
+      return parts.map((it, idx) => ({
+        type: "trim", partName: it.name, points: it.points, lengthPerPiece: it.lengthPerPiece,
+        hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide, quantity: it.quantity,
+        sheetWidth: it.sheetWidth, gaugeId: it.gaugeId, paintId: it.paintId, brand: it.brand,
+        colorName: it.colorName, colorHex: it.colorHex, photo: it.photo || null,
+        accessories: idx === 0 && accessories.length > 0 ? accessories : undefined,
+      }));
+    }
+    const isMetal = shapeType === "metal";
+    const isPart3d = shapeType === "part3d";
+    return [{
+      type: shapeType,
+      profile: isMetal || isPart3d ? undefined : profile,
+      width: isMetal || isPart3d ? undefined : width,
+      height: isMetal || isPart3d ? undefined : height,
+      coilWidth: isMetal ? metalCoilWidth : shapeType === "panel" ? coilWidth : undefined,
+      flatWidth: isMetal ? flatWidth : undefined,
+      flatLength: isMetal ? flatLength : undefined,
+      coilLength: isMetal ? metalCoilLength : undefined,
+      ribStyle: shapeType === "panel" ? ribStyle : undefined,
+      clipRelief: shapeType === "panel" ? clipRelief : undefined,
+      runLocation: shapeType === "panel" ? runLocation : undefined,
+      jobSiteAddress: shapeType === "panel" && runLocation === "Job Site" ? jobSiteAddress.trim() : undefined,
+      partType: isPart3d ? partType : undefined,
+      partW: isPart3d ? partW : undefined,
+      partD: isPart3d ? partD : undefined,
+      partH: isPart3d ? partH : undefined,
+      partCapH: isPart3d && partType === "chimney" ? partCapH : undefined,
+      capStyle: isPart3d && partType === "chimney" ? capStyle : undefined,
+      outletShape: isPart3d && partType === "collector" ? outletShape : undefined,
+      flangeW: isPart3d && partType === "collector" && outletShape === "box" ? flangeW : undefined,
+      flangeD: isPart3d && partType === "collector" && outletShape === "box" ? flangeD : undefined,
+      flangeTapered: isPart3d && partType === "collector" && outletShape === "box" ? flangeTapered : undefined,
+      flangeLength: isPart3d && partType === "collector" && outletShape === "box" ? flangeLength : undefined,
+      outletRoundTapered: isPart3d && partType === "collector" && outletShape === "round" ? outletRoundTapered : undefined,
+      outletDiameter: isPart3d && partType === "collector" && outletShape === "round" ? outletDiameter : undefined,
+      outletLength: isPart3d && partType === "collector" && outletShape === "round" ? outletLength : undefined,
+      topTrim: isPart3d && partType === "collector" ? topTrim : undefined,
+      bodyTaper: isPart3d && partType === "collector" ? bodyTaper : undefined,
+      taperStart: isPart3d && partType === "collector" && bodyTaper ? taperStart : undefined,
+      taperLength: isPart3d && partType === "collector" && bodyTaper ? taperLength : undefined,
+      accessories: !isPart3d && accessories.length > 0 ? accessories : undefined,
+      quantity, gaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
+    }];
+  };
+
+  const saveToVault = async (jobNameRaw) => {
+    if (!priceListLoaded) { setToast("Still loading current prices — try again in a second."); setTimeout(() => setToast(""), 3000); return; }
+    const jobName = (jobNameRaw || "").trim() || "My Job";
+    const payloads = buildVaultPayloads();
+    if (payloads.length === 0) { setToast("Nothing to save yet — draw a part or set up a panel first."); setTimeout(() => setToast(""), 3000); return; }
+    setSavingVault(true);
+    const rows = payloads.map((p) => ({
+      user_id: user.id,
+      job_name: jobName,
+      kind: p.type,
+      payload: p,
+      saved_price: computePrice(p, priceList, coilWidthScale),
+    }));
+    const { data, error } = await supabase.from("vault_items").insert(rows).select();
+    setSavingVault(false);
+    if (error) { setToast("Couldn't save to your vault — check your connection and try again."); setTimeout(() => setToast(""), 4000); return; }
+    setVaultItems((prev) => [...(data || []), ...prev]);
+    setVaultSaveOpen(false);
+    setVaultJobName("");
+    setToast(`Saved ${rows.length === 1 ? "1 item" : `${rows.length} items`} to "${jobName}" in your Job Vault.`);
+    setTimeout(() => setToast(""), 4000);
+  };
+
+  const deleteVaultItem = async (id) => {
+    setVaultItems((prev) => prev.filter((v) => v.id !== id));
+    await supabase.from("vault_items").delete().eq("id", id);
+  };
+  const deleteVaultJob = async (jobName) => {
+    const ids = vaultItems.filter((v) => v.job_name === jobName).map((v) => v.id);
+    setVaultItems((prev) => prev.filter((v) => v.job_name !== jobName));
+    await supabase.from("vault_items").delete().in("id", ids);
+  };
+  const ackVaultItem = async (item) => {
+    const cur = vaultCurrentPrice(item);
+    setVaultItems((prev) => prev.map((v) => (v.id === item.id ? { ...v, acked_price: cur } : v)));
+    await supabase.from("vault_items").update({ acked_price: cur }).eq("id", item.id);
+  };
+
+  // Restore a saved item back into the order flow so the member can adjust and send it.
+  const loadVaultItem = (item) => {
+    const p = item.payload || {};
+    const kind = p.type || item.kind;
+    setTab("order");
+    setShapeType(kind);
+    setOrderStep("details");
+    setMaterialCategory(UNPAINTED_MATERIALS.includes(p.brand) ? "unpainted" : "painted");
+    if (p.gaugeId) setGaugeId(p.gaugeId);
+    if (p.paintId) setPaintId(p.paintId);
+    // brand then color directly — handleBrandChange would reset the color
+    if (p.brand) setBrand(p.brand);
+    if (p.colorName) setColorName(p.colorName);
+    if (p.quantity != null) setQuantity(p.quantity);
+    setAccessories(Array.isArray(p.accessories) ? p.accessories : []);
+    if (kind === "trim") {
+      setPoints(Array.isArray(p.points) ? p.points : []);
+      setHemStart(p.hemStart || "none"); setHemEnd(p.hemEnd || "none");
+      setPaintSide(p.paintSide || "left");
+      setPartName(p.partName || "");
+      setPartPhoto(p.photo || null);
+      if (p.lengthPerPiece != null) setLengthPerPiece(p.lengthPerPiece);
+      if (p.sheetWidth != null) setSheetWidth(p.sheetWidth);
+      setViewResetKey((k) => k + 1);
+    } else if (kind === "panel") {
+      if (p.profile) setProfile(p.profile);
+      if (p.coilWidth != null) setCoilWidth(p.coilWidth); // width re-derives from coilWidth + profile
+      if (p.height != null) setHeight(p.height);
+      setRibStyle(p.ribStyle ?? null);
+      setClipRelief(p.clipRelief ?? null);
+      setRunLocation(p.runLocation || "Shop");
+      setJobSiteAddress(p.jobSiteAddress || "");
+    } else if (kind === "metal") {
+      if (p.flatWidth != null) setFlatWidth(p.flatWidth);
+      if (p.flatLength != null) setFlatLength(p.flatLength);
+      if (p.coilWidth != null) setMetalCoilWidth(p.coilWidth);
+      if (p.coilLength != null) setMetalCoilLength(p.coilLength);
+    } else if (kind === "part3d") {
+      if (p.partType) setPartType(p.partType);
+      if (p.partW != null) setPartW(p.partW);
+      if (p.partD != null) setPartD(p.partD);
+      if (p.partH != null) setPartH(p.partH);
+      if (p.partCapH != null) setPartCapH(p.partCapH);
+      if (p.capStyle) setCapStyle(p.capStyle);
+      if (p.outletShape) setOutletShape(p.outletShape);
+      if (p.flangeW != null) setFlangeW(p.flangeW);
+      if (p.flangeD != null) setFlangeD(p.flangeD);
+      if (p.flangeTapered != null) setFlangeTapered(p.flangeTapered);
+      if (p.flangeLength != null) setFlangeLength(p.flangeLength);
+      if (p.outletRoundTapered != null) setOutletRoundTapered(p.outletRoundTapered);
+      if (p.outletDiameter != null) setOutletDiameter(p.outletDiameter);
+      if (p.outletLength != null) setOutletLength(p.outletLength);
+      if (p.topTrim != null) setTopTrim(p.topTrim);
+      if (p.bodyTaper != null) setBodyTaper(p.bodyTaper);
+      if (p.taperStart != null) setTaperStart(p.taperStart);
+      if (p.taperLength != null) setTaperLength(p.taperLength);
+    }
+    setToast(`Loaded "${vaultItemLabel(item)}" from your Job Vault — adjust anything and send when ready.`);
+    setTimeout(() => setToast(""), 4000);
+  };
+
   const updateStatus = async (id, status) => {
     await saveOrders(orders.map((o) => (o.id === id ? { ...o, status } : o)));
   };
@@ -3281,7 +3480,7 @@ export default function ShopOrderApp() {
 
       {/* tabs */}
       <div style={{ display: "flex", background: CHARCOAL, paddingBottom: 0 }}>
-        {[{ id: "order", label: "New Order", icon: PenTool }, ...(isStaff ? [{ id: "dashboard", label: "Shop Floor", icon: ClipboardList }] : []), { id: "pricelist", label: "Price List", icon: DollarSign }].map((t) => {
+        {[{ id: "order", label: "New Order", icon: PenTool }, { id: "vault", label: "Job Vault", icon: Briefcase }, ...(isStaff ? [{ id: "dashboard", label: "Shop Floor", icon: ClipboardList }] : []), { id: "pricelist", label: "Price List", icon: DollarSign }].map((t) => {
           const Icon = t.icon;
           const active = tab === t.id;
           return (
@@ -3295,6 +3494,9 @@ export default function ShopOrderApp() {
                 fontSize: 13, fontWeight: 600, cursor: "pointer",
               }}>
               <Icon size={15} /> {t.label}
+              {t.id === "vault" && vaultAlertCount > 0 && (
+                <span className="mono" style={{ background: AMBER, color: "#fff", borderRadius: 999, fontSize: 9, padding: "1px 6px", fontWeight: 700 }}>▲{vaultAlertCount}</span>
+              )}
             </button>
           );
         })}
@@ -4584,6 +4786,42 @@ export default function ShopOrderApp() {
               {submitting ? "Sending…" : "🚀 Send Order"}
             </button>
           </div>
+          {user && (
+            <div style={{ marginTop: 8 }}>
+              {!vaultSaveOpen ? (
+                <button onClick={() => { setVaultJobName(""); setVaultSaveOpen(true); }} className="tap-bounce"
+                  style={{ width: "100%", padding: "10px", borderRadius: 10, border: `1.5px dashed ${SAFETY}`, background: "transparent", color: theme.text, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+                  🧰 Save to Job Vault — keep this for later
+                </button>
+              ) : (
+                <div className="pop-in" style={{ background: theme.card, borderRadius: 10, padding: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+                  <div className="disp" style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 6 }}>Save to which job?</div>
+                  {vaultJobNames.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 8 }}>
+                      {vaultJobNames.map((n) => (
+                        <button key={n} onClick={() => saveToVault(n)} disabled={savingVault}
+                          style={{ padding: "6px 12px", borderRadius: 999, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <input value={vaultJobName} onChange={(e) => setVaultJobName(e.target.value)} placeholder="New job name — e.g. Smith Residence"
+                      style={{ flex: 1, padding: "8px", border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, boxSizing: "border-box" }} />
+                    <button onClick={() => saveToVault(vaultJobName)} disabled={savingVault}
+                      style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: SAFETY, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", opacity: savingVault ? 0.7 : 1 }}>
+                      {savingVault ? "Saving…" : "Save"}
+                    </button>
+                    <button onClick={() => setVaultSaveOpen(false)}
+                      style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${theme.border}`, background: "transparent", color: theme.textSecondary, fontSize: 12.5, cursor: "pointer" }}>
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 8, textAlign: "center" }}>
             Estimate only — final pricing confirmed by the shop. Orders are visible to shop staff.
           </div>
@@ -5048,6 +5286,117 @@ export default function ShopOrderApp() {
               </div>
             </>
           )}
+        </div>
+      ) : tab === "vault" ? (
+        <div style={{ padding: 16, maxWidth: 640, margin: "0 auto" }}>
+          <div className="disp" style={{ fontSize: 16, fontWeight: 700, color: theme.text, marginBottom: 2 }}>🧰 Job Vault</div>
+          <div style={{ fontSize: 11.5, color: theme.textSecondary, marginBottom: 14 }}>
+            Trim and panels saved by job — reference them anytime, load one back into an order, and get flagged when shop prices change.
+          </div>
+
+          {vaultAlertCount > 0 && (
+            <div className="pop-in" style={{ background: "linear-gradient(90deg, #FBF3D9, #F5E6C3)", borderLeft: `4px solid ${AMBER}`, borderRadius: 8, padding: "10px 12px", marginBottom: 14, fontSize: 12.5, fontWeight: 600, color: INK_DEEP }}>
+              ▲ Prices went up on {vaultAlertCount} saved item{vaultAlertCount === 1 ? "" : "s"} since you last checked — marked below.
+            </div>
+          )}
+
+          {!vaultLoaded || !priceListLoaded ? (
+            <div style={{ color: theme.textSecondary, fontSize: 13, padding: 20, textAlign: "center" }}>Loading your vault…</div>
+          ) : vaultItems.length === 0 ? (
+            <div style={{ background: theme.card, borderRadius: 10, padding: 24, textAlign: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
+              <div style={{ fontSize: 30, marginBottom: 8 }}>🧰</div>
+              <div style={{ fontSize: 13.5, fontWeight: 700, color: theme.text, marginBottom: 4 }}>Nothing saved yet</div>
+              <div style={{ fontSize: 12, color: theme.textSecondary, lineHeight: 1.6 }}>
+                Build a trim profile or panel in New Order, then hit "Save to Job Vault" next to the estimate. Everything you save lands here, grouped by job — and we'll flag it if shop prices go up.
+              </div>
+            </div>
+          ) : (
+            vaultJobNames.map((jobName) => {
+              const items = vaultItems.filter((v) => v.job_name === jobName);
+              const savedTotal = items.reduce((s, v) => s + Number(v.saved_price), 0);
+              const curTotal = items.reduce((s, v) => s + vaultCurrentPrice(v), 0);
+              const open = vaultExpanded[jobName] !== false;
+              const jobAlerts = items.filter((v) => vaultIncrease(v) > 0).length;
+              return (
+                <div key={jobName} style={{ background: theme.card, borderRadius: 10, marginBottom: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", overflow: "hidden" }}>
+                  <div onClick={() => setVaultExpanded((e) => ({ ...e, [jobName]: !open }))}
+                    style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer", borderBottom: open ? `1px solid ${theme.border}` : "none" }}>
+                    <Briefcase size={16} color={SAFETY} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="disp" style={{ fontSize: 13.5, fontWeight: 700, color: theme.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{jobName}</div>
+                      <div className="mono" style={{ fontSize: 10, color: theme.textSecondary }}>
+                        {items.length} item{items.length === 1 ? "" : "s"} · saved {money(savedTotal)}{Math.abs(curTotal - savedTotal) > 0.005 ? ` · today ${money(curTotal)}` : ""}
+                      </div>
+                    </div>
+                    {jobAlerts > 0 && (
+                      <span className="mono" style={{ background: AMBER, color: "#fff", borderRadius: 999, fontSize: 9.5, padding: "2px 8px", fontWeight: 700 }}>▲ {jobAlerts}</span>
+                    )}
+                    {open ? <ChevronUp size={15} color={STEEL} /> : <ChevronDown size={15} color={STEEL} />}
+                  </div>
+                  {open && (
+                    <div style={{ padding: "4px 14px 10px" }}>
+                      {items.map((v) => {
+                        const cur = vaultCurrentPrice(v);
+                        const inc = vaultIncrease(v);
+                        const saved = Number(v.saved_price);
+                        return (
+                          <div key={v.id} style={{ display: "flex", gap: 10, alignItems: "center", padding: "9px 0", borderBottom: `1px dotted ${theme.border}` }}>
+                            <ShapeThumb order={v.payload} size={44} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{vaultItemLabel(v)}</div>
+                              <div className="mono" style={{ fontSize: 9.5, color: theme.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                Qty {v.payload?.quantity ?? 1} · {v.payload?.gaugeId || ""} · {v.payload?.colorName || ""} · saved {new Date(v.created_at).toLocaleDateString()}
+                              </div>
+                              {inc > 0 && (
+                                <div className="mono" style={{ fontSize: 9.5, color: AMBER, fontWeight: 700, marginTop: 2 }}>
+                                  ▲ Up {money(inc)} since you saved it
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ textAlign: "right", flexShrink: 0 }}>
+                              {inc > 0 ? (
+                                <>
+                                  <div className="mono" style={{ fontSize: 9.5, color: theme.textSecondary, textDecoration: "line-through" }}>{money(saved)}</div>
+                                  <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: AMBER }}>{money(cur)}</div>
+                                </>
+                              ) : (
+                                <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{money(cur)}</div>
+                              )}
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+                              <button onClick={() => loadVaultItem(v)} className="tap-bounce"
+                                style={{ padding: "5px 10px", borderRadius: 7, border: "none", background: `linear-gradient(135deg, ${SAFETY}, #F0C955)`, color: "#fff", fontSize: 10.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                Load
+                              </button>
+                              {inc > 0 && (
+                                <button onClick={() => ackVaultItem(v)} title="Dismiss this price alert"
+                                  style={{ padding: "4px 8px", borderRadius: 7, border: `1px solid ${theme.border}`, background: "transparent", color: theme.textSecondary, fontSize: 9.5, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                  Got it
+                                </button>
+                              )}
+                            </div>
+                            <button onClick={() => deleteVaultItem(v.id)} title="Remove from vault"
+                              style={{ border: "none", background: "none", color: theme.textSecondary, cursor: "pointer", padding: 2, display: "flex", flexShrink: 0 }}>
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        );
+                      })}
+                      <div style={{ textAlign: "right", marginTop: 6 }}>
+                        <button onClick={() => { if (window.confirm(`Remove "${jobName}" and its ${items.length} saved item${items.length === 1 ? "" : "s"}?`)) deleteVaultJob(jobName); }}
+                          style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 10, cursor: "pointer", textDecoration: "underline" }}>
+                          Delete this job
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+          <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4, textAlign: "center" }}>
+            Vault prices follow the shop's current price list — the shop still confirms final pricing on every order.
+          </div>
         </div>
       ) : (
         <div style={{ padding: 16, maxWidth: 640, margin: "0 auto" }}>
