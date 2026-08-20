@@ -818,13 +818,13 @@ function coilPriceForWidth(widthIn, scale) {
 
 function getSellRates(gaugeId, brand, priceList) {
   const gauge = findGauge(gaugeId, brand);
-  const fallback = { coilSqft: gauge.panelSqft, panelSqft: gauge.panelSqft, trimFt: gauge.trimFt };
+  const fallback = { coilSqft: gauge.panelSqft, panelSqft: gauge.panelSqft, fabSqft: 0, trimFt: gauge.trimFt };
   if (!priceList || priceList.length === 0) return fallback;
 
   if (brand === "Copper") {
     const item = priceList.find((p) => p.category === "Copper" && p.name.toLowerCase().includes(gauge.label.toLowerCase()) && typeof p.greenleaf === "number");
     const coilSqft = item ? item.greenleaf : fallback.coilSqft;
-    return { coilSqft, panelSqft: coilSqft, trimFt: fallback.trimFt };
+    return { coilSqft, panelSqft: coilSqft, fabSqft: 0, trimFt: fallback.trimFt };
   }
   if (["G90 Galvanized", "Galvalume", "Bonderized"].includes(brand)) {
     return fallback; // not in the Price List yet
@@ -844,7 +844,7 @@ function getSellRates(gaugeId, brand, priceList) {
   const fabSqft = fabItem ? fabItem.greenleaf / (coilWidthIn / 12) : 0;
   const panelSqft = coilSqft + fabSqft;
   const trimFt = trimItem ? trimItem.greenleaf : fallback.trimFt;
-  return { coilSqft, panelSqft, trimFt };
+  return { coilSqft, panelSqft, fabSqft, trimFt };
 }
 
 function computePrice(order, priceList, coilWidthScale) {
@@ -895,7 +895,12 @@ function computePrice(order, priceList, coilWidthScale) {
     return Math.max(20, base * premiumMult + 20);
   } else if (order.type === "panel") {
     const sqft = (order.width * order.height) / 144;
-    const base = sqft * rates.panelSqft * paint.mult * order.quantity;
+    const coilCost = sqft * rates.coilSqft * paint.mult * order.quantity;
+    const fabCost = sqft * (rates.fabSqft || 0) * paint.mult * order.quantity;
+    // Fabrication minimums: hauling the roll former to a job site floors the
+    // fabrication charge at $600; shop-rolled runs floor at $150.
+    const fabMin = order.runLocation === "Job Site" ? 600 : 150;
+    const base = coilCost + Math.max(fabCost, fabMin);
     return Math.max(15, base * premiumMult + 15);
   } else {
     const points = order.points || [];
@@ -3047,7 +3052,7 @@ export default function ShopOrderApp() {
   // brand matters: Copper/G90/Galvalume/Bonderized price from their own rate tables,
   // and submitOrder computes the real order price WITH brand — the estimate must match it.
   const draft = shapeType === "panel"
-    ? { type: "panel", width, height, quantity, gaugeId, paintId, brand, colorName }
+    ? { type: "panel", width, height, quantity, gaugeId, paintId, brand, colorName, runLocation }
     : shapeType === "metal"
     ? { type: "metal", flatWidth, flatLength, coilWidth: metalCoilWidth, coilLength: metalCoilLength, quantity, gaugeId, paintId, brand, colorName }
     : shapeType === "part3d"
@@ -4479,6 +4484,9 @@ export default function ShopOrderApp() {
                       {money(((+coilPricePerFt || 0) + (+fabPricePerFt || 0)) * ((+height || 0) / 12))}
                     </div>
                   </label>
+                </div>
+                <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
+                  Fabrication minimum: $150 shop-rolled · $600 rolled on site — applied automatically in the order estimate.
                 </div>
 
                 <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 10 }}>
