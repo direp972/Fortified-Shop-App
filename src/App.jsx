@@ -2255,6 +2255,7 @@ export default function ShopOrderApp() {
   const [sqftEditing, setSqftEditing] = useState(null);
   const [widthEditing, setWidthEditing] = useState(null);
   const [coilPricePerFt, setCoilPricePerFt] = useState(2.5);
+  const [fabPricePerFt, setFabPricePerFt] = useState(0);
   const [runLocation, setRunLocation] = useState("Shop");
   const [jobSiteAddress, setJobSiteAddress] = useState("");
   const [ribStyle, setRibStyle] = useState(null);
@@ -2402,6 +2403,17 @@ export default function ShopOrderApp() {
     if (v !== null) setCoilPricePerFt(v);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coilWidth, paintId, brand, coilWidthScale]);
+
+  // Fabrication $/LF reference follows the Price List's "Panel Fabrication" row.
+  const panelFabPerFt = () => {
+    const fabItem = priceList.find((p) => p.category === "Roof Panel" && p.name.toLowerCase().includes("fabrication") && typeof p.greenleaf === "number");
+    return fabItem ? fabItem.greenleaf : null;
+  };
+  useEffect(() => {
+    const v = panelFabPerFt();
+    if (v !== null) setFabPricePerFt(v);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [priceList]);
 
   const DEFAULT_PRICE_LIST = [
     // Roof Panel
@@ -4448,16 +4460,23 @@ export default function ShopOrderApp() {
 
                 <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                    Coil $/Linear Ft
+                    Coil $/LF
                     <input type="number" min={0} step="0.01" value={coilPricePerFt}
                       onChange={(e) => setCoilPricePerFt(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
                       onBlur={(e) => { if (e.target.value === "") setCoilPricePerFt(panelCoilPerFt() ?? 2.5); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                    Fabrication $/LF
+                    <input type="number" min={0} step="0.01" value={fabPricePerFt}
+                      onChange={(e) => setFabPricePerFt(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
+                      onBlur={(e) => { if (e.target.value === "") setFabPricePerFt(panelFabPerFt() ?? 0); }}
+                      className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
+                  </label>
+                  <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Total Price
                     <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.highlight, boxSizing: "border-box", color: theme.text, fontWeight: 600 }}>
-                      {money((+coilPricePerFt || 0) * ((+height || 0) / 12))}
+                      {money(((+coilPricePerFt || 0) + (+fabPricePerFt || 0)) * ((+height || 0) / 12))}
                     </div>
                   </label>
                 </div>
