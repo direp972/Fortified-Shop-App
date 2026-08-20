@@ -2362,20 +2362,36 @@ export default function ShopOrderApp() {
     if (priceListView === "backend" && !isStaff) setPriceListView("customer");
   }, [priceListView, isStaff]);
 
+  // Orders live in their own table (not the shared app_storage blob) — RLS shows
+  // customers only their own orders, staff see everything.
   useEffect(() => {
     (async () => {
       try {
-        const res = await storage.get("shop-orders", true);
-        if (res?.value) setOrders(JSON.parse(res.value));
+        const { data, error } = await supabase.from("orders").select("id, user_id, data").order("created_at", { ascending: false });
+        if (!error && data) setOrders(data.map((r) => ({ ...r.data, userId: r.user_id })));
       } catch (e) { /* no orders yet */ }
       setLoaded(true);
     })();
   }, []);
 
-  const saveOrders = async (next) => {
-    setOrders(next);
-    try { await storage.set("shop-orders", JSON.stringify(next), true); }
-    catch (e) { console.error("storage error", e); }
+  const insertOrders = async (newOrders) => {
+    setOrders((prev) => [...newOrders, ...prev]);
+    const rows = newOrders.map((o) => ({ id: o.id, user_id: user?.id || null, data: o, created_at: o.createdAt }));
+    const { error } = await supabase.from("orders").insert(rows);
+    if (error) {
+      console.error("orders insert error", error);
+      setToast("⚠️ Order didn't save — check your connection and try again.");
+      setTimeout(() => setToast(""), 4000);
+    }
+  };
+
+  const updateOrderRows = async (patched) => {
+    setOrders((prev) => prev.map((o) => patched.find((p) => p.id === o.id) || o));
+    for (const o of patched) {
+      const { userId, ...data } = o;
+      const { error } = await supabase.from("orders").update({ data }).eq("id", o.id);
+      if (error) console.error("orders update error", error);
+    }
   };
 
   // Load this member's Job Vault (RLS limits rows to their own).
@@ -2965,7 +2981,7 @@ export default function ShopOrderApp() {
     ];
     const poByJob = { [jobDave]: "PO-1001", [jobPriya]: "PO-1002", [jobMarcus]: "PO-1003", [jobTammy]: "PO-1004" };
     samples.forEach((o) => { o.poNumber = poByJob[o.jobId]; });
-    await saveOrders([...samples, ...orders]);
+    await insertOrders(samples);
     setToast(`Added ${samples.length} sample orders across 4 jobs to the Shop Floor.`);
     setTimeout(() => setToast(""), 4000);
   };
@@ -3088,7 +3104,13 @@ export default function ShopOrderApp() {
     ? basketTotal + (points.length >= 2 ? estimate : 0)
     : estimate;
 
-  const nextPoNumber = () => {
+  // PO numbers come from a server-side counter — customers only see their own
+  // orders now, so a client-side count would collide across accounts.
+  const nextPoNumber = async () => {
+    try {
+      const { data, error } = await supabase.rpc("next_po_number");
+      if (!error && data) return data;
+    } catch (e) {}
     const distinctJobs = new Set(orders.map((o) => o.jobId).filter(Boolean));
     return `PO-${1000 + distinctJobs.size + 1}`;
   };
@@ -3112,7 +3134,7 @@ export default function ShopOrderApp() {
       if (items.length === 0) { setToast("Draw at least two points, or add a part to the order first."); return; }
       setSubmitting(true);
       const jobId = uid();
-      const poNumber = nextPoNumber();
+      const poNumber = await nextPoNumber();
       const newOrders = items.map((it, idx) => {
         const order = {
           id: uid(),
@@ -3143,7 +3165,7 @@ export default function ShopOrderApp() {
         order.price = computePrice(order, priceList, coilWidthScale);
         return order;
       });
-      await saveOrders([...newOrders, ...orders]);
+      await insertOrders(newOrders);
       setSubmitting(false);
       const totalPrice = newOrders.reduce((s, o) => s + o.price, 0);
       setToast(`Order sent — ${newOrders.length} part${newOrders.length === 1 ? "" : "s"}, estimate ${money(totalPrice)}. The shop will confirm final pricing.`);
@@ -3159,7 +3181,7 @@ export default function ShopOrderApp() {
     const order = {
       id: uid(),
       jobId: uid(),
-      poNumber: nextPoNumber(),
+      poNumber: await nextPoNumber(),
       type: shapeType,
       customerName: customerName.trim(),
       phone: phone.trim(),
@@ -3204,7 +3226,7 @@ export default function ShopOrderApp() {
       createdAt: new Date().toISOString(),
     };
     order.price = computePrice(order, priceList, coilWidthScale);
-    await saveOrders([order, ...orders]);
+    await insertOrders([order]);
     setSubmitting(false);
     setToast(`Order sent — estimate ${money(order.price)}. The shop will confirm final pricing.`);
     resetForm();
@@ -3392,11 +3414,11 @@ export default function ShopOrderApp() {
   };
 
   const updateStatus = async (id, status) => {
-    await saveOrders(orders.map((o) => (o.id === id ? { ...o, status } : o)));
+    await updateOrderRows(orders.filter((o) => o.id === id).map((o) => ({ ...o, status })));
   };
 
   const updatePoNumber = async (jobKey, poNumber) => {
-    await saveOrders(orders.map((o) => ((o.jobId || o.id) === jobKey ? { ...o, poNumber } : o)));
+    await updateOrderRows(orders.filter((o) => (o.jobId || o.id) === jobKey).map((o) => ({ ...o, poNumber })));
   };
 
   const visibleOrders = statusFilter === "All" ? orders : orders.filter((o) => o.status === statusFilter);
