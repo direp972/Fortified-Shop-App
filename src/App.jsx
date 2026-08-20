@@ -4383,6 +4383,26 @@ export default function ShopOrderApp() {
               </>
             ) : shapeType === "panel" ? (
               <>
+                <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 4 }}>
+                  Fabricated By
+                  <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                    {FAB_COMPANIES.map((c) => (
+                      <button key={c.name} type="button" onClick={() => setFabricatorCo(c.name)}
+                        style={{
+                          flex: 1, padding: "7px", borderRadius: 6, fontSize: 12, cursor: "pointer",
+                          border: `1px solid ${fabricatorCo === c.name ? INK : "#D9D5C7"}`,
+                          background: fabricatorCo === c.name ? INK : "#fff", color: fabricatorCo === c.name ? "#fff" : INK_DEEP, fontWeight: 600,
+                        }}>
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                </label>
+                {(supplierCo !== "Fortified Metal" || fabricatorCo !== "Fortified Metal") && (
+                  <div style={{ fontSize: 10.5, fontWeight: 600, color: AMBER, marginTop: 6 }}>
+                    Estimate shown at Fortified rates — final pricing confirmed by the companies you picked.
+                  </div>
+                )}
                 <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 10 }}>Panel profile</div>
                 <button onClick={() => setShowPanelCatalog(true)} className="tap-bounce"
                   style={{
@@ -4618,27 +4638,6 @@ export default function ShopOrderApp() {
                 <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
                   Fabrication minimum: $200 shop-rolled · $600 rolled on site — applied automatically in the order estimate.
                 </div>
-
-                <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 10 }}>
-                  Fabricated By
-                  <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                    {FAB_COMPANIES.map((c) => (
-                      <button key={c.name} type="button" onClick={() => setFabricatorCo(c.name)}
-                        style={{
-                          flex: 1, padding: "7px", borderRadius: 6, fontSize: 12, cursor: "pointer",
-                          border: `1px solid ${fabricatorCo === c.name ? INK : "#D9D5C7"}`,
-                          background: fabricatorCo === c.name ? INK : "#fff", color: fabricatorCo === c.name ? "#fff" : INK_DEEP, fontWeight: 600,
-                        }}>
-                        {c.name}
-                      </button>
-                    ))}
-                  </div>
-                </label>
-                {(supplierCo !== "Fortified Metal" || fabricatorCo !== "Fortified Metal") && (
-                  <div style={{ fontSize: 10.5, fontWeight: 600, color: AMBER, marginTop: 6 }}>
-                    Estimate shown at Fortified rates — final pricing confirmed by the companies you picked.
-                  </div>
-                )}
 
                 <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 10 }}>
                   Run Location
