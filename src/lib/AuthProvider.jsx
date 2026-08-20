@@ -36,9 +36,10 @@ export function AuthProvider({ children }) {
       setCustomer(custRow);
     } else {
       const name = sessionUser.user_metadata?.name || "";
+      const phone = sessionUser.user_metadata?.phone || "";
       const { data: created, error } = await supabase
         .from("customers")
-        .insert({ id: userId, email: sessionUser.email, name, tier: "tier2" })
+        .insert({ id: userId, email: sessionUser.email, name, phone, tier: "tier2" })
         .select()
         .maybeSingle();
       if (error) console.error("customer row creation error", error);
@@ -59,11 +60,11 @@ export function AuthProvider({ children }) {
     return () => listener.subscription.unsubscribe();
   }, [loadCustomer]);
 
-  const signUp = async (email, password, name) => {
+  const signUp = async (email, password, name, phone) => {
     // Store the name in the auth user's own metadata (not the customers table) since
     // that's reliably available immediately, regardless of whether email confirmation
     // is required — loadCustomer picks it up from here once a real session exists.
-    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name } } });
+    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name, phone } } });
     return { data, error };
   };
 

@@ -10,6 +10,7 @@ export default function AuthGate({ children }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [signupDone, setSignupDone] = useState(false);
@@ -30,7 +31,8 @@ export default function AuthGate({ children }) {
     setSubmitting(true);
     try {
       if (mode === "signup") {
-        const { error } = await signUp(email, password, name);
+        if (phone.replace(/\D/g, "").length < 10) { setError("A phone number is required so the shop can reach you about orders."); return; }
+        const { error } = await signUp(email, password, name, phone);
         if (error) { setError(error.message); return; }
         setSignupDone(true);
       } else {
@@ -68,11 +70,18 @@ export default function AuthGate({ children }) {
         </div>
 
         {mode === "signup" && (
-          <label style={{ display: "block", fontSize: 12, color: "#555", marginBottom: 12 }}>
-            Name
-            <input value={name} onChange={(e) => setName(e.target.value)} required
-              style={{ width: "100%", padding: 10, marginTop: 4, border: "1px solid #ddd", borderRadius: 7, fontSize: 14, boxSizing: "border-box" }} />
-          </label>
+          <>
+            <label style={{ display: "block", fontSize: 12, color: "#555", marginBottom: 12 }}>
+              Name
+              <input value={name} onChange={(e) => setName(e.target.value)} required
+                style={{ width: "100%", padding: 10, marginTop: 4, border: "1px solid #ddd", borderRadius: 7, fontSize: 14, boxSizing: "border-box" }} />
+            </label>
+            <label style={{ display: "block", fontSize: 12, color: "#555", marginBottom: 12 }}>
+              Phone
+              <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required autoComplete="tel" inputMode="tel" placeholder="(555) 555-5555"
+                style={{ width: "100%", padding: 10, marginTop: 4, border: "1px solid #ddd", borderRadius: 7, fontSize: 14, boxSizing: "border-box" }} />
+            </label>
+          </>
         )}
         <label style={{ display: "block", fontSize: 12, color: "#555", marginBottom: 12 }}>
           Email

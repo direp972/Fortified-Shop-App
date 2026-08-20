@@ -4689,7 +4689,7 @@ export default function ShopOrderApp() {
               <div style={{ marginBottom: 18 }}>
                 <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>🌐 RoofCoil Site Leads</div>
                 <div style={{ fontSize: 9.5, color: theme.textSecondary, marginBottom: 6 }}>
-                  Everyone who signed up through the roofcoil.com member gate — name, company, and email, newest first.
+                  Everyone who signed up through the roofcoil.com member gate — name, company, email, and phone, newest first.
                 </div>
                 {!siteLeadsLoaded ? (
                   <div style={{ color: theme.textSecondary, fontSize: 12, padding: 10 }}>Loading…</div>
@@ -4700,7 +4700,7 @@ export default function ShopOrderApp() {
                     <div key={l.id} style={{ background: theme.card, borderRadius: 8, padding: 10, marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{l.name || "(no name)"}{l.company ? <span style={{ fontWeight: 400, color: theme.textSecondary }}> — {l.company}</span> : null}</div>
-                        <div style={{ fontSize: 10.5, color: theme.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.email}</div>
+                        <div style={{ fontSize: 10.5, color: theme.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.email}{l.phone ? ` · ${l.phone}` : ""}</div>
                       </div>
                       <span style={{ fontSize: 10, color: theme.textSecondary, whiteSpace: "nowrap" }}>{new Date(l.created_at).toLocaleDateString()}</span>
                       <button onClick={() => deleteSiteLead(l.id)} style={{ border: "none", background: "none", color: theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
