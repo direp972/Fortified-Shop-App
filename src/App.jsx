@@ -4054,8 +4054,8 @@ export default function ShopOrderApp() {
             <>
               <div className="disp" style={{ fontSize: 15, color: theme.text, marginBottom: 10 }}>Step 2 of 3 — Order Details</div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
-                <button onClick={() => setOrderStep("type")}
-                  style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 14, fontWeight: 600, cursor: "pointer", padding: 0, display: "flex", alignItems: "center", gap: 4 }}>
+                <button onClick={() => setOrderStep("type")} className="tap-bounce"
+                  style={{ border: `1.5px solid ${theme.border}`, background: theme.card, color: theme.text, fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "7px 14px 7px 10px", borderRadius: 8, display: "flex", alignItems: "center", gap: 4 }}>
                   <ChevronDown size={16} style={{ transform: "rotate(90deg)" }} /> Change Type
                 </button>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, alignSelf: "flex-end" }}>
