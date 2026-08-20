@@ -524,6 +524,20 @@ const STATUS_COLOR = { Pending: STEEL, "In Production": AMBER, "Ready for Pickup
 const SCALE = 13; // px per inch on the drawing canvas
 const VB_W = 416, VB_H = 220; // inches shown: 32 x ~17
 
+// Roll-forming home bases — job-site runs bill $2/mile one way past the first
+// 40 miles, measured from whichever base is closest to the job.
+const HOME_BASES = [
+  { name: "Sherman", lat: 33.6357, lng: -96.6089 }, // 605 E Mulberry, Sherman TX
+  { name: "Plano", lat: 33.0255, lng: -96.7093 },   // 1851 Central Expressway, Plano TX
+];
+const MILEAGE_FREE = 40, MILEAGE_RATE = 2;
+const havMiles = (a, b, c, d) => {
+  const r = (x) => (x * Math.PI) / 180;
+  const s = Math.sin(r(c - a) / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(r(d - b) / 2) ** 2;
+  return 2 * 3959 * Math.asin(Math.sqrt(s));
+};
+const mileageCharge = (miles) => Math.max(0, (+miles || 0) - MILEAGE_FREE) * MILEAGE_RATE;
+
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const snap = (v, step = 0.05) => Math.round(v / step) * step;
 const dist = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
@@ -900,7 +914,9 @@ function computePrice(order, priceList, coilWidthScale) {
     // Fabrication minimums: hauling the roll former to a job site floors the
     // fabrication charge at $600; shop-rolled runs floor at $150.
     const fabMin = order.runLocation === "Job Site" ? 600 : 150;
-    const base = coilCost + Math.max(fabCost, fabMin);
+    // $2/mile one way past 40 miles from the nearest roll-forming base
+    const mileage = order.runLocation === "Job Site" ? mileageCharge(order.jobSiteMiles) : 0;
+    const base = coilCost + Math.max(fabCost, fabMin) + mileage;
     return Math.max(15, base * premiumMult + 15);
   } else {
     const points = order.points || [];
@@ -2263,6 +2279,9 @@ export default function ShopOrderApp() {
   const [fabPricePerFt, setFabPricePerFt] = useState(0);
   const [runLocation, setRunLocation] = useState("Shop");
   const [jobSiteAddress, setJobSiteAddress] = useState("");
+  const [jobSiteMiles, setJobSiteMiles] = useState("");
+  const [milesLookupBusy, setMilesLookupBusy] = useState(false);
+  const [milesLookupNote, setMilesLookupNote] = useState("");
   const [ribStyle, setRibStyle] = useState(null);
   const [clipRelief, setClipRelief] = useState(null);
   const [profile, setProfile] = useState(PROFILES[0]);
@@ -2418,6 +2437,39 @@ export default function ShopOrderApp() {
     else if (coilOverMax) setCoilPricePerFt("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coilWidth, paintId, brand, coilWidthScale]);
+
+  // Look up one-way driving miles from the NEAREST roll-forming base to the job
+  // site — geocode via OpenStreetMap, route via OSRM, straight-line ×1.25 fallback.
+  const lookupJobSiteMiles = async () => {
+    const addr = jobSiteAddress.trim();
+    if (!addr) { setMilesLookupNote("Enter the job site address first."); return; }
+    setMilesLookupBusy(true);
+    setMilesLookupNote("");
+    try {
+      const g = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=${encodeURIComponent(addr)}`);
+      const gj = await g.json();
+      if (!gj || !gj[0]) throw new Error("not found");
+      const lat = +gj[0].lat, lon = +gj[0].lon;
+      let best = null;
+      for (const base of HOME_BASES) {
+        let miles = null;
+        try {
+          const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${base.lng},${base.lat};${lon},${lat}?overview=false`);
+          const rj = await r.json();
+          if (rj?.routes?.[0]?.distance) miles = rj.routes[0].distance / 1609.34;
+        } catch (e) { /* routing down — straight-line estimate below */ }
+        const est = miles === null;
+        if (est) miles = havMiles(base.lat, base.lng, lat, lon) * 1.25;
+        if (!best || miles < best.miles) best = { miles, name: base.name, est };
+      }
+      const rounded = Math.max(1, Math.round(best.miles));
+      setJobSiteMiles(rounded);
+      setMilesLookupNote(`${rounded} mi one way from the ${best.name} shop${best.est ? " (estimated)" : ""}`);
+    } catch (e) {
+      setMilesLookupNote("Couldn't find that address — type the one-way miles in yourself.");
+    }
+    setMilesLookupBusy(false);
+  };
 
   // Fabrication $/LF reference follows the Price List's "Panel Fabrication" row.
   const panelFabPerFt = () => {
@@ -3062,7 +3114,7 @@ export default function ShopOrderApp() {
   // brand matters: Copper/G90/Galvalume/Bonderized price from their own rate tables,
   // and submitOrder computes the real order price WITH brand — the estimate must match it.
   const draft = shapeType === "panel"
-    ? { type: "panel", width, height, quantity, gaugeId, paintId, brand, colorName, runLocation }
+    ? { type: "panel", width, height, quantity, gaugeId, paintId, brand, colorName, runLocation, jobSiteMiles }
     : shapeType === "metal"
     ? { type: "metal", flatWidth, flatLength, coilWidth: metalCoilWidth, coilLength: metalCoilLength, quantity, gaugeId, paintId, brand, colorName }
     : shapeType === "part3d"
@@ -3076,7 +3128,7 @@ export default function ShopOrderApp() {
 
   const resetForm = () => {
     setOrderStep("type");
-    setShapeType("panel"); setWidth(24); setHeight(36); setCoilWidth(24); setProfile(PROFILES[0]); setRunLocation("Shop"); setJobSiteAddress(""); setRibStyle(null); setClipRelief(null);
+    setShapeType("panel"); setWidth(24); setHeight(36); setCoilWidth(24); setProfile(PROFILES[0]); setRunLocation("Shop"); setJobSiteAddress(""); setJobSiteMiles(""); setMilesLookupNote(""); setRibStyle(null); setClipRelief(null);
     setFlatWidth(48); setFlatLength(120); setMetalCoilWidth(21); setMetalCoilLength(12000);
     setAccessories([]); setAccType("Screws"); setAccSpec(ACCESSORY_SPECS.Screws[0]); setAccProfile(PROFILES[0]); setAccQty(1);
     setPartType("collector"); setPartW(12); setPartD(8); setPartH(10); setPartCapH(6); setPartView("3d"); setCapStyle("pyramid");
@@ -3148,6 +3200,7 @@ export default function ShopOrderApp() {
       if (ribStyle === null) { setToast("Pick a rib style (or None) before sending the order."); return; }
       if (clipRelief === null) { setToast("Choose whether Clip Relief is ON or OFF before sending the order."); return; }
       if (coilUnavailable) { setToast("Coil over 48\" isn't available — 48\" is the widest we can run."); setTimeout(() => setToast(""), 5000); return; }
+      if (runLocation === "Job Site" && (jobSiteAddress.trim() === "" || jobSiteMiles === "")) { setToast("Add the job site address and tap Look up (or type the one-way miles) so mileage can be figured."); setTimeout(() => setToast(""), 5000); return; }
       if (coilOverMax) { setToast("Coil over 24\" can't be priced online — call the shop and we'll quote it."); setTimeout(() => setToast(""), 5000); return; }
     }
 
@@ -3243,6 +3296,7 @@ export default function ShopOrderApp() {
       quantity,
       runLocation: isMetal || isPart3d ? undefined : runLocation,
       jobSiteAddress: !isMetal && !isPart3d && runLocation === "Job Site" ? jobSiteAddress.trim() : "",
+      jobSiteMiles: !isMetal && !isPart3d && runLocation === "Job Site" ? (+jobSiteMiles || 0) : undefined,
       ribStyle: isMetal || isPart3d ? undefined : ribStyle,
       clipRelief: isMetal || isPart3d ? undefined : clipRelief,
       gaugeId,
@@ -3324,6 +3378,7 @@ export default function ShopOrderApp() {
       clipRelief: shapeType === "panel" ? clipRelief : undefined,
       runLocation: shapeType === "panel" ? runLocation : undefined,
       jobSiteAddress: shapeType === "panel" && runLocation === "Job Site" ? jobSiteAddress.trim() : undefined,
+      jobSiteMiles: shapeType === "panel" && runLocation === "Job Site" ? (+jobSiteMiles || 0) : undefined,
       partType: isPart3d ? partType : undefined,
       partW: isPart3d ? partW : undefined,
       partD: isPart3d ? partD : undefined,
@@ -3422,6 +3477,7 @@ export default function ShopOrderApp() {
       setClipRelief(p.clipRelief ?? null);
       setRunLocation(p.runLocation || "Shop");
       setJobSiteAddress(p.jobSiteAddress || "");
+      setJobSiteMiles(p.jobSiteMiles ?? "");
     } else if (kind === "metal") {
       if (p.flatWidth != null) setFlatWidth(p.flatWidth);
       if (p.flatLength != null) setFlatLength(p.flatLength);
@@ -4535,12 +4591,31 @@ export default function ShopOrderApp() {
                   </div>
                 </label>
                 {runLocation === "Job Site" && (
-                  <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 10 }}>
-                    Job Site Address
-                    <input value={jobSiteAddress} onChange={(e) => setJobSiteAddress(e.target.value)}
-                      placeholder="Street address, city, state"
-                      style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
-                  </label>
+                  <>
+                    <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 10 }}>
+                      Job Site Address
+                      <input value={jobSiteAddress} onChange={(e) => setJobSiteAddress(e.target.value)} onBlur={lookupJobSiteMiles}
+                        placeholder="Street address, city, state"
+                        style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
+                    </label>
+                    <div style={{ display: "flex", gap: 8, marginTop: 8, alignItems: "flex-end" }}>
+                      <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                        Miles from Shop (one way)
+                        <input type="number" min={0} value={jobSiteMiles}
+                          onChange={(e) => setJobSiteMiles(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
+                          className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
+                      </label>
+                      <button type="button" onClick={lookupJobSiteMiles} disabled={milesLookupBusy}
+                        style={{ padding: "9px 14px", borderRadius: 6, border: "none", background: INK, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: milesLookupBusy ? 0.7 : 1, whiteSpace: "nowrap" }}>
+                        {milesLookupBusy ? "Looking…" : "📍 Look up"}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
+                      First {MILEAGE_FREE} miles free, then ${MILEAGE_RATE}/mile one way from the nearest shop (Sherman or Plano)
+                      {(+jobSiteMiles || 0) > MILEAGE_FREE ? <b style={{ color: AMBER }}> — mileage charge {money(mileageCharge(jobSiteMiles))}</b> : null}
+                      {milesLookupNote ? ` · ${milesLookupNote}` : ""}
+                    </div>
+                  </>
                 )}
               </>
             ) : (
@@ -5781,7 +5856,7 @@ export default function ShopOrderApp() {
                               )}
                               {o.type === "panel" && o.runLocation === "Job Site" && o.jobSiteAddress && (
                                 <div style={{ fontSize: 10.5, color: SAFETY, marginTop: 1 }}>
-                                  📍 {o.jobSiteAddress}
+                                  📍 {o.jobSiteAddress}{o.jobSiteMiles ? ` · ${o.jobSiteMiles} mi one way${mileageCharge(o.jobSiteMiles) > 0 ? ` · mileage ${money(mileageCharge(o.jobSiteMiles))}` : ""}` : ""}
                                 </div>
                               )}
                               {o.type === "trim" && (o.hemStart !== "none" || o.hemEnd !== "none") && (
