@@ -4058,18 +4058,18 @@ export default function ShopOrderApp() {
                   style={{ border: `1.5px solid ${theme.border}`, background: theme.card, color: theme.text, fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "7px 14px 7px 10px", borderRadius: 8, display: "flex", alignItems: "center", gap: 4 }}>
                   <ChevronDown size={16} style={{ transform: "rotate(90deg)" }} /> Change Type
                 </button>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, alignSelf: "flex-end" }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: theme.text, lineHeight: 1.3, textAlign: "right" }}>
-                    {brand} — {colorName}{" "}
-                    <button onClick={() => setOrderStep("color")}
-                      style={{ border: "none", background: "none", color: SAFETY, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
-                      Edit
-                    </button>
-                  </span>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 2, flexShrink: 0 }}>
-                    <span className="disp" style={{ fontSize: 9.5, color: theme.textSecondary, letterSpacing: "0.06em" }}>Selected Color</span>
-                    <span style={{ width: 132, height: 46, borderRadius: 5, background: colorObj?.hex || "#ccc", border: "1px solid rgba(0,0,0,0.15)" }} />
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 3, alignSelf: "flex-end" }}>
+                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+                    <span className="disp" style={{ fontSize: 9.5, color: theme.textSecondary, letterSpacing: "0.06em", whiteSpace: "nowrap" }}>Selected Color</span>
+                    <span style={{ fontSize: 12, fontWeight: 600, color: theme.text, lineHeight: 1.3, textAlign: "right" }}>
+                      {brand} — {colorName}{" "}
+                      <button onClick={() => setOrderStep("color")}
+                        style={{ border: "none", background: "none", color: SAFETY, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
+                        Edit
+                      </button>
+                    </span>
                   </div>
+                  <span style={{ width: "100%", minWidth: 220, height: 46, borderRadius: 5, background: colorObj?.hex || "#ccc", border: "1px solid rgba(0,0,0,0.15)" }} />
                 </div>
               </div>
           {/* drawing area */}
