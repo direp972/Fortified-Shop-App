@@ -2394,8 +2394,13 @@ export default function ShopOrderApp() {
     })();
   }, [user]);
 
-  // Coil wider than 24" isn't auto-priced — the form blanks out and says call for price.
+  // Coil wider than 24" isn't auto-priced — the form blanks out and says call for
+  // price. Past 48" the shop can't run it at all, so the message hardens to
+  // "Not available".
   const coilOverMax = (+coilWidth || 0) > 24;
+  const coilUnavailable = (+coilWidth || 0) > 48;
+  const coilGateText = coilUnavailable ? "Not available" : "Call for price";
+  const coilGateColor = coilUnavailable ? "#B3261E" : AMBER;
 
   // The panel form's Coil $/LF reference follows the bracket scale for the selected
   // coil width and finish (scale prices are PVDF; SMP gets the ratio). Still editable.
@@ -3142,6 +3147,7 @@ export default function ShopOrderApp() {
     if (shapeType === "panel") {
       if (ribStyle === null) { setToast("Pick a rib style (or None) before sending the order."); return; }
       if (clipRelief === null) { setToast("Choose whether Clip Relief is ON or OFF before sending the order."); return; }
+      if (coilUnavailable) { setToast("Coil over 48\" isn't available — 48\" is the widest we can run."); setTimeout(() => setToast(""), 5000); return; }
       if (coilOverMax) { setToast("Coil over 24\" can't be priced online — call the shop and we'll quote it."); setTimeout(() => setToast(""), 5000); return; }
     }
 
@@ -3346,7 +3352,7 @@ export default function ShopOrderApp() {
     const jobName = (jobNameRaw || "").trim() || "My Job";
     const payloads = buildVaultPayloads();
     if (payloads.length === 0) { setToast("Nothing to save yet — draw a part or set up a panel first."); setTimeout(() => setToast(""), 3000); return; }
-    if (shapeType === "panel" && coilOverMax) { setToast("Coil over 24\" can't be priced online — call the shop for a quote before saving it."); setTimeout(() => setToast(""), 5000); return; }
+    if (shapeType === "panel" && coilOverMax) { setToast(coilUnavailable ? "Coil over 48\" isn't available — 48\" is the widest we can run." : "Coil over 24\" can't be priced online — call the shop for a quote before saving it."); setTimeout(() => setToast(""), 5000); return; }
     setSavingVault(true);
     const rows = payloads.map((p) => ({
       user_id: user.id,
@@ -4430,7 +4436,7 @@ export default function ShopOrderApp() {
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Finished Sq Ft
                     {coilOverMax ? (
-                      <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${AMBER}`, borderRadius: 6, fontSize: 13, background: theme.highlight, boxSizing: "border-box", color: AMBER, fontWeight: 700 }}>Call for price</div>
+                      <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${coilGateColor}`, borderRadius: 6, fontSize: 13, background: theme.highlight, boxSizing: "border-box", color: coilGateColor, fontWeight: 700 }}>{coilGateText}</div>
                     ) : (
                       <input type="number" min={0} step="0.01"
                         value={sqftEditing !== null ? sqftEditing : (isFinite((width * height) / 144) ? (+((width * height) / 144).toFixed(2)) : 0)}
@@ -4458,7 +4464,7 @@ export default function ShopOrderApp() {
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Pan Width (in)
                     {coilOverMax ? (
-                      <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${AMBER}`, borderRadius: 6, fontSize: 13, background: theme.highlight, boxSizing: "border-box", color: AMBER, fontWeight: 700 }}>Call for price</div>
+                      <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${coilGateColor}`, borderRadius: 6, fontSize: 13, background: theme.highlight, boxSizing: "border-box", color: coilGateColor, fontWeight: 700 }}>{coilGateText}</div>
                     ) : (
                     <input type="number" min={0} step="0.01"
                       value={widthEditing !== null ? widthEditing : (isFinite(width) ? +Number(width).toFixed(2) : 0)}
@@ -4482,7 +4488,7 @@ export default function ShopOrderApp() {
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Coil $/LF
                     {coilOverMax ? (
-                      <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${AMBER}`, borderRadius: 6, fontSize: 13, background: theme.highlight, boxSizing: "border-box", color: AMBER, fontWeight: 700 }}>Call for price</div>
+                      <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${coilGateColor}`, borderRadius: 6, fontSize: 13, background: theme.highlight, boxSizing: "border-box", color: coilGateColor, fontWeight: 700 }}>{coilGateText}</div>
                     ) : (
                       <input type="number" min={0} step="0.01" value={coilPricePerFt}
                         onChange={(e) => setCoilPricePerFt(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
@@ -4499,14 +4505,14 @@ export default function ShopOrderApp() {
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Total Price
-                    <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${coilOverMax ? AMBER : theme.border}`, borderRadius: 6, fontSize: coilOverMax ? 13 : 14, background: theme.highlight, boxSizing: "border-box", color: coilOverMax ? AMBER : theme.text, fontWeight: coilOverMax ? 700 : 600 }}>
-                      {coilOverMax ? "Call for price" : money(((+coilPricePerFt || 0) + (+fabPricePerFt || 0)) * ((+height || 0) / 12))}
+                    <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${coilOverMax ? coilGateColor : theme.border}`, borderRadius: 6, fontSize: coilOverMax ? 13 : 14, background: theme.highlight, boxSizing: "border-box", color: coilOverMax ? coilGateColor : theme.text, fontWeight: coilOverMax ? 700 : 600 }}>
+                      {coilOverMax ? coilGateText : money(((+coilPricePerFt || 0) + (+fabPricePerFt || 0)) * ((+height || 0) / 12))}
                     </div>
                   </label>
                 </div>
                 {coilOverMax && (
-                  <div style={{ fontSize: 11.5, fontWeight: 700, color: AMBER, marginTop: 6 }}>
-                    Coil over 24" — call the shop for pricing on wide panels.
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: coilGateColor, marginTop: 6 }}>
+                    {coilUnavailable ? 'Coil over 48" isn\'t available — 48" is the widest we can run.' : 'Coil over 24" — call the shop for pricing on wide panels.'}
                   </div>
                 )}
                 <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
@@ -4855,7 +4861,7 @@ export default function ShopOrderApp() {
               <div style={{ color: "#CFE3EF", fontSize: 11 }}>
                 {shapeType === "trim" ? `Estimated total${basket.length > 0 ? ` · ${basket.length + (points.length >= 2 ? 1 : 0)} part(s)` : ""}` : "Estimated total"}
               </div>
-              <div className="mono" style={{ color: "#fff", fontSize: 22, fontWeight: 600 }}>{shapeType === "panel" && coilOverMax ? "Call for price" : money(combinedEstimate)}</div>
+              <div className="mono" style={{ color: "#fff", fontSize: 22, fontWeight: 600 }}>{shapeType === "panel" && coilOverMax ? coilGateText : money(combinedEstimate)}</div>
             </div>
             <button onClick={submitOrder} disabled={submitting}
               className="disp tap-bounce"
