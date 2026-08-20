@@ -526,11 +526,22 @@ const STATUS_COLOR = { Pending: STEEL, "In Production": AMBER, "Ready for Pickup
 const SCALE = 13; // px per inch on the drawing canvas
 const VB_W = 416, VB_H = 220; // inches shown: 32 x ~17
 
-// Roll-forming home bases — job-site runs bill $2/mile one way past the first
-// 40 miles, measured from whichever base is closest to the job.
-const HOME_BASES = [
-  { name: "Sherman", lat: 33.6357, lng: -96.6089 }, // 605 E Mulberry, Sherman TX
-  { name: "Plano", lat: 33.0255, lng: -96.7093 },   // 1851 Central Expressway, Plano TX
+// Listed companies — each can supply metal, fabricate, or both. The in-app price
+// list is Fortified's; picking someone else keeps the Fortified-rate estimate and
+// flags that the final price comes from that company. Job-site mileage measures
+// from the chosen fabricator's closest base.
+const FAB_COMPANIES = [
+  {
+    name: "Fortified Metal",
+    bases: [
+      { name: "Sherman", lat: 33.6357, lng: -96.6089 }, // 605 E Mulberry, Sherman TX
+      { name: "Plano", lat: 33.0255, lng: -96.7093 },   // 1851 Central Expressway, Plano TX
+    ],
+  },
+  {
+    name: "Adax Metals",
+    bases: [{ name: "Weatherford", lat: 32.7593, lng: -97.7972 }],
+  },
 ];
 const MILEAGE_FREE = 40, MILEAGE_RATE = 2;
 const havMiles = (a, b, c, d) => {
@@ -2290,6 +2301,8 @@ export default function ShopOrderApp() {
   const [runLocation, setRunLocation] = useState("Shop");
   const [jobSiteAddress, setJobSiteAddress] = useState("");
   const [jobSiteMiles, setJobSiteMiles] = useState("");
+  const [supplierCo, setSupplierCo] = useState("Fortified Metal");
+  const [fabricatorCo, setFabricatorCo] = useState("Fortified Metal");
   const [milesLookupBusy, setMilesLookupBusy] = useState(false);
   const [milesLookupNote, setMilesLookupNote] = useState("");
   const [ribStyle, setRibStyle] = useState(null);
@@ -2448,8 +2461,10 @@ export default function ShopOrderApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coilWidth, paintId, brand, coilWidthScale]);
 
-  // Look up one-way driving miles from the NEAREST roll-forming base to the job
-  // site — geocode via OpenStreetMap, route via OSRM, straight-line ×1.25 fallback.
+  const fabBases = (FAB_COMPANIES.find((c) => c.name === fabricatorCo) || FAB_COMPANIES[0]).bases;
+
+  // Look up one-way driving miles from the chosen fabricator's NEAREST base to the
+  // job site — geocode via OpenStreetMap, route via OSRM, straight-line ×1.25 fallback.
   const lookupJobSiteMiles = async () => {
     const addr = jobSiteAddress.trim();
     if (!addr) { setMilesLookupNote("Enter the job site address first."); return; }
@@ -2461,7 +2476,7 @@ export default function ShopOrderApp() {
       if (!gj || !gj[0]) throw new Error("not found");
       const lat = +gj[0].lat, lon = +gj[0].lon;
       let best = null;
-      for (const base of HOME_BASES) {
+      for (const base of fabBases) {
         let miles = null;
         try {
           const r = await fetch(`https://router.project-osrm.org/route/v1/driving/${base.lng},${base.lat};${lon},${lat}?overview=false`);
@@ -2480,6 +2495,12 @@ export default function ShopOrderApp() {
     }
     setMilesLookupBusy(false);
   };
+
+  // Switching fabricators moves the home bases, so refresh the mileage lookup.
+  useEffect(() => {
+    if (runLocation === "Job Site" && jobSiteAddress.trim()) lookupJobSiteMiles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fabricatorCo]);
 
   // Fabrication $/LF reference follows the Price List — profile-specific rows
   // (e.g. FWQ100 Fabrication) beat the generic Panel Fabrication rate.
@@ -3140,7 +3161,7 @@ export default function ShopOrderApp() {
 
   const resetForm = () => {
     setOrderStep("type");
-    setShapeType("panel"); setWidth(16.88); setHeight(853.08); setCoilWidth(21); setProfile(PROFILES[0]); setRunLocation("Shop"); setJobSiteAddress(""); setJobSiteMiles(""); setMilesLookupNote(""); setRibStyle(null); setClipRelief(null);
+    setShapeType("panel"); setWidth(16.88); setHeight(853.08); setCoilWidth(21); setProfile(PROFILES[0]); setRunLocation("Shop"); setJobSiteAddress(""); setJobSiteMiles(""); setMilesLookupNote(""); setSupplierCo("Fortified Metal"); setFabricatorCo("Fortified Metal"); setRibStyle(null); setClipRelief(null);
     setFlatWidth(48); setFlatLength(120); setMetalCoilWidth(21); setMetalCoilLength(12000);
     setAccessories([]); setAccType("Screws"); setAccSpec(ACCESSORY_SPECS.Screws[0]); setAccProfile(PROFILES[0]); setAccQty(1);
     setPartType("collector"); setPartW(12); setPartD(8); setPartH(10); setPartCapH(6); setPartView("3d"); setCapStyle("pyramid");
@@ -3309,6 +3330,8 @@ export default function ShopOrderApp() {
       runLocation: isMetal || isPart3d ? undefined : runLocation,
       jobSiteAddress: !isMetal && !isPart3d && runLocation === "Job Site" ? jobSiteAddress.trim() : "",
       jobSiteMiles: !isMetal && !isPart3d && runLocation === "Job Site" ? (+jobSiteMiles || 0) : undefined,
+      metalSupplier: !isMetal && !isPart3d ? supplierCo : undefined,
+      fabricator: !isMetal && !isPart3d ? fabricatorCo : undefined,
       ribStyle: isMetal || isPart3d ? undefined : ribStyle,
       clipRelief: isMetal || isPart3d ? undefined : clipRelief,
       gaugeId,
@@ -3391,6 +3414,8 @@ export default function ShopOrderApp() {
       runLocation: shapeType === "panel" ? runLocation : undefined,
       jobSiteAddress: shapeType === "panel" && runLocation === "Job Site" ? jobSiteAddress.trim() : undefined,
       jobSiteMiles: shapeType === "panel" && runLocation === "Job Site" ? (+jobSiteMiles || 0) : undefined,
+      metalSupplier: shapeType === "panel" ? supplierCo : undefined,
+      fabricator: shapeType === "panel" ? fabricatorCo : undefined,
       partType: isPart3d ? partType : undefined,
       partW: isPart3d ? partW : undefined,
       partD: isPart3d ? partD : undefined,
@@ -3490,6 +3515,8 @@ export default function ShopOrderApp() {
       setRunLocation(p.runLocation || "Shop");
       setJobSiteAddress(p.jobSiteAddress || "");
       setJobSiteMiles(p.jobSiteMiles ?? "");
+      setSupplierCo(p.metalSupplier || "Fortified Metal");
+      setFabricatorCo(p.fabricator || "Fortified Metal");
     } else if (kind === "metal") {
       if (p.flatWidth != null) setFlatWidth(p.flatWidth);
       if (p.flatLength != null) setFlatLength(p.flatLength);
@@ -4588,6 +4615,42 @@ export default function ShopOrderApp() {
                 </div>
 
                 <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 10 }}>
+                  Metal Supplied By
+                  <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                    {FAB_COMPANIES.map((c) => (
+                      <button key={c.name} type="button" onClick={() => setSupplierCo(c.name)}
+                        style={{
+                          flex: 1, padding: "7px", borderRadius: 6, fontSize: 12, cursor: "pointer",
+                          border: `1px solid ${supplierCo === c.name ? INK : "#D9D5C7"}`,
+                          background: supplierCo === c.name ? INK : "#fff", color: supplierCo === c.name ? "#fff" : INK_DEEP, fontWeight: 600,
+                        }}>
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                </label>
+                <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 10 }}>
+                  Fabricated By
+                  <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                    {FAB_COMPANIES.map((c) => (
+                      <button key={c.name} type="button" onClick={() => setFabricatorCo(c.name)}
+                        style={{
+                          flex: 1, padding: "7px", borderRadius: 6, fontSize: 12, cursor: "pointer",
+                          border: `1px solid ${fabricatorCo === c.name ? INK : "#D9D5C7"}`,
+                          background: fabricatorCo === c.name ? INK : "#fff", color: fabricatorCo === c.name ? "#fff" : INK_DEEP, fontWeight: 600,
+                        }}>
+                        {c.name}
+                      </button>
+                    ))}
+                  </div>
+                </label>
+                {(supplierCo !== "Fortified Metal" || fabricatorCo !== "Fortified Metal") && (
+                  <div style={{ fontSize: 10.5, fontWeight: 600, color: AMBER, marginTop: 6 }}>
+                    Estimate shown at Fortified rates — final pricing confirmed by the companies you picked.
+                  </div>
+                )}
+
+                <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 10 }}>
                   Run Location
                   <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
                     {["Shop", "Job Site"].map((loc) => (
@@ -4623,7 +4686,7 @@ export default function ShopOrderApp() {
                       </button>
                     </div>
                     <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
-                      First {MILEAGE_FREE} miles free, then ${MILEAGE_RATE}/mile one way from the nearest shop (Sherman or Plano)
+                      First {MILEAGE_FREE} miles free, then ${MILEAGE_RATE}/mile one way from the nearest {fabricatorCo} shop ({fabBases.map((b) => b.name).join(" or ")})
                       {(+jobSiteMiles || 0) > MILEAGE_FREE ? <b style={{ color: AMBER }}> — mileage charge {money(mileageCharge(jobSiteMiles))}</b> : null}
                       {milesLookupNote ? ` · ${milesLookupNote}` : ""}
                     </div>
@@ -5864,6 +5927,11 @@ export default function ShopOrderApp() {
                               {o.accessories && o.accessories.length > 0 && (
                                 <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 2 }}>
                                   Accessories: {o.accessories.map((a) => `${a.label} ×${a.qty}`).join(", ")}
+                                </div>
+                              )}
+                              {o.type === "panel" && (o.metalSupplier || o.fabricator) && (
+                                <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 1 }}>
+                                  Supply: {o.metalSupplier || "Fortified Metal"} · Fab: {o.fabricator || "Fortified Metal"}
                                 </div>
                               )}
                               {o.type === "panel" && o.runLocation === "Job Site" && o.jobSiteAddress && (
