@@ -2253,7 +2253,7 @@ export default function ShopOrderApp() {
 
   const [shapeType, setShapeType] = useState("panel");
   const [width, setWidth] = useState(24);
-  const [height, setHeight] = useState(36);
+  const [height, setHeight] = useState(853.08); // 100 finished sq ft at the default 21" coil / 16.88" SS450 pan width
   const [flatWidth, setFlatWidth] = useState(48);
   const [accType, setAccType] = useState("Screws");
   const [accSpec, setAccSpec] = useState(ACCESSORY_SPECS.Screws[0]);
@@ -2282,7 +2282,7 @@ export default function ShopOrderApp() {
   const [flatLength, setFlatLength] = useState(120); // 10 ft
   const [metalCoilWidth, setMetalCoilWidth] = useState(21);
   const [metalCoilLength, setMetalCoilLength] = useState(12000); // 1000 ft
-  const [coilWidth, setCoilWidth] = useState(24);
+  const [coilWidth, setCoilWidth] = useState(21);
   const [sqftEditing, setSqftEditing] = useState(null);
   const [widthEditing, setWidthEditing] = useState(null);
   const [coilPricePerFt, setCoilPricePerFt] = useState(2.5);
@@ -3140,7 +3140,7 @@ export default function ShopOrderApp() {
 
   const resetForm = () => {
     setOrderStep("type");
-    setShapeType("panel"); setWidth(24); setHeight(36); setCoilWidth(24); setProfile(PROFILES[0]); setRunLocation("Shop"); setJobSiteAddress(""); setJobSiteMiles(""); setMilesLookupNote(""); setRibStyle(null); setClipRelief(null);
+    setShapeType("panel"); setWidth(16.88); setHeight(853.08); setCoilWidth(21); setProfile(PROFILES[0]); setRunLocation("Shop"); setJobSiteAddress(""); setJobSiteMiles(""); setMilesLookupNote(""); setRibStyle(null); setClipRelief(null);
     setFlatWidth(48); setFlatLength(120); setMetalCoilWidth(21); setMetalCoilLength(12000);
     setAccessories([]); setAccType("Screws"); setAccSpec(ACCESSORY_SPECS.Screws[0]); setAccProfile(PROFILES[0]); setAccQty(1);
     setPartType("collector"); setPartW(12); setPartD(8); setPartH(10); setPartCapH(6); setPartView("3d"); setCapStyle("pyramid");
@@ -4498,7 +4498,7 @@ export default function ShopOrderApp() {
                     Length of Panel(s) (ft)
                     <input type="number" min={0.1} step="0.1" value={height === "" ? "" : +(height / 12).toFixed(2)}
                       onChange={(e) => setHeight(e.target.value === "" ? "" : Math.max(0, +e.target.value * 12))}
-                      onBlur={(e) => { if (e.target.value === "") setHeight(36); }}
+                      onBlur={(e) => { if (e.target.value === "") setHeight(853.08); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14 }} />
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
@@ -4515,7 +4515,7 @@ export default function ShopOrderApp() {
                             setHeight(Math.max(0, (+val * 144) / width));
                           }
                         }}
-                        onBlur={(e) => { setSqftEditing(null); if (e.target.value === "") setHeight(36); }}
+                        onBlur={(e) => { setSqftEditing(null); if (e.target.value === "") setHeight(853.08); }}
                         className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
                     )}
                   </label>
@@ -4526,7 +4526,7 @@ export default function ShopOrderApp() {
                     Coil Width (in)
                     <input type="number" min={1} max={48} value={coilWidth}
                       onChange={(e) => setCoilWidth(e.target.value === "" ? "" : Math.max(0, Math.min(48, +e.target.value)))}
-                      onBlur={(e) => { if (e.target.value === "") setCoilWidth(24); }}
+                      onBlur={(e) => { if (e.target.value === "") setCoilWidth(21); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
@@ -4546,7 +4546,7 @@ export default function ShopOrderApp() {
                           setCoilWidth(Math.max(0, Math.min(48, Math.round((newWidth + takeup) * 100) / 100)));
                         }
                       }}
-                      onBlur={(e) => { setWidthEditing(null); if (e.target.value === "") setCoilWidth(24); }}
+                      onBlur={(e) => { setWidthEditing(null); if (e.target.value === "") setCoilWidth(21); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
                     )}
                   </label>
