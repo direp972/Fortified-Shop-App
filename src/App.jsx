@@ -789,6 +789,7 @@ function printPartAsPDF(item) {
 function computeJobMaterials(items) {
   const flatSheets = new Map(); // "widthxlength-brand-color" -> { width, length, count, brand, colorName, colorHex }
   const coilByWidth = new Map(); // "width-brand-color" -> { width, feet, brand, colorName, colorHex }
+  const accByLabel = new Map(); // accessory label -> { label, qty, pos }
 
   const addCoil = (widthIn, feet, o) => {
     if (!widthIn || !feet) return;
@@ -808,6 +809,13 @@ function computeJobMaterials(items) {
   };
 
   for (const o of items) {
+    if (Array.isArray(o.accessories)) {
+      for (const a of o.accessories) {
+        const existing = accByLabel.get(a.label);
+        if (existing) { existing.qty += +a.qty || 0; if (o.poNumber) existing.pos.add(o.poNumber); }
+        else accByLabel.set(a.label, { key: a.label, label: a.label, qty: +a.qty || 0, pos: new Set(o.poNumber ? [o.poNumber] : []) });
+      }
+    }
     if (o.type === "metal") {
       if (o.flatWidth && o.flatLength) addFlatSheets(o.flatWidth, o.flatLength, +o.quantity || 0, o);
       if (o.coilWidth && o.coilLength) addCoil(o.coilWidth, o.coilLength / 12, o);
@@ -833,6 +841,7 @@ function computeJobMaterials(items) {
   return {
     flatSheets: [...flatSheets.values()].map((f) => ({ ...f, pos: [...f.pos].sort() })).sort((a, b) => b.count - a.count),
     coil: [...coilByWidth.values()].map((c) => ({ ...c, pos: [...c.pos].sort() })).sort((a, b) => b.feet - a.feet),
+    accessories: [...accByLabel.values()].map((a) => ({ ...a, pos: [...a.pos].sort() })).sort((a, b) => b.qty - a.qty),
   };
 }
 
@@ -3638,6 +3647,7 @@ export default function ShopOrderApp() {
     return [
       ...m.flatSheets.map((f) => ({ lk: `fs:${f.key}:${f.count}`, pos: f.pos })),
       ...m.coil.map((c) => ({ lk: `coil:${c.key}:${Math.ceil(c.feet)}`, pos: c.pos })),
+      ...m.accessories.map((a) => ({ lk: `acc:${a.key}:${a.qty}`, pos: a.pos })),
     ];
   };
   const cycleMatStatus = async (lineKey) => {
@@ -5876,7 +5886,7 @@ export default function ShopOrderApp() {
               const materials = computeJobMaterials(activeOrders);
               return !loaded ? (
                 <div style={{ color: theme.textSecondary, fontSize: 13, textAlign: "center", padding: 40 }}>Loading orders…</div>
-              ) : materials.flatSheets.length === 0 && materials.coil.length === 0 ? (
+              ) : materials.flatSheets.length === 0 && materials.coil.length === 0 && materials.accessories.length === 0 ? (
                 <div style={{ color: theme.textSecondary, fontSize: 13, textAlign: "center", padding: 40 }}>
                   Nothing needed right now — no active jobs with trackable material needs.
                 </div>
@@ -5887,15 +5897,20 @@ export default function ShopOrderApp() {
                   </div>
                   {(() => {
                     const allLines = [
+                      ...materials.coil.map((c) => ({
+                        lk: `coil:${c.key}:${Math.ceil(c.feet)}`, group: "Coils",
+                        title: `${formatDim(c.width)}" — ${Math.ceil(c.feet)} ft`,
+                        sub: `${c.brand}, ${c.colorName}`, pos: c.pos,
+                      })),
                       ...materials.flatSheets.map((f) => ({
-                        lk: `fs:${f.key}:${f.count}`, colorHex: f.colorHex,
+                        lk: `fs:${f.key}:${f.count}`, group: "Flat Sheets",
                         title: `${f.count} sheets — ${formatDim(f.width / 12)}' × ${formatDim(f.length / 12)}'`,
                         sub: `${f.brand}, ${f.colorName}`, pos: f.pos,
                       })),
-                      ...materials.coil.map((c) => ({
-                        lk: `coil:${c.key}:${Math.ceil(c.feet)}`, colorHex: c.colorHex,
-                        title: `Coil ${formatDim(c.width)}" — ${Math.ceil(c.feet)} ft`,
-                        sub: `${c.brand}, ${c.colorName}`, pos: c.pos,
+                      ...materials.accessories.map((a) => ({
+                        lk: `acc:${a.key}:${a.qty}`, group: "Accessories",
+                        title: `${a.qty} × ${a.label}`,
+                        sub: "", pos: a.pos,
                       })),
                     ];
                     const cols = [
@@ -5915,17 +5930,26 @@ export default function ShopOrderApp() {
                               {lines.length === 0 ? (
                                 <div style={{ fontSize: 10, color: theme.textSecondary, textAlign: "center", padding: "14px 4px" }}>—</div>
                               ) : (
-                                lines.map((l) => (
-                                  <button key={l.lk} onClick={() => cycleMatStatus(l.lk)} className="tap-bounce"
-                                    title={col.id === "pulled" ? "Tap to send back to Needed" : col.id === "instock" ? "Tap when pulled for production" : "Tap when it's in stock"}
-                                    style={{ display: "block", width: "100%", textAlign: "left", background: theme.card, border: "none", borderRadius: 6, padding: 8, marginBottom: 5, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", cursor: "pointer" }}>
-                                    {l.pos.length > 0 && (
-                                      <div className="mono" style={{ fontSize: 12, fontWeight: 700, color: SAFETY, lineHeight: 1.3, marginBottom: 3 }}>{l.pos.join(" · ")}</div>
-                                    )}
-                                    <div className="mono" style={{ fontSize: 11, fontWeight: 700, color: theme.text, lineHeight: 1.3 }}>{l.title}</div>
-                                    <div style={{ fontSize: 11, fontWeight: 600, color: theme.text, marginTop: 3, lineHeight: 1.4 }}>{l.sub}</div>
-                                  </button>
-                                ))
+                                ["Coils", "Flat Sheets", "Accessories"].map((g) => {
+                                  const groupLines = lines.filter((l) => l.group === g);
+                                  if (groupLines.length === 0) return null;
+                                  return (
+                                    <div key={g}>
+                                      <div className="disp" style={{ fontSize: 8.5, color: theme.textSecondary, margin: "5px 2px 3px" }}>{g}</div>
+                                      {groupLines.map((l) => (
+                                        <button key={l.lk} onClick={() => cycleMatStatus(l.lk)} className="tap-bounce"
+                                          title={col.id === "pulled" ? "Tap to send back to Needed" : col.id === "instock" ? "Tap when pulled for production" : "Tap when it's in stock"}
+                                          style={{ display: "block", width: "100%", textAlign: "left", background: theme.card, border: "none", borderRadius: 6, padding: 8, marginBottom: 5, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", cursor: "pointer" }}>
+                                          {l.pos.length > 0 && (
+                                            <div className="mono" style={{ fontSize: 12, fontWeight: 700, color: SAFETY, lineHeight: 1.3, marginBottom: 3 }}>{l.pos.join(" · ")}</div>
+                                          )}
+                                          <div className="mono" style={{ fontSize: 11, fontWeight: 700, color: theme.text, lineHeight: 1.3 }}>{l.title}</div>
+                                          {l.sub ? <div style={{ fontSize: 11, fontWeight: 600, color: theme.text, marginTop: 3, lineHeight: 1.4 }}>{l.sub}</div> : null}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  );
+                                })
                               )}
                             </div>
                           );
