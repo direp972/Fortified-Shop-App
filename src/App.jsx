@@ -5919,13 +5919,11 @@ export default function ShopOrderApp() {
                                   <button key={l.lk} onClick={() => cycleMatStatus(l.lk)} className="tap-bounce"
                                     title={col.id === "pulled" ? "Tap to send back to Needed" : col.id === "instock" ? "Tap when pulled for production" : "Tap when it's in stock"}
                                     style={{ display: "block", width: "100%", textAlign: "left", background: theme.card, border: "none", borderRadius: 6, padding: 8, marginBottom: 5, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", cursor: "pointer" }}>
-                                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                      <span style={{ width: 12, height: 12, borderRadius: 3, background: l.colorHex, border: "1px solid rgba(0,0,0,0.2)", flexShrink: 0 }} />
-                                      <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: theme.text, lineHeight: 1.3 }}>{l.title}</span>
-                                    </div>
-                                    <div style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3, lineHeight: 1.4 }}>
-                                      {l.sub}{l.pos.length > 0 ? <span className="mono"> · {l.pos.join(", ")}</span> : null}
-                                    </div>
+                                    {l.pos.length > 0 && (
+                                      <div className="mono" style={{ fontSize: 12, fontWeight: 700, color: SAFETY, lineHeight: 1.3, marginBottom: 3 }}>{l.pos.join(" · ")}</div>
+                                    )}
+                                    <div className="mono" style={{ fontSize: 11, fontWeight: 700, color: theme.text, lineHeight: 1.3 }}>{l.title}</div>
+                                    <div style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3, lineHeight: 1.4 }}>{l.sub}</div>
                                   </button>
                                 ))
                               )}
