@@ -103,6 +103,15 @@ const PROFILE_INFO = {
 // render and reprice, but they're hidden from every picker and the catalog.
 const PROFILES = Object.keys(PROFILE_INFO).filter((k) => !PROFILE_INFO[k].delisted);
 
+// Fixed-clip part numbers by panel profile — clips sell by the box.
+const CLIP_SPECS = {
+  SS150: { code: "FG-158-24", perBox: 500 },     // 1.5" mechanical seam
+  SSQ200: { code: "FG-218-24", perBox: 300 },    // 2" mechanical seam
+  SS450: { code: "SG-114-24-SL", perBox: 800 },  // 1.5" snap-lock
+  SSQ675: { code: "SG-178-18", perBox: 500 },    // 1.75" snap-lock
+};
+const clipSpecForProfile = (profile) => CLIP_SPECS[PROFILE_INFO[profile]?.code] || null;
+
 function profileFamily(profile) {
   return PROFILE_INFO[profile]?.family || "mech";
 }
@@ -3203,6 +3212,7 @@ export default function ShopOrderApp() {
   // Screws only sell in lots of 100 — the qty spinner steps by the lot size and any
   // typed amount rounds to the nearest full lot. Every other accessory counts by 1.
   const screwLots = accType === "Screws";
+  const accClipSpec = accType === "Clips" ? clipSpecForProfile(accProfile) : null;
   useEffect(() => {
     if (screwLots) setAccQty((q) => Math.max(100, Math.round((+q || 100) / 100) * 100));
     else setAccQty((q) => Math.max(1, Math.round(+q || 1)));
@@ -3214,7 +3224,10 @@ export default function ShopOrderApp() {
     if (screwLots) qty = Math.max(100, Math.round(qty / 100) * 100);
     let label = accSpec;
     if (accType === "Sealant") label = accSealColor === "match" ? `Sealant — color-matched (${colorName})` : `Sealant — ${accSealColor}`;
-    if (accType === "Clips") label = `Clips — ${accProfile}`;
+    if (accType === "Clips") {
+      const cs = clipSpecForProfile(accProfile);
+      label = cs ? `Clips ${cs.code} — ${accProfile} (${cs.perBox}/box, qty = boxes)` : `Clips — ${accProfile}`;
+    }
     setAccessories((a) => [...a, { id: uid(), type: accType, label, qty }]);
     setAccQty(1);
   };
@@ -4957,7 +4970,7 @@ export default function ShopOrderApp() {
                   </label>
                 )}
                 <label style={{ width: 70, fontSize: 11, color: theme.textSecondary }}>
-                  Qty
+                  {accClipSpec ? "Boxes" : "Qty"}
                   <input type="number" min={screwLots ? 100 : 1} step={screwLots ? 100 : 1} value={accQty}
                     onChange={(e) => setAccQty(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
                     onBlur={(e) => {
@@ -4974,6 +4987,11 @@ export default function ShopOrderApp() {
               {screwLots && (
                 <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
                   Screws sell in lots of 100 — the qty steps by full lots.
+                </div>
+              )}
+              {accClipSpec && (
+                <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
+                  Clip {accClipSpec.code} · {accClipSpec.perBox} per box — the qty above is boxes.
                 </div>
               )}
 
