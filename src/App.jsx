@@ -5923,7 +5923,7 @@ export default function ShopOrderApp() {
                                       <div className="mono" style={{ fontSize: 12, fontWeight: 700, color: SAFETY, lineHeight: 1.3, marginBottom: 3 }}>{l.pos.join(" · ")}</div>
                                     )}
                                     <div className="mono" style={{ fontSize: 11, fontWeight: 700, color: theme.text, lineHeight: 1.3 }}>{l.title}</div>
-                                    <div style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3, lineHeight: 1.4 }}>{l.sub}</div>
+                                    <div style={{ fontSize: 11, fontWeight: 600, color: theme.text, marginTop: 3, lineHeight: 1.4 }}>{l.sub}</div>
                                   </button>
                                 ))
                               )}
