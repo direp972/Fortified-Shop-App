@@ -1054,7 +1054,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const [zoomCenter, setZoomCenter] = useState(null); // [x,y] override when zoomed into a specific leg
   const [mode, setMode] = useState("draw"); // "draw" | "select"
   const [selectedIdx, setSelectedIdx] = useState(null);
-  const [gridSpacing, setGridSpacing] = useState(6); // inches between dots
+  const [gridSpacing, setGridSpacing] = useState(3); // inches between dots
   const [angleVisibility, setAngleVisibility] = useState("all"); // "all" | "hide90" | "hideAll"
   const [showSettings, setShowSettings] = useState(false);
   const [unitSystem, setUnitSystem] = useState("imperial"); // "imperial" | "metric" — display only, data always stays in inches
@@ -1188,7 +1188,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const gStartY = Math.floor(zVbY / gridSpacing) * gridSpacing, gEndY = Math.ceil((zVbY + zVbH) / gridSpacing) * gridSpacing;
   for (let x = gStartX; x <= gEndX; x += gridSpacing) {
     for (let y = gStartY; y <= gEndY; y += gridSpacing) {
-      gridDots.push(<circle key={`d${x}-${y}`} cx={x} cy={y} r={0.35 * unit} fill="rgba(255,255,255,0.25)" />);
+      gridDots.push(<circle key={`d${x}-${y}`} cx={x} cy={y} r={0.45 * unit} fill="rgba(255,255,255,0.45)" />);
     }
   }
 
