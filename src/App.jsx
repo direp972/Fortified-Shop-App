@@ -3199,17 +3199,18 @@ export default function ShopOrderApp() {
 
   const removeBasketItem = (id) => setBasket((b) => b.filter((i) => i.id !== id));
 
-  // 1" XLP screws only sell in lots of 100 — the qty spinner steps by the lot size
-  // and any typed amount rounds to the nearest full lot.
-  const xlpLots = accType === "Screws" && accSpec.includes("XLP");
+  // Screws only sell in lots of 100 — the qty spinner steps by the lot size and any
+  // typed amount rounds to the nearest full lot. Every other accessory counts by 1.
+  const screwLots = accType === "Screws";
   useEffect(() => {
-    if (xlpLots) setAccQty((q) => Math.max(100, Math.round((+q || 100) / 100) * 100));
+    if (screwLots) setAccQty((q) => Math.max(100, Math.round((+q || 100) / 100) * 100));
+    else setAccQty((q) => Math.max(1, Math.round(+q || 1)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accType, accSpec]);
+  }, [accType]);
 
   const addAccessory = () => {
     let qty = Math.max(1, +accQty || 1);
-    if (xlpLots) qty = Math.max(100, Math.round(qty / 100) * 100);
+    if (screwLots) qty = Math.max(100, Math.round(qty / 100) * 100);
     let label = accSpec;
     if (accType === "Sealant") label = `Sealant — color-matched (${colorName})`;
     if (accType === "Clips") label = `Clips — ${accProfile}`;
@@ -4953,11 +4954,11 @@ export default function ShopOrderApp() {
                 )}
                 <label style={{ width: 70, fontSize: 11, color: theme.textSecondary }}>
                   Qty
-                  <input type="number" min={xlpLots ? 100 : 1} step={xlpLots ? 100 : 1} value={accQty}
+                  <input type="number" min={screwLots ? 100 : 1} step={screwLots ? 100 : 1} value={accQty}
                     onChange={(e) => setAccQty(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
                     onBlur={(e) => {
-                      if (e.target.value === "") { setAccQty(xlpLots ? 100 : 1); return; }
-                      if (xlpLots) setAccQty(Math.max(100, Math.round((+e.target.value || 100) / 100) * 100));
+                      if (e.target.value === "") { setAccQty(screwLots ? 100 : 1); return; }
+                      if (screwLots) setAccQty(Math.max(100, Math.round((+e.target.value || 100) / 100) * 100));
                     }}
                     className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
                 </label>
@@ -4966,9 +4967,9 @@ export default function ShopOrderApp() {
                   + Add
                 </button>
               </div>
-              {xlpLots && (
+              {screwLots && (
                 <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
-                  1" XLP screws sell in lots of 100 — the qty steps by full lots.
+                  Screws sell in lots of 100 — the qty steps by full lots.
                 </div>
               )}
 
