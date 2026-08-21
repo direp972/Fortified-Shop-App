@@ -2221,6 +2221,7 @@ export default function ShopOrderApp() {
   const { user, customer, isStaff, signOut } = useAuth();
   const [customers, setCustomers] = useState([]); // staff-only: every registered customer, for tier assignment
   const [customersLoaded, setCustomersLoaded] = useState(false);
+  const [staffIds, setStaffIds] = useState([]);
   const [siteLeads, setSiteLeads] = useState([]); // staff-only: signups from the roofcoil.com member gate
   const [siteLeadsLoaded, setSiteLeadsLoaded] = useState(false);
   const [mfrApps, setMfrApps] = useState([]); // staff-only: manufacturer "get listed" applications from the site
@@ -2634,12 +2635,15 @@ export default function ShopOrderApp() {
     setToast(`Restored ${missing.length} item${missing.length === 1 ? "" : "s"} back to the price list.`);
   };
 
-  // Staff-only: load every registered customer so their pricing tier can be assigned.
+  // Staff-only: load every registered customer so their pricing tier can be assigned,
+  // plus the current admin (staff) list for the toggle.
   useEffect(() => {
     if (!isStaff) return;
     (async () => {
       const { data, error } = await supabase.from("customers").select("*").order("created_at", { ascending: false });
       if (!error) setCustomers(data || []);
+      const { data: staffRows } = await supabase.from("staff").select("id");
+      if (staffRows) setStaffIds(staffRows.map((s) => s.id));
       setCustomersLoaded(true);
     })();
   }, [isStaff]);
@@ -2649,6 +2653,22 @@ export default function ShopOrderApp() {
     const { error } = await supabase.from("customers").update({ tier }).eq("id", customerId);
     if (error) {
       setToast("Couldn't save that — try again.");
+      console.error(error);
+    }
+  };
+
+  // Staff-only: grant or revoke backend admin access. RLS also blocks removing yourself.
+  const toggleAdmin = async (customerId) => {
+    if (customerId === user?.id) { setToast("That's you — you can't remove your own admin access."); setTimeout(() => setToast(""), 3500); return; }
+    const isAdmin = staffIds.includes(customerId);
+    setStaffIds((prev) => (isAdmin ? prev.filter((id) => id !== customerId) : [...prev, customerId]));
+    const { error } = isAdmin
+      ? await supabase.from("staff").delete().eq("id", customerId)
+      : await supabase.from("staff").insert({ id: customerId });
+    if (error) {
+      setStaffIds((prev) => (isAdmin ? [...prev, customerId] : prev.filter((id) => id !== customerId)));
+      setToast("Couldn't change admin access — try again.");
+      setTimeout(() => setToast(""), 3500);
       console.error(error);
     }
   };
@@ -5236,6 +5256,17 @@ export default function ShopOrderApp() {
                         <option value="greenleaf">Greenleaf</option>
                         <option value="tier2">Tier 2 — Retail</option>
                       </select>
+                      <button onClick={() => toggleAdmin(c.id)}
+                        title={c.id === user?.id ? "That's you — you can't remove your own admin access" : staffIds.includes(c.id) ? "Tap to remove backend admin access" : "Tap to grant backend admin access"}
+                        style={{
+                          padding: "6px 11px", borderRadius: 999, fontSize: 10, fontWeight: 700, whiteSpace: "nowrap",
+                          cursor: c.id === user?.id ? "default" : "pointer", opacity: c.id === user?.id ? 0.75 : 1,
+                          border: `1px solid ${staffIds.includes(c.id) ? SAFETY : theme.border}`,
+                          background: staffIds.includes(c.id) ? SAFETY : "transparent",
+                          color: staffIds.includes(c.id) ? "#fff" : theme.textSecondary,
+                        }}>
+                        {staffIds.includes(c.id) ? "Admin ✓" : "Admin"}
+                      </button>
                     </div>
                   ))
                 )}
