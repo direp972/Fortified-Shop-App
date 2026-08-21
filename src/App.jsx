@@ -525,10 +525,14 @@ const PART3D_LABELS = { collector: "Collector Box", scupper: "Scupper", chimney:
 const CAP_STYLE_LABELS = { pyramid: "Pyramid", stevenson: "Stevenson Top", texas: "Texas Top", chateau: "Chateau Cap" };
 
 const ACCESSORY_TYPES = ["Screws", "Butyl Tape", "Pipe Boots", "Sealant", "Clips"];
+const DRY_IN_TYPES = ["Underlayment", "Cap Nails", "High Temp Ice & Water"];
 const ACCESSORY_SPECS = {
   Screws: ['1" XLP Screws', "DP1 Screws", "DP3 Screws"],
   "Butyl Tape": ['1" Butyl Tape', '3/8" Butyl Tape'],
   "Pipe Boots": ['1"', '1.5"', '2"', '3"', '4"', '5"', '6"', '7"', '8"'],
+  Underlayment: ["Synthetic Underlayment (roll)"],
+  "Cap Nails": ["Plastic Cap Nails (box)"],
+  "High Temp Ice & Water": ["High Temp Ice & Water (roll)"],
 };
 const STATUS_ICON = { Pending: Clock, "In Production": Hammer, "Ready for Pickup": PackageCheck, Completed: Truck };
 const STATUS_COLOR = { Pending: STEEL, "In Production": AMBER, "Ready for Pickup": INK, Completed: GREEN };
@@ -2559,6 +2563,10 @@ export default function ShopOrderApp() {
     { id: "p12h", category: "Accessories", name: 'Pipe Boot 7" (each)', cost: 0, tier1: 24.00, tier2: 28.00, greenleaf: 22.25 },
     { id: "p12i", category: "Accessories", name: 'Pipe Boot 8" (each)', cost: 0, tier1: 27.00, tier2: 31.50, greenleaf: 25.00 },
     { id: "p13", category: "Accessories", name: 'Sealant, Color-Matched (per tube)', cost: 0, tier1: 9.00, tier2: 10.50, greenleaf: 8.50 },
+    // Dry In
+    { id: "pd1", category: "Accessories", name: 'Synthetic Underlayment (per roll)', cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
+    { id: "pd2", category: "Accessories", name: 'Plastic Cap Nails (per box)', cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
+    { id: "pd3", category: "Accessories", name: 'High Temp Ice & Water (per roll)', cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
     // Clips — priced PER CLIP; the backend shows the computed per-box price
     // (per-clip × the box count from CLIP_SPECS) next to each row.
     // Costs are BPD (bpdusa.com) listed per-clip prices as of 2026-08-21; sell
@@ -4943,6 +4951,19 @@ export default function ShopOrderApp() {
               </div>
               <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
                 {ACCESSORY_TYPES.map((t) => (
+                  <button key={t} type="button"
+                    onClick={() => { setAccType(t); setAccSpec(ACCESSORY_SPECS[t]?.[0] || ""); }}
+                    style={{
+                      padding: "6px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
+                      border: `1px solid ${accType === t ? INK : "#D9D5C7"}`, background: accType === t ? INK : "#fff", color: accType === t ? "#fff" : INK_DEEP,
+                    }}>
+                    {t}
+                  </button>
+                ))}
+              </div>
+              <div className="disp" style={{ fontSize: 10, color: theme.textSecondary, marginTop: 8 }}>Dry In</div>
+              <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                {DRY_IN_TYPES.map((t) => (
                   <button key={t} type="button"
                     onClick={() => { setAccType(t); setAccSpec(ACCESSORY_SPECS[t]?.[0] || ""); }}
                     style={{
