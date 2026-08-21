@@ -1137,10 +1137,13 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   };
 
   const dragStartRef = useRef(null); // { pointerX, pointerY, origPoint } — used to dampen drag sensitivity
+  const lastViewRef = useRef(null);  // latest auto-fit box, captured each render
+  const dragViewRef = useRef(null);  // frozen copy of that box while a point is being dragged
   const handlePointDown = (i) => (e) => {
     e.stopPropagation();
     e.preventDefault();
     e.target.setPointerCapture?.(e.pointerId);
+    dragViewRef.current = lastViewRef.current; // freeze the view for the whole drag
     setDragIdx(i);
     setSelectedIdx(i);
     const [ux, uy] = toUser(e.clientX, e.clientY);
@@ -1176,9 +1179,14 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   if (maxX - minX < MIN_W) { const c = (minX + maxX) / 2; minX = c - MIN_W / 2; maxX = c + MIN_W / 2; }
   if (maxY - minY < MIN_H) { const c = (minY + maxY) / 2; minY = c - MIN_H / 2; maxY = c + MIN_H / 2; }
   const vbX = minX - PAD, vbY = minY - PAD, vbW = (maxX - minX) + PAD * 2, vbH = (maxY - minY) + PAD * 2;
+  // While a point is being dragged, the view stays frozen at its pre-drag fit so the
+  // canvas never re-centers or resizes under the finger — it re-fits (zooms out to
+  // show everything) the moment the drag ends.
+  lastViewRef.current = { vbX, vbY, vbW, vbH };
+  const fv = dragIdx !== null && dragViewRef.current ? dragViewRef.current : { vbX, vbY, vbW, vbH };
   // Manual zoom scales the view around its own center (or a clicked leg's midpoint), on top of the auto-fit box.
-  const cx = zoomCenter ? zoomCenter[0] : vbX + vbW / 2, cy = zoomCenter ? zoomCenter[1] : vbY + vbH / 2;
-  const zVbW = vbW * zoom, zVbH = vbH * zoom;
+  const cx = zoomCenter ? zoomCenter[0] : fv.vbX + fv.vbW / 2, cy = zoomCenter ? zoomCenter[1] : fv.vbY + fv.vbH / 2;
+  const zVbW = fv.vbW * zoom, zVbH = fv.vbH * zoom;
   const zVbX = cx - zVbW / 2, zVbY = cy - zVbH / 2;
   const unit = zVbW / 100; // scales strokes/points/text relative to current zoom
 
@@ -1277,9 +1285,9 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
         viewBox={`${zVbX} ${zVbY} ${zVbW} ${zVbH}`}
         onPointerDown={handleBgDown}
         onPointerMove={handleMove}
-        onPointerUp={() => { setDragIdx(null); dragStartRef.current = null; }}
+        onPointerUp={() => { setDragIdx(null); dragStartRef.current = null; dragViewRef.current = null; }}
         style={{
-          width: "100%", height: "auto", aspectRatio: `${zVbW} / ${zVbH}`, background: INK, borderRadius: 4,
+          width: "100%", height: "auto", aspectRatio: "416 / 220", background: INK, borderRadius: 4,
           touchAction: "none", cursor: mode === "select" ? "default" : "crosshair", display: "block",
           userSelect: "none", WebkitUserSelect: "none", MozUserSelect: "none", WebkitTouchCallout: "none",
         }}
