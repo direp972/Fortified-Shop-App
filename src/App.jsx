@@ -3633,11 +3633,27 @@ export default function ShopOrderApp() {
 
   // Master Materials List pull status — shared so the whole shop sees one board.
   // Keys include the quantity, so if a line's need grows it drops back to Needed.
+  const materialLines = () => {
+    const m = computeJobMaterials(orders.filter((o) => o.status !== "Completed"));
+    return [
+      ...m.flatSheets.map((f) => ({ lk: `fs:${f.key}:${f.count}`, pos: f.pos })),
+      ...m.coil.map((c) => ({ lk: `coil:${c.key}:${Math.ceil(c.feet)}`, pos: c.pos })),
+    ];
+  };
   const cycleMatStatus = async (lineKey) => {
     const cur = matStatus[lineKey];
     const next = cur === "instock" ? "pulled" : cur === "pulled" ? undefined : "instock";
     const nextMap = { ...matStatus };
     if (next) nextMap[lineKey] = next; else delete nextMap[lineKey];
+    // PO auto-promotion: the moment every line a PO needs is at least In Stock,
+    // that whole PO's materials jump straight to Ready for Production.
+    const lines = materialLines();
+    for (const po of [...new Set(lines.flatMap((l) => l.pos))]) {
+      const poLines = lines.filter((l) => l.pos.includes(po));
+      if (poLines.length > 0 && poLines.every((l) => nextMap[l.lk] === "instock" || nextMap[l.lk] === "pulled")) {
+        poLines.forEach((l) => { nextMap[l.lk] = "pulled"; });
+      }
+    }
     setMatStatus(nextMap);
     try { await storage.set("shop-material-status", JSON.stringify(nextMap), true); }
     catch (e) { console.error("storage error", e); }
@@ -5867,7 +5883,7 @@ export default function ShopOrderApp() {
               ) : (
                 <div>
                   <div style={{ fontSize: 10.5, color: theme.textSecondary, marginBottom: 12 }}>
-                    Every flat sheet and coil needed across all active (non-Completed) jobs — each card shows the PO(s) it feeds. Tap a card to move it along: Needed → In Stock → Ready for Production (tap again to send it back to Needed). A card returns to Needed on its own if that line's quantity grows.
+                    Every flat sheet and coil needed across all active (non-Completed) jobs — each card shows the PO(s) it feeds. Tap a card to move it along: Needed → In Stock → Ready for Production (tap again to send it back to Needed). Once every card a PO needs is In Stock, that PO's cards jump to Ready for Production on their own — and a card returns to Needed if its quantity grows.
                   </div>
                   {(() => {
                     const allLines = [
