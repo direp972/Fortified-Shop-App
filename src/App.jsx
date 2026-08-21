@@ -2270,6 +2270,7 @@ export default function ShopOrderApp() {
   const [accSpec, setAccSpec] = useState(ACCESSORY_SPECS.Screws[0]);
   const [accProfile, setAccProfile] = useState(PROFILES[0]);
   const [accQty, setAccQty] = useState(1);
+  const [accSealColor, setAccSealColor] = useState("match"); // "match" | "Clear" | a color name
   const [accessories, setAccessories] = useState([]);
   const [partType, setPartType] = useState("collector");
   const [partW, setPartW] = useState(12);
@@ -3212,7 +3213,7 @@ export default function ShopOrderApp() {
     let qty = Math.max(1, +accQty || 1);
     if (screwLots) qty = Math.max(100, Math.round(qty / 100) * 100);
     let label = accSpec;
-    if (accType === "Sealant") label = `Sealant — color-matched (${colorName})`;
+    if (accType === "Sealant") label = accSealColor === "match" ? `Sealant — color-matched (${colorName})` : `Sealant — ${accSealColor}`;
     if (accType === "Clips") label = `Clips — ${accProfile}`;
     setAccessories((a) => [...a, { id: uid(), type: accType, label, qty }]);
     setAccQty(1);
@@ -4929,12 +4930,15 @@ export default function ShopOrderApp() {
 
               <div style={{ display: "flex", gap: 10, marginTop: 8, alignItems: "flex-end" }}>
                 {accType === "Sealant" ? (
-                  <div style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                    Spec
-                    <div className="mono" style={{ padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, background: theme.highlight }}>
-                      Color-matched to {colorName}
-                    </div>
-                  </div>
+                  <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                    Sealant Color
+                    <select value={accSealColor} onChange={(e) => setAccSealColor(e.target.value)}
+                      style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, background: theme.inputBg }}>
+                      <option value="match">Match panel color — {colorName}</option>
+                      <option value="Clear">Clear</option>
+                      {getColorsForBrand(brand, paintId).filter((c) => c.name !== colorName).map((c) => <option key={c.name} value={c.name}>{c.name}</option>)}
+                    </select>
+                  </label>
                 ) : accType === "Clips" ? (
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Panel Profile
