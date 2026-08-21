@@ -4973,16 +4973,18 @@ export default function ShopOrderApp() {
                     </select>
                   </label>
                 )}
-                <label style={{ width: 70, fontSize: 11, color: theme.textSecondary }}>
-                  {accClipSpec ? "Boxes" : "Qty"}
-                  <input type="number" min={screwLots ? 100 : 1} step={screwLots ? 100 : 1} value={accQty}
-                    onChange={(e) => setAccQty(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
-                    onBlur={(e) => {
-                      if (e.target.value === "") { setAccQty(screwLots ? 100 : 1); return; }
-                      if (screwLots) setAccQty(Math.max(100, Math.round((+e.target.value || 100) / 100) * 100));
-                    }}
-                    className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
-                </label>
+                {!accNoClip && (
+                  <label style={{ width: 70, fontSize: 11, color: theme.textSecondary }}>
+                    {accClipSpec ? "Boxes" : "Qty"}
+                    <input type="number" min={screwLots ? 100 : 1} step={screwLots ? 100 : 1} value={accQty}
+                      onChange={(e) => setAccQty(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
+                      onBlur={(e) => {
+                        if (e.target.value === "") { setAccQty(screwLots ? 100 : 1); return; }
+                        if (screwLots) setAccQty(Math.max(100, Math.round((+e.target.value || 100) / 100) * 100));
+                      }}
+                      className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
+                  </label>
+                )}
                 {accClipSpec && (
                   <div style={{ width: 92, fontSize: 11, color: theme.textSecondary }}>
                     Total Clips
@@ -4991,10 +4993,12 @@ export default function ShopOrderApp() {
                     </div>
                   </div>
                 )}
-                <button type="button" onClick={addAccessory} disabled={accNoClip}
-                  style={{ padding: "8px 12px", borderRadius: 6, border: `1px solid ${SAFETY}`, background: theme.inputBg, color: SAFETY, fontSize: 12, fontWeight: 700, cursor: accNoClip ? "default" : "pointer", whiteSpace: "nowrap", opacity: accNoClip ? 0.4 : 1 }}>
-                  + Add
-                </button>
+                {!accNoClip && (
+                  <button type="button" onClick={addAccessory}
+                    style={{ padding: "8px 12px", borderRadius: 6, border: `1px solid ${SAFETY}`, background: theme.inputBg, color: SAFETY, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                    + Add
+                  </button>
+                )}
               </div>
               {screwLots && (
                 <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
