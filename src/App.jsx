@@ -105,6 +105,7 @@ const PROFILES = Object.keys(PROFILE_INFO).filter((k) => !PROFILE_INFO[k].delist
 
 // Fixed-clip part numbers by panel profile — clips sell by the box.
 const CLIP_SPECS = {
+  SS100: { code: "FG-100-24", perBox: 1000 },    // 1" mechanical seam
   SS150: { code: "FG-158-24", perBox: 500 },     // 1.5" mechanical seam
   SSQ200: { code: "FG-218-24", perBox: 300 },    // 2" mechanical seam
   SS450: { code: "SG-114-24-SL", perBox: 800 },  // 1.5" snap-lock
@@ -3213,6 +3214,8 @@ export default function ShopOrderApp() {
   // typed amount rounds to the nearest full lot. Every other accessory counts by 1.
   const screwLots = accType === "Screws";
   const accClipSpec = accType === "Clips" ? clipSpecForProfile(accProfile) : null;
+  // Fastener-flange and flush wall/soffit panels screw straight through the flange.
+  const accNoClip = accType === "Clips" && ["FF100", "FWQ100"].includes(PROFILE_INFO[accProfile]?.code);
   useEffect(() => {
     if (screwLots) setAccQty((q) => Math.max(100, Math.round((+q || 100) / 100) * 100));
     else setAccQty((q) => Math.max(1, Math.round(+q || 1)));
@@ -3220,6 +3223,7 @@ export default function ShopOrderApp() {
   }, [accType]);
 
   const addAccessory = () => {
+    if (accNoClip) return; // flange panels don't take clips
     let qty = Math.max(1, +accQty || 1);
     if (screwLots) qty = Math.max(100, Math.round(qty / 100) * 100);
     let label = accSpec;
@@ -4979,8 +4983,8 @@ export default function ShopOrderApp() {
                     }}
                     className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
                 </label>
-                <button type="button" onClick={addAccessory}
-                  style={{ padding: "8px 12px", borderRadius: 6, border: `1px solid ${SAFETY}`, background: theme.inputBg, color: SAFETY, fontSize: 12, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                <button type="button" onClick={addAccessory} disabled={accNoClip}
+                  style={{ padding: "8px 12px", borderRadius: 6, border: `1px solid ${SAFETY}`, background: theme.inputBg, color: SAFETY, fontSize: 12, fontWeight: 700, cursor: accNoClip ? "default" : "pointer", whiteSpace: "nowrap", opacity: accNoClip ? 0.4 : 1 }}>
                   + Add
                 </button>
               </div>
@@ -4992,6 +4996,11 @@ export default function ShopOrderApp() {
               {accClipSpec && (
                 <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
                   Clip {accClipSpec.code} · {accClipSpec.perBox} per box — the qty above is boxes.
+                </div>
+              )}
+              {accNoClip && (
+                <div style={{ fontSize: 10.5, fontWeight: 600, color: theme.textSecondary, marginTop: 4 }}>
+                  No clip needed — this panel fastens straight through its flange.
                 </div>
               )}
 
