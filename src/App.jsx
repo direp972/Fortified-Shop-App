@@ -5867,60 +5867,58 @@ export default function ShopOrderApp() {
               ) : (
                 <div>
                   <div style={{ fontSize: 10.5, color: theme.textSecondary, marginBottom: 12 }}>
-                    Every flat sheet and coil needed across all active (non-Completed) jobs, combined into one shopping list — each line shows the PO(s) it feeds. Tap the status pill to cycle Needed → In Stock → Pulled; it resets to Needed if a line's quantity grows.
+                    Every flat sheet and coil needed across all active (non-Completed) jobs — each card shows the PO(s) it feeds. Tap a card to move it along: Needed → In Stock → Ready for Production (tap again to send it back to Needed). A card returns to Needed on its own if that line's quantity grows.
                   </div>
-                  {materials.flatSheets.length > 0 && (
-                    <div style={{ marginBottom: 16 }}>
-                      <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>Flat Sheets</div>
-                      {materials.flatSheets.map((f, i) => {
-                        const lk = `fs:${f.key}:${f.count}`;
-                        const st = matStatus[lk];
-                        return (
-                          <div key={`mfs-${i}`} style={{ background: theme.card, borderRadius: 8, padding: 10, marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
-                            <span style={{ width: 16, height: 16, borderRadius: 4, background: f.colorHex, border: "1px solid rgba(0,0,0,0.2)", flexShrink: 0 }} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{f.count} sheets — {formatDim(f.width / 12)}' × {formatDim(f.length / 12)}'</div>
-                              <div style={{ fontSize: 10.5, color: theme.textSecondary }}>{f.brand}, {f.colorName}{f.pos.length > 0 ? <span className="mono"> · {f.pos.join(", ")}</span> : null}</div>
+                  {(() => {
+                    const allLines = [
+                      ...materials.flatSheets.map((f) => ({
+                        lk: `fs:${f.key}:${f.count}`, colorHex: f.colorHex,
+                        title: `${f.count} sheets — ${formatDim(f.width / 12)}' × ${formatDim(f.length / 12)}'`,
+                        sub: `${f.brand}, ${f.colorName}`, pos: f.pos,
+                      })),
+                      ...materials.coil.map((c) => ({
+                        lk: `coil:${c.key}:${Math.ceil(c.feet)}`, colorHex: c.colorHex,
+                        title: `Coil ${formatDim(c.width)}" — ${Math.ceil(c.feet)} ft`,
+                        sub: `${c.brand}, ${c.colorName}`, pos: c.pos,
+                      })),
+                    ];
+                    const cols = [
+                      { id: undefined, label: "Needed", color: STEEL },
+                      { id: "instock", label: "In Stock", color: AMBER },
+                      { id: "pulled", label: "Ready for Production", color: GREEN },
+                    ];
+                    return (
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, alignItems: "start" }}>
+                        {cols.map((col) => {
+                          const lines = allLines.filter((l) => matStatus[l.lk] === col.id);
+                          return (
+                            <div key={col.label} style={{ background: theme.pageBg, border: `1px solid ${theme.border}`, borderTop: `3px solid ${col.color}`, borderRadius: 8, padding: 6, minHeight: 120 }}>
+                              <div className="disp" style={{ fontSize: 10, color: col.color, marginBottom: 6, textAlign: "center" }}>
+                                {col.label} ({lines.length})
+                              </div>
+                              {lines.length === 0 ? (
+                                <div style={{ fontSize: 10, color: theme.textSecondary, textAlign: "center", padding: "14px 4px" }}>—</div>
+                              ) : (
+                                lines.map((l) => (
+                                  <button key={l.lk} onClick={() => cycleMatStatus(l.lk)} className="tap-bounce"
+                                    title={col.id === "pulled" ? "Tap to send back to Needed" : col.id === "instock" ? "Tap when pulled for production" : "Tap when it's in stock"}
+                                    style={{ display: "block", width: "100%", textAlign: "left", background: theme.card, border: "none", borderRadius: 6, padding: 8, marginBottom: 5, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", cursor: "pointer" }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                      <span style={{ width: 12, height: 12, borderRadius: 3, background: l.colorHex, border: "1px solid rgba(0,0,0,0.2)", flexShrink: 0 }} />
+                                      <span className="mono" style={{ fontSize: 11, fontWeight: 700, color: theme.text, lineHeight: 1.3 }}>{l.title}</span>
+                                    </div>
+                                    <div style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3, lineHeight: 1.4 }}>
+                                      {l.sub}{l.pos.length > 0 ? <span className="mono"> · {l.pos.join(", ")}</span> : null}
+                                    </div>
+                                  </button>
+                                ))
+                              )}
                             </div>
-                            <button onClick={() => cycleMatStatus(lk)}
-                              title="Tap to cycle: Needed → In Stock → Pulled"
-                              style={{ padding: "6px 12px", borderRadius: 999, fontSize: 10.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
-                                border: `1px solid ${st === "pulled" ? GREEN : st === "instock" ? AMBER : theme.border}`,
-                                background: st === "pulled" ? GREEN : st === "instock" ? AMBER : "transparent",
-                                color: st ? "#fff" : theme.textSecondary }}>
-                              {st === "pulled" ? "Pulled ✓" : st === "instock" ? "In Stock" : "Needed"}
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {materials.coil.length > 0 && (
-                    <div style={{ marginBottom: 16 }}>
-                      <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>Coil</div>
-                      {materials.coil.map((c, i) => {
-                        const lk = `coil:${c.key}:${Math.ceil(c.feet)}`;
-                        const st = matStatus[lk];
-                        return (
-                          <div key={`mcoil-${i}`} style={{ background: theme.card, borderRadius: 8, padding: 10, marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
-                            <span style={{ width: 16, height: 16, borderRadius: 4, background: c.colorHex, border: "1px solid rgba(0,0,0,0.2)", flexShrink: 0 }} />
-                            <div style={{ flex: 1, minWidth: 0 }}>
-                              <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{formatDim(c.width)}" wide — {Math.ceil(c.feet)} ft</div>
-                              <div style={{ fontSize: 10.5, color: theme.textSecondary }}>{c.brand}, {c.colorName}{c.pos.length > 0 ? <span className="mono"> · {c.pos.join(", ")}</span> : null}</div>
-                            </div>
-                            <button onClick={() => cycleMatStatus(lk)}
-                              title="Tap to cycle: Needed → In Stock → Pulled"
-                              style={{ padding: "6px 12px", borderRadius: 999, fontSize: 10.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
-                                border: `1px solid ${st === "pulled" ? GREEN : st === "instock" ? AMBER : theme.border}`,
-                                background: st === "pulled" ? GREEN : st === "instock" ? AMBER : "transparent",
-                                color: st ? "#fff" : theme.textSecondary }}>
-                              {st === "pulled" ? "Pulled ✓" : st === "instock" ? "In Stock" : "Needed"}
-                            </button>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                   <div style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 4 }}>
                     3D Parts (collector boxes, scuppers, chimney caps) aren't included — their material need isn't tracked as a simple sheet/coil quantity yet.
                   </div>
