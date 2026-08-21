@@ -4951,8 +4951,8 @@ export default function ShopOrderApp() {
                     </select>
                   </label>
                 )}
-                <label style={{ width: xlpLots ? 110 : 70, fontSize: 11, color: theme.textSecondary, whiteSpace: "nowrap" }}>
-                  {xlpLots ? "Qty (lots of 100)" : "Qty"}
+                <label style={{ width: 70, fontSize: 11, color: theme.textSecondary }}>
+                  Qty
                   <input type="number" min={xlpLots ? 100 : 1} step={xlpLots ? 100 : 1} value={accQty}
                     onChange={(e) => setAccQty(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
                     onBlur={(e) => {
@@ -4966,6 +4966,11 @@ export default function ShopOrderApp() {
                   + Add
                 </button>
               </div>
+              {xlpLots && (
+                <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
+                  1" XLP screws sell in lots of 100 — the qty steps by full lots.
+                </div>
+              )}
 
               {accessories.length > 0 && (
                 <div style={{ marginTop: 10, borderTop: "1px solid #EEE9DC", paddingTop: 8 }}>
