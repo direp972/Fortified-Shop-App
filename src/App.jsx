@@ -527,7 +527,7 @@ const CAP_STYLE_LABELS = { pyramid: "Pyramid", stevenson: "Stevenson Top", texas
 const ACCESSORY_TYPES = ["Screws", "Butyl Tape", "Pipe Boots", "Sealant", "Clips"];
 const ACCESSORY_SPECS = {
   Screws: ['1" XLP Screws', "DP1 Screws", "DP3 Screws"],
-  "Butyl Tape": ['3/8" Butyl Tape', '1" Butyl Tape'],
+  "Butyl Tape": ['1" Butyl Tape', '3/8" Butyl Tape'],
   "Pipe Boots": ['1"', '1.5"', '2"', '3"', '4"', '5"', '6"', '7"', '8"'],
 };
 const STATUS_ICON = { Pending: Clock, "In Production": Hammer, "Ready for Pickup": PackageCheck, Completed: Truck };
