@@ -3217,8 +3217,8 @@ export default function ShopOrderApp() {
   // Fastener-flange and flush wall/soffit panels screw straight through the flange.
   const accNoClip = accType === "Clips" && ["FF100", "FWQ100"].includes(PROFILE_INFO[accProfile]?.code);
   useEffect(() => {
-    if (screwLots) setAccQty((q) => Math.max(100, Math.round((+q || 100) / 100) * 100));
-    else setAccQty((q) => Math.max(1, Math.round(+q || 1)));
+    // Fresh sensible qty per accessory type: screws start at a full lot, everything else at 1.
+    setAccQty(screwLots ? 100 : 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accType]);
 
@@ -3230,7 +3230,7 @@ export default function ShopOrderApp() {
     if (accType === "Sealant") label = accSealColor === "match" ? `Sealant — color-matched (${colorName})` : `Sealant — ${accSealColor}`;
     if (accType === "Clips") {
       const cs = clipSpecForProfile(accProfile);
-      label = cs ? `Clips ${cs.code} — ${accProfile} (${cs.perBox}/box, qty = boxes)` : `Clips — ${accProfile}`;
+      label = cs ? `Clips ${cs.code} — ${accProfile} (${cs.perBox}/box, ${(qty * cs.perBox).toLocaleString()} clips total)` : `Clips — ${accProfile}`;
     }
     setAccessories((a) => [...a, { id: uid(), type: accType, label, qty }]);
     setAccQty(1);
@@ -4983,6 +4983,14 @@ export default function ShopOrderApp() {
                     }}
                     className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
                 </label>
+                {accClipSpec && (
+                  <div style={{ width: 92, fontSize: 11, color: theme.textSecondary }}>
+                    Total Clips
+                    <div className="mono" style={{ padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.highlight, color: theme.text, fontWeight: 600, boxSizing: "border-box", whiteSpace: "nowrap", textAlign: "right" }}>
+                      {((+accQty || 0) * accClipSpec.perBox).toLocaleString()}
+                    </div>
+                  </div>
+                )}
                 <button type="button" onClick={addAccessory} disabled={accNoClip}
                   style={{ padding: "8px 12px", borderRadius: 6, border: `1px solid ${SAFETY}`, background: theme.inputBg, color: SAFETY, fontSize: 12, fontWeight: 700, cursor: accNoClip ? "default" : "pointer", whiteSpace: "nowrap", opacity: accNoClip ? 0.4 : 1 }}>
                   + Add
