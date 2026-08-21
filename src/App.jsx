@@ -3199,8 +3199,17 @@ export default function ShopOrderApp() {
 
   const removeBasketItem = (id) => setBasket((b) => b.filter((i) => i.id !== id));
 
+  // 1" XLP screws only sell in lots of 100 — the qty spinner steps by the lot size
+  // and any typed amount rounds to the nearest full lot.
+  const xlpLots = accType === "Screws" && accSpec.includes("XLP");
+  useEffect(() => {
+    if (xlpLots) setAccQty((q) => Math.max(100, Math.round((+q || 100) / 100) * 100));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accType, accSpec]);
+
   const addAccessory = () => {
-    const qty = Math.max(1, +accQty || 1);
+    let qty = Math.max(1, +accQty || 1);
+    if (xlpLots) qty = Math.max(100, Math.round(qty / 100) * 100);
     let label = accSpec;
     if (accType === "Sealant") label = `Sealant — color-matched (${colorName})`;
     if (accType === "Clips") label = `Clips — ${accProfile}`;
@@ -4942,11 +4951,14 @@ export default function ShopOrderApp() {
                     </select>
                   </label>
                 )}
-                <label style={{ width: 70, fontSize: 11, color: theme.textSecondary }}>
-                  Qty
-                  <input type="number" min={1} value={accQty}
+                <label style={{ width: xlpLots ? 110 : 70, fontSize: 11, color: theme.textSecondary, whiteSpace: "nowrap" }}>
+                  {xlpLots ? "Qty (lots of 100)" : "Qty"}
+                  <input type="number" min={xlpLots ? 100 : 1} step={xlpLots ? 100 : 1} value={accQty}
                     onChange={(e) => setAccQty(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
-                    onBlur={(e) => { if (e.target.value === "") setAccQty(1); }}
+                    onBlur={(e) => {
+                      if (e.target.value === "") { setAccQty(xlpLots ? 100 : 1); return; }
+                      if (xlpLots) setAccQty(Math.max(100, Math.round((+e.target.value || 100) / 100) * 100));
+                    }}
                     className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
                 </label>
                 <button type="button" onClick={addAccessory}
