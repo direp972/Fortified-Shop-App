@@ -530,9 +530,9 @@ const ACCESSORY_SPECS = {
   Screws: ['1" XLP Screws', "DP1 Screws", "DP3 Screws"],
   "Butyl Tape": ['1" Butyl Tape', '3/8" Butyl Tape'],
   "Pipe Boots": ['1"', '1.5"', '2"', '3"', '4"', '5"', '6"', '7"', '8"'],
-  Underlayment: ["Synthetic Underlayment (roll)"],
-  "Cap Nails": ["Plastic Cap Nails (box)"],
-  "High Temp Ice & Water": ["High Temp Ice & Water (roll)"],
+  Underlayment: ['Synthetic Underlayment — 42" × 1,000 sq ft roll'],
+  "Cap Nails": ["Plastic Cap Nails (2,000/box)"],
+  "High Temp Ice & Water": ["Palisade SA-HT — 2 sq roll"],
 };
 const STATUS_ICON = { Pending: Clock, "In Production": Hammer, "Ready for Pickup": PackageCheck, Completed: Truck };
 const STATUS_COLOR = { Pending: STEEL, "In Production": AMBER, "Ready for Pickup": INK, Completed: GREEN };
@@ -2564,9 +2564,9 @@ export default function ShopOrderApp() {
     { id: "p12i", category: "Accessories", name: 'Pipe Boot 8" (each)', cost: 0, tier1: 27.00, tier2: 31.50, greenleaf: 25.00 },
     { id: "p13", category: "Accessories", name: 'Sealant, Color-Matched (per tube)', cost: 0, tier1: 9.00, tier2: 10.50, greenleaf: 8.50 },
     // Dry In
-    { id: "pd1", category: "Accessories", name: 'Synthetic Underlayment (per roll)', cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
-    { id: "pd2", category: "Accessories", name: 'Plastic Cap Nails (per box)', cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
-    { id: "pd3", category: "Accessories", name: 'High Temp Ice & Water (per roll)', cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
+    { id: "pd1", category: "Accessories", name: 'Synthetic Underlayment 42" (1,000 sq ft roll)', cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
+    { id: "pd2", category: "Accessories", name: 'Plastic Cap Nails (2,000 ct box)', cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
+    { id: "pd3", category: "Accessories", name: 'Palisade SA-HT Ice & Water (2 sq roll)', cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
     // Clips — priced PER CLIP; the backend shows the computed per-box price
     // (per-clip × the box count from CLIP_SPECS) next to each row.
     // Costs are BPD (bpdusa.com) listed per-clip prices as of 2026-08-21; sell
