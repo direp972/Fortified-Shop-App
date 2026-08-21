@@ -1244,7 +1244,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
           </div>
           <div style={{ fontSize: 10, color: "#8FB4C9", fontWeight: 700, marginBottom: 4 }}>GRID SPACING</div>
           <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
-            {[3, 6, 12].map((g) => (
+            {[1, 3, 6, 12].map((g) => (
               <button key={g} type="button" onClick={() => setGridSpacing(g)}
                 style={{
                   flex: 1, padding: "5px 0", borderRadius: 5, fontSize: 10.5, cursor: "pointer",
