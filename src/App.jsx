@@ -2373,6 +2373,7 @@ export default function ShopOrderApp() {
   const [shopFloorView, setShopFloorView] = useState("jobs"); // "jobs" | "materials"
   const [expandedJobs, setExpandedJobs] = useState({});
   const [matStatus, setMatStatus] = useState({}); // materials pull board: lineKey -> "instock" | "pulled"
+  const matSaveChain = useRef(Promise.resolve()); // serializes board writes so rapid taps can't land out of order
   const [submitting, setSubmitting] = useState(false);
   const [basket, setBasket] = useState([]);
   const [tabLoaded, setTabLoaded] = useState(false);
@@ -3652,12 +3653,22 @@ export default function ShopOrderApp() {
   };
   const cycleMatStatus = async (lineKey) => {
     const cur = matStatus[lineKey];
-    const next = cur === "instock" ? "pulled" : cur === "pulled" ? undefined : "instock";
     const nextMap = { ...matStatus };
-    if (next) nextMap[lineKey] = next; else delete nextMap[lineKey];
-    // PO auto-promotion: the moment every line a PO needs is at least In Stock,
-    // that whole PO's materials jump straight to Ready for Production.
     const lines = materialLines();
+    if (cur === "pulled") {
+      // Not actually ready: the tapped card returns to Needed and the rest of its
+      // PO(s) drop back to In Stock — Ready for Production empties for that PO.
+      const mine = lines.find((l) => l.lk === lineKey);
+      const pos = mine ? mine.pos : [];
+      lines.forEach((l) => { if (nextMap[l.lk] === "pulled" && l.pos.some((p) => pos.includes(p))) nextMap[l.lk] = "instock"; });
+      delete nextMap[lineKey];
+    } else if (cur === "instock") {
+      delete nextMap[lineKey]; // undo — back to Needed
+    } else {
+      nextMap[lineKey] = "instock";
+    }
+    // Ready for Production can ONLY be reached here: the moment every component a
+    // PO needs is In Stock, that whole PO's cards move over together.
     for (const po of [...new Set(lines.flatMap((l) => l.pos))]) {
       const poLines = lines.filter((l) => l.pos.includes(po));
       if (poLines.length > 0 && poLines.every((l) => nextMap[l.lk] === "instock" || nextMap[l.lk] === "pulled")) {
@@ -3665,8 +3676,9 @@ export default function ShopOrderApp() {
       }
     }
     setMatStatus(nextMap);
-    try { await storage.set("shop-material-status", JSON.stringify(nextMap), true); }
-    catch (e) { console.error("storage error", e); }
+    matSaveChain.current = matSaveChain.current
+      .then(() => storage.set("shop-material-status", JSON.stringify(nextMap), true))
+      .catch((e) => console.error("storage error", e));
   };
 
   const visibleOrders = statusFilter === "All" ? orders : orders.filter((o) => o.status === statusFilter);
@@ -5893,7 +5905,7 @@ export default function ShopOrderApp() {
               ) : (
                 <div>
                   <div style={{ fontSize: 10.5, color: theme.textSecondary, marginBottom: 12 }}>
-                    Every flat sheet and coil needed across all active (non-Completed) jobs — each card shows the PO(s) it feeds. Tap a card to move it along: Needed → In Stock → Ready for Production (tap again to send it back to Needed). Once every card a PO needs is In Stock, that PO's cards jump to Ready for Production on their own — and a card returns to Needed if its quantity grows.
+                    Every coil, sheet, and accessory needed across all active (non-Completed) jobs — each card shows the PO(s) it feeds. Tap a card in Needed once it's in stock (tap again to undo). Nothing can be moved to Ready for Production by hand: the moment every component a PO needs is In Stock, that whole PO's cards move over together. Tapping a Ready card sends its PO back, and a card returns to Needed if its quantity grows.
                   </div>
                   {(() => {
                     const allLines = [
@@ -5938,7 +5950,7 @@ export default function ShopOrderApp() {
                                       <div className="disp" style={{ fontSize: 8.5, color: theme.textSecondary, margin: "5px 2px 3px" }}>{g}</div>
                                       {groupLines.map((l) => (
                                         <button key={l.lk} onClick={() => cycleMatStatus(l.lk)} className="tap-bounce"
-                                          title={col.id === "pulled" ? "Tap to send back to Needed" : col.id === "instock" ? "Tap when pulled for production" : "Tap when it's in stock"}
+                                          title={col.id === "pulled" ? "Not actually ready? Tap to send this PO back" : col.id === "instock" ? "Tap to undo — Ready for Production fills itself once the whole PO is in stock" : "Tap when it's in stock"}
                                           style={{ display: "block", width: "100%", textAlign: "left", background: theme.card, border: "none", borderRadius: 6, padding: 8, marginBottom: 5, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", cursor: "pointer" }}>
                                           {l.pos.length > 0 && (
                                             <div className="mono" style={{ fontSize: 12, fontWeight: 700, color: SAFETY, lineHeight: 1.3, marginBottom: 3 }}>{l.pos.join(" · ")}</div>
