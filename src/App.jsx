@@ -2559,6 +2559,13 @@ export default function ShopOrderApp() {
     { id: "p12h", category: "Accessories", name: 'Pipe Boot 7" (each)', cost: 0, tier1: 24.00, tier2: 28.00, greenleaf: 22.25 },
     { id: "p12i", category: "Accessories", name: 'Pipe Boot 8" (each)', cost: 0, tier1: 27.00, tier2: 31.50, greenleaf: 25.00 },
     { id: "p13", category: "Accessories", name: 'Sealant, Color-Matched (per tube)', cost: 0, tier1: 9.00, tier2: 10.50, greenleaf: 8.50 },
+    // Clips — priced PER CLIP; the backend shows the computed per-box price
+    // (per-clip × the box count from CLIP_SPECS) next to each row.
+    { id: "pc1", category: "Clips", name: 'FG-100-24 Clip (per clip)', cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
+    { id: "pc2", category: "Clips", name: 'FG-158-24 Clip (per clip)', cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
+    { id: "pc3", category: "Clips", name: 'FG-218-24 Clip (per clip)', cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
+    { id: "pc4", category: "Clips", name: 'SG-114-24-SL Clip (per clip)', cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
+    { id: "pc5", category: "Clips", name: 'SG-178-18 Clip (per clip)', cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
     { id: "p14", category: "Accessories", name: 'Clips (per 100, by profile)', cost: 0, tier1: 22.00, tier2: 26.00, greenleaf: 20.50 },
     // 3D Parts
     { id: "p15", category: "3D Parts", name: 'Collector Box (base fabrication fee)', cost: 0, tier1: 45.00, tier2: 55.00, greenleaf: 42.00 },
@@ -5513,6 +5520,15 @@ export default function ShopOrderApp() {
                         {tierRow("tier1", "Tier 1")}
                         {tierRow("tier2", "Tier 2")}
                         {tierRow("greenleaf", "Greenleaf")}
+                        {(() => {
+                          const spec = Object.values(CLIP_SPECS).find((cs) => p.name.toUpperCase().startsWith(cs.code));
+                          if (!spec) return null;
+                          return (
+                            <div className="mono" style={{ fontSize: 10.5, color: theme.text, marginTop: 6, background: theme.highlight, borderRadius: 5, padding: "6px 9px" }}>
+                              Box of {spec.perBox}: T1 {money((+p.tier1 || 0) * spec.perBox)} · T2 {money((+p.tier2 || 0) * spec.perBox)} · GL {money((+p.greenleaf || 0) * spec.perBox)}
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}
