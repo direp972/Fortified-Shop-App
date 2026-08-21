@@ -795,16 +795,16 @@ function computeJobMaterials(items) {
     const w = Math.round(widthIn * 100) / 100;
     const key = `${w}-${o.brand}-${o.colorName}`;
     const existing = coilByWidth.get(key);
-    if (existing) existing.feet += feet;
-    else coilByWidth.set(key, { width: widthIn, feet, brand: o.brand, colorName: o.colorName, colorHex: o.colorHex });
+    if (existing) { existing.feet += feet; if (o.poNumber) existing.pos.add(o.poNumber); }
+    else coilByWidth.set(key, { key, width: widthIn, feet, brand: o.brand, colorName: o.colorName, colorHex: o.colorHex, pos: new Set(o.poNumber ? [o.poNumber] : []) });
   };
   const addFlatSheets = (widthIn, lengthIn, count, o) => {
     if (!widthIn || !lengthIn || !count) return;
     const w = Math.round(widthIn * 100) / 100, l = Math.round(lengthIn * 100) / 100;
     const key = `${w}x${l}-${o.brand}-${o.colorName}`;
     const existing = flatSheets.get(key);
-    if (existing) existing.count += count;
-    else flatSheets.set(key, { width: widthIn, length: lengthIn, count, brand: o.brand, colorName: o.colorName, colorHex: o.colorHex });
+    if (existing) { existing.count += count; if (o.poNumber) existing.pos.add(o.poNumber); }
+    else flatSheets.set(key, { key, width: widthIn, length: lengthIn, count, brand: o.brand, colorName: o.colorName, colorHex: o.colorHex, pos: new Set(o.poNumber ? [o.poNumber] : []) });
   };
 
   for (const o of items) {
@@ -831,8 +831,8 @@ function computeJobMaterials(items) {
   }
 
   return {
-    flatSheets: [...flatSheets.values()].sort((a, b) => b.count - a.count),
-    coil: [...coilByWidth.values()].sort((a, b) => b.feet - a.feet),
+    flatSheets: [...flatSheets.values()].map((f) => ({ ...f, pos: [...f.pos].sort() })).sort((a, b) => b.count - a.count),
+    coil: [...coilByWidth.values()].map((c) => ({ ...c, pos: [...c.pos].sort() })).sort((a, b) => b.feet - a.feet),
   };
 }
 
@@ -2363,6 +2363,7 @@ export default function ShopOrderApp() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [shopFloorView, setShopFloorView] = useState("jobs"); // "jobs" | "materials"
   const [expandedJobs, setExpandedJobs] = useState({});
+  const [matStatus, setMatStatus] = useState({}); // materials pull board: lineKey -> "instock" | "pulled"
   const [submitting, setSubmitting] = useState(false);
   const [basket, setBasket] = useState([]);
   const [tabLoaded, setTabLoaded] = useState(false);
@@ -2656,6 +2657,17 @@ export default function ShopOrderApp() {
       console.error(error);
     }
   };
+
+  // Staff-only: load the shared materials pull board.
+  useEffect(() => {
+    if (!isStaff) return;
+    (async () => {
+      try {
+        const res = await storage.get("shop-material-status", true);
+        if (res?.value) setMatStatus(JSON.parse(res.value));
+      } catch (e) { /* no board yet */ }
+    })();
+  }, [isStaff]);
 
   // Staff-only: grant or revoke backend admin access. RLS also blocks removing yourself.
   const toggleAdmin = async (customerId) => {
@@ -3617,6 +3629,18 @@ export default function ShopOrderApp() {
 
   const updatePoNumber = async (jobKey, poNumber) => {
     await updateOrderRows(orders.filter((o) => (o.jobId || o.id) === jobKey).map((o) => ({ ...o, poNumber })));
+  };
+
+  // Master Materials List pull status — shared so the whole shop sees one board.
+  // Keys include the quantity, so if a line's need grows it drops back to Needed.
+  const cycleMatStatus = async (lineKey) => {
+    const cur = matStatus[lineKey];
+    const next = cur === "instock" ? "pulled" : cur === "pulled" ? undefined : "instock";
+    const nextMap = { ...matStatus };
+    if (next) nextMap[lineKey] = next; else delete nextMap[lineKey];
+    setMatStatus(nextMap);
+    try { await storage.set("shop-material-status", JSON.stringify(nextMap), true); }
+    catch (e) { console.error("storage error", e); }
   };
 
   const visibleOrders = statusFilter === "All" ? orders : orders.filter((o) => o.status === statusFilter);
@@ -5843,34 +5867,58 @@ export default function ShopOrderApp() {
               ) : (
                 <div>
                   <div style={{ fontSize: 10.5, color: theme.textSecondary, marginBottom: 12 }}>
-                    Every flat sheet and coil needed across all active (non-Completed) jobs, combined into one shopping list.
+                    Every flat sheet and coil needed across all active (non-Completed) jobs, combined into one shopping list — each line shows the PO(s) it feeds. Tap the status pill to cycle Needed → In Stock → Pulled; it resets to Needed if a line's quantity grows.
                   </div>
                   {materials.flatSheets.length > 0 && (
                     <div style={{ marginBottom: 16 }}>
                       <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>Flat Sheets</div>
-                      {materials.flatSheets.map((f, i) => (
-                        <div key={`mfs-${i}`} style={{ background: theme.card, borderRadius: 8, padding: 10, marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
-                          <span style={{ width: 16, height: 16, borderRadius: 4, background: f.colorHex, border: "1px solid rgba(0,0,0,0.2)", flexShrink: 0 }} />
-                          <div style={{ flex: 1 }}>
-                            <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{f.count} sheets — {formatDim(f.width / 12)}' × {formatDim(f.length / 12)}'</div>
-                            <div style={{ fontSize: 10.5, color: theme.textSecondary }}>{f.brand}, {f.colorName}</div>
+                      {materials.flatSheets.map((f, i) => {
+                        const lk = `fs:${f.key}:${f.count}`;
+                        const st = matStatus[lk];
+                        return (
+                          <div key={`mfs-${i}`} style={{ background: theme.card, borderRadius: 8, padding: 10, marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
+                            <span style={{ width: 16, height: 16, borderRadius: 4, background: f.colorHex, border: "1px solid rgba(0,0,0,0.2)", flexShrink: 0 }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{f.count} sheets — {formatDim(f.width / 12)}' × {formatDim(f.length / 12)}'</div>
+                              <div style={{ fontSize: 10.5, color: theme.textSecondary }}>{f.brand}, {f.colorName}{f.pos.length > 0 ? <span className="mono"> · {f.pos.join(", ")}</span> : null}</div>
+                            </div>
+                            <button onClick={() => cycleMatStatus(lk)}
+                              title="Tap to cycle: Needed → In Stock → Pulled"
+                              style={{ padding: "6px 12px", borderRadius: 999, fontSize: 10.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
+                                border: `1px solid ${st === "pulled" ? GREEN : st === "instock" ? AMBER : theme.border}`,
+                                background: st === "pulled" ? GREEN : st === "instock" ? AMBER : "transparent",
+                                color: st ? "#fff" : theme.textSecondary }}>
+                              {st === "pulled" ? "Pulled ✓" : st === "instock" ? "In Stock" : "Needed"}
+                            </button>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                   {materials.coil.length > 0 && (
                     <div style={{ marginBottom: 16 }}>
                       <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>Coil</div>
-                      {materials.coil.map((c, i) => (
-                        <div key={`mcoil-${i}`} style={{ background: theme.card, borderRadius: 8, padding: 10, marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
-                          <span style={{ width: 16, height: 16, borderRadius: 4, background: c.colorHex, border: "1px solid rgba(0,0,0,0.2)", flexShrink: 0 }} />
-                          <div style={{ flex: 1 }}>
-                            <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{formatDim(c.width)}" wide — {Math.ceil(c.feet)} ft</div>
-                            <div style={{ fontSize: 10.5, color: theme.textSecondary }}>{c.brand}, {c.colorName}</div>
+                      {materials.coil.map((c, i) => {
+                        const lk = `coil:${c.key}:${Math.ceil(c.feet)}`;
+                        const st = matStatus[lk];
+                        return (
+                          <div key={`mcoil-${i}`} style={{ background: theme.card, borderRadius: 8, padding: 10, marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
+                            <span style={{ width: 16, height: 16, borderRadius: 4, background: c.colorHex, border: "1px solid rgba(0,0,0,0.2)", flexShrink: 0 }} />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div className="mono" style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{formatDim(c.width)}" wide — {Math.ceil(c.feet)} ft</div>
+                              <div style={{ fontSize: 10.5, color: theme.textSecondary }}>{c.brand}, {c.colorName}{c.pos.length > 0 ? <span className="mono"> · {c.pos.join(", ")}</span> : null}</div>
+                            </div>
+                            <button onClick={() => cycleMatStatus(lk)}
+                              title="Tap to cycle: Needed → In Stock → Pulled"
+                              style={{ padding: "6px 12px", borderRadius: 999, fontSize: 10.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0,
+                                border: `1px solid ${st === "pulled" ? GREEN : st === "instock" ? AMBER : theme.border}`,
+                                background: st === "pulled" ? GREEN : st === "instock" ? AMBER : "transparent",
+                                color: st ? "#fff" : theme.textSecondary }}>
+                              {st === "pulled" ? "Pulled ✓" : st === "instock" ? "In Stock" : "Needed"}
+                            </button>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                   <div style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 4 }}>
