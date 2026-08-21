@@ -1,0 +1,524 @@
+{
+  "summary": "Catalog every exposed fastener panel from McElroy, Quality Metals, PAC-CLAD, Drexel, and Berridge with generic classifications",
+  "agentCount": 5,
+  "logs": [],
+  "result": [
+    {
+      "manufacturer": "McElroy Metal (mcelroymetal.com)",
+      "found": true,
+      "panels": [
+        {
+          "tradeName": "Max-Rib",
+          "genericType": "ag panel / tuff rib (~3/4 in. rib, 9 in. o.c.)",
+          "ribHeightIn": 0.75,
+          "ribSpacing": "9 in. o.c.",
+          "coverageIn": 36,
+          "gauges": "29, 26 GA (Galvalume; 29 GA G-100 painted also offered)",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.mcelroymetal.com/exposed-fastener-panels/max-rib"
+        },
+        {
+          "tradeName": "Multi-Rib",
+          "genericType": "R-Panel / PBR (McElroy's proprietary R-panel; optional purlin-bearing leg)",
+          "ribHeightIn": 1.1875,
+          "ribSpacing": "12 in. o.c.",
+          "coverageIn": 36,
+          "gauges": "26 GA standard (Galvalume)",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.mcelroymetal.com/exposed-fastener-panels/multi-rib"
+        },
+        {
+          "tradeName": "R-Panel",
+          "genericType": "R-Panel / PBR (purlin-bearing leg profile shown)",
+          "ribHeightIn": 1.25,
+          "ribSpacing": "12 in. o.c.",
+          "coverageIn": 36,
+          "gauges": "26 GA standard (Galvalume)",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.mcelroymetal.com/exposed-fastener-panels/r-panel"
+        },
+        {
+          "tradeName": "Mega-Rib",
+          "genericType": "7.2 trapezoidal structural rib panel",
+          "ribHeightIn": 1.5,
+          "ribSpacing": "7.2 in. o.c.",
+          "coverageIn": 28.8,
+          "gauges": "24 GA standard; 26, 22, 20, 18 GA optional (36 in. coverage in 26 GA at Adelanto plant)",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.mcelroymetal.com/exposed-fastener-panels/mega-rib"
+        },
+        {
+          "tradeName": "Modern-Rib",
+          "genericType": "exposed-fastener standing-seam-look vertical rib panel",
+          "ribHeightIn": 0.75,
+          "ribSpacing": "12 in. o.c.",
+          "coverageIn": 36,
+          "gauges": "29, 26 GA (Galvalume; 29 GA G-90 bare / G-100 painted)",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.mcelroymetal.com/exposed-fastener-panels/modern-rib"
+        },
+        {
+          "tradeName": "M-Cor",
+          "genericType": "1/2 in. low-profile corrugated (2-2/3 in. pitch)",
+          "ribHeightIn": 0.5,
+          "ribSpacing": "2.67 in. pitch",
+          "coverageIn": 34.67,
+          "gauges": "26 GA standard; 29 and 24 GA optional",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.mcelroymetal.com/exposed-fastener-panels/m-cor"
+        },
+        {
+          "tradeName": "Multi-Cor",
+          "genericType": "7/8 in. corrugated",
+          "ribHeightIn": 0.875,
+          "ribSpacing": "2.67 in. pitch",
+          "coverageIn": 32,
+          "gauges": "26 GA standard (Galvalume)",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.mcelroymetal.com/exposed-fastener-panels/multi-cor"
+        },
+        {
+          "tradeName": "Mesa",
+          "genericType": "low-profile trapezoidal rib (ag-panel class); patent-protected profile with nearly invisible side laps",
+          "ribHeightIn": 0.75,
+          "ribSpacing": "9 in. o.c.",
+          "coverageIn": 36,
+          "gauges": "26, 29 GA (Galvalume)",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.mcelroymetal.com/exposed-fastener-panels/mesa"
+        },
+        {
+          "tradeName": "5V",
+          "genericType": "5V-Crimp",
+          "ribHeightIn": 0.5,
+          "ribSpacing": "12 in. o.c. (double-V crimps)",
+          "coverageIn": 24,
+          "gauges": "26 GA Galvalume; 29 GA galvanized bare",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.mcelroymetal.com/exposed-fastener-panels/5v"
+        },
+        {
+          "tradeName": "U-Panel",
+          "genericType": "U-Panel",
+          "ribHeightIn": 0.734,
+          "ribSpacing": "6 in. o.c.",
+          "coverageIn": 36,
+          "gauges": "26 GA standard (Galvalume)",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.mcelroymetal.com/exposed-fastener-panels/u-panel"
+        },
+        {
+          "tradeName": "Multi-V",
+          "genericType": "V-rib / M-rib style wall panel (fasteners placed in valleys)",
+          "ribHeightIn": 1.1875,
+          "ribSpacing": "12 in. o.c.",
+          "coverageIn": 36,
+          "gauges": "26 GA standard (Galvalume)",
+          "use": "roof+wall (marketed primarily as wall)",
+          "sourceUrl": "https://www.mcelroymetal.com/exposed-fastener-panels/multi-v"
+        },
+        {
+          "tradeName": "Mini-Rib",
+          "genericType": "mini-rib / liner-accent panel (3/8 in. rib)",
+          "ribHeightIn": 0.375,
+          "ribSpacing": "3 in. o.c.",
+          "coverageIn": 36,
+          "gauges": "26 GA standard (Galvalume)",
+          "use": "wall (interior/exterior, wainscot, accents; roof use listed as possible)",
+          "sourceUrl": "https://www.mcelroymetal.com/exposed-fastener-panels/mini-rib"
+        }
+      ],
+      "caveats": "All 12 panels are confirmed exposed fastener (screw-down) profiles per McElroy's own product pages under mcelroymetal.com/exposed-fastener-panels (hub page verified 2026-08-19). McElroy's concealed-fastener lines (Medallion-Lok, Maxima, Meridian, Matrix, Marquee/flush wall, Mirage, etc.) were excluded per instructions. Notes: (1) Multi-Rib rib height is 1-3/16 in. per its spec page even though marketing copy elsewhere says 1-1/4 in.; both Multi-Rib and R-Panel offer purlin-bearing (PBR) leg versions. (2) U-Panel rib height is listed as 47/64 in. (~0.73 in.). (3) Mega-Rib coverage is 28.8 in. standard; a 36 in. version is produced only at the Adelanto, CA facility in 26 GA. (4) The category hub page advertises gauges 29-24 GA across the line with Kynar 500 PVDF or SMP finishes; individual product pages list narrower standard gauge offerings, which are what is recorded per panel. (5) Multi-V places fasteners in the valleys to minimize their appearance but is still an exposed fastener panel. (6) Mesa is a patent-protected geometry; the generic classification 'low-profile trapezoidal rib / ag-panel class' is an approximation since no exact industry-generic equivalent exists. (7) Modern-Rib mimics standing seam aesthetics but attaches through the flat with exposed screws; no exact single generic term exists for this class."
+    },
+    {
+      "manufacturer": "Quality Metals (saqualitymetals.com — Texas: San Antonio, Dallas, Houston, McAllen)",
+      "found": true,
+      "panels": [
+        {
+          "tradeName": "R-Panel",
+          "genericType": "R-Panel / PBR",
+          "ribHeightIn": 1.25,
+          "ribSpacing": "12 in. o.c.",
+          "coverageIn": 36,
+          "gauges": "26 ga standard; 22, 24 ga optional",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.saqualitymetals.com/r-panel/"
+        },
+        {
+          "tradeName": "PBR-Panel",
+          "genericType": "R-Panel / PBR",
+          "ribHeightIn": 1.25,
+          "ribSpacing": "12 in. o.c.",
+          "coverageIn": 36,
+          "gauges": "26 ga standard; 22, 24, 29 ga optional",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.saqualitymetals.com/pbr-panel/"
+        },
+        {
+          "tradeName": "U-Panel",
+          "genericType": "U-Panel",
+          "ribHeightIn": 0.75,
+          "ribSpacing": "6 in. o.c.",
+          "coverageIn": 36,
+          "gauges": "26 ga standard; 22, 24, 29 ga optional",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.saqualitymetals.com/u-panel-new/"
+        },
+        {
+          "tradeName": "PBU-Panel",
+          "genericType": "U-Panel (PBU)",
+          "ribHeightIn": 0.75,
+          "ribSpacing": "6 in. o.c.",
+          "coverageIn": 36,
+          "gauges": "26 ga standard; 22, 24 ga optional",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.saqualitymetals.com/pbu-panel/"
+        },
+        {
+          "tradeName": "AG-Panel",
+          "genericType": "ag panel / tuff rib",
+          "ribHeightIn": 0.75,
+          "ribSpacing": "12 in. o.c. (per site; typical ag panel is 9 in. o.c.)",
+          "coverageIn": 36,
+          "gauges": "26 ga standard; 22, 24, 29 ga optional",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.saqualitymetals.com/ag-panel/"
+        },
+        {
+          "tradeName": "7.2-Panel",
+          "genericType": "7.2 trapezoidal structural rib",
+          "ribHeightIn": 1.5,
+          "ribSpacing": "7.2 in. o.c.",
+          "coverageIn": 36,
+          "gauges": "26 ga standard; 22, 24, 29 ga optional",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.saqualitymetals.com/7-2-panel/"
+        },
+        {
+          "tradeName": "5V-Panel",
+          "genericType": "5V-Crimp",
+          "ribHeightIn": 0.5,
+          "ribSpacing": "12 in. o.c.",
+          "coverageIn": 24,
+          "gauges": "26 ga standard; 29 ga optional",
+          "use": "roof",
+          "sourceUrl": "https://www.saqualitymetals.com/5v-panel/"
+        },
+        {
+          "tradeName": "Corrugated-Panel",
+          "genericType": "7/8 in. corrugated",
+          "ribHeightIn": 0.875,
+          "ribSpacing": "2-2/3 in. pitch",
+          "coverageIn": 32,
+          "gauges": "20, 22, 24, 26 ga",
+          "use": "roof+wall (32 in. coverage roof; 34.67 in. wall)",
+          "sourceUrl": "https://www.saqualitymetals.com/corrugated-panel/"
+        }
+      ],
+      "caveats": "Company identification: settled on the TEXAS company, Quality Metals at saqualitymetals.com — a panel/coil manufacturer-supplier headquartered in San Antonio with locations in Dallas (11569 Goodnight Ln, Dallas, TX 75229, (972) 331-6800), Houston, and McAllen, selling painted steel panels, coil, and flats to contractors across Texas; this is the plausible DFW-area shop supplier. Ruled out: qualitymetalsinc.com (Quality Metals Inc., St. Paul, MN) is a flat-rolled sheet/coil distributor with NO roll-formed panel products; also ruled out Quality Metals Inc. of Florida (an installer/fabricator) and Quality Metal Roofing (qualitymetal.us, KY/WV). Panel notes: (1) The site's metal-panels index listed HP-Panel (/qm-hp/) and H1-Panel (/qm-h1/) alongside exposed-fastener products, but their product pages describe them as CONCEALED-fastener \"Precision Series\" wall/roof systems (hidden fasteners, no visible screws), so they were excluded; verify before adding. (2) Quality Metals' AG-Panel page states 12 in. o.c. rib spacing, wider than the typical 9 in. o.c. ag/tuff-rib profile — spec kept as published. (3) The site also offers standing seam/concealed systems (SL-150, SLZ-150, NS-100/NS-150 nail strip, ML-100/150/200/300, Flush Panel) and Wakefield Bridge steel shingles, all excluded per scope. (4) Detailed spec-sheet PDFs were not fetched; dimensions come from the product pages' stated specs."
+    },
+    {
+      "manufacturer": "PAC-CLAD / Petersen Aluminum",
+      "found": true,
+      "panels": [
+        {
+          "tradeName": "7.2 Panel",
+          "genericType": "7.2 trapezoidal structural rib",
+          "ribHeightIn": 1.5,
+          "ribSpacing": "7.2\" o.c.",
+          "coverageIn": 36,
+          "gauges": "24 & 22 ga steel; .032/.040/.050 aluminum; Galvalume Plus available",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.pac-clad.com/products/exposed-fastener-panels/7-2-panel/"
+        },
+        {
+          "tradeName": "R-36 Panel",
+          "genericType": "R-Panel / PBR (1-1/4\" rib at 12\" o.c.)",
+          "ribHeightIn": 1.25,
+          "ribSpacing": "12\" o.c.",
+          "coverageIn": 36,
+          "gauges": "24 & 22 ga steel; .032/.040/.050 aluminum; Galvalume Plus available",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.pac-clad.com/products/exposed-fastener-panels/r-36/"
+        },
+        {
+          "tradeName": "7/8\" Corrugated",
+          "genericType": "7/8 in. corrugated (2.67\" pitch)",
+          "ribHeightIn": 0.875,
+          "ribSpacing": "2.667\" pitch (nominal)",
+          "coverageIn": 34.67,
+          "gauges": "24 & 22 ga steel; .032/.040/.050 aluminum; Galvalume Plus available",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.pac-clad.com/products/exposed-fastener-panels/corrugated/"
+        },
+        {
+          "tradeName": "1/2\" Corrugated",
+          "genericType": "low-profile corrugated (1/2\" deep, 2.67\" pitch)",
+          "ribHeightIn": 0.5,
+          "ribSpacing": "2.667\" pitch (nominal)",
+          "coverageIn": 42.67,
+          "gauges": "24 & 22 ga steel; .032/.040/.050 aluminum; Galvalume Plus available",
+          "use": "wall",
+          "sourceUrl": "https://www.pac-clad.com/products/exposed-fastener-panels/corrugated/"
+        },
+        {
+          "tradeName": "M-36 Panel",
+          "genericType": "M-rib / box rib wall panel (3/4\" rib at 6\" o.c.)",
+          "ribHeightIn": 0.75,
+          "ribSpacing": "6\" o.c.",
+          "coverageIn": 36,
+          "gauges": "24 & 22 ga steel; .032/.040/.050 aluminum; Galvalume Plus available",
+          "use": "wall",
+          "sourceUrl": "https://www.pac-clad.com/products/exposed-fastener-panels/m-42-m-36-panels/"
+        },
+        {
+          "tradeName": "M-42 Panel",
+          "genericType": "M-rib / box rib wall panel (3/4\" rib at 6\" o.c.)",
+          "ribHeightIn": 0.75,
+          "ribSpacing": "6\" o.c.",
+          "coverageIn": 42,
+          "gauges": "24 & 22 ga steel; .032/.040/.050 aluminum; Galvalume Plus available",
+          "use": "wall",
+          "sourceUrl": "https://www.pac-clad.com/products/exposed-fastener-panels/m-42-m-36-panels/"
+        }
+      ],
+      "caveats": "All dimensions verified from Petersen's own PAC-CLAD spec sheets (rev 7/26) downloaded from pac-clad.com product pages. This is PAC-CLAD's complete current exposed fastener lineup; everything else they make (Snap-Clad, Tite-Loc/Tite-Loc Plus, PAC-150, T-250, Precision Series Box Rib/Highline/HWP, flush/reveal, board & batten, composite ACM, insulated metal panels) is concealed fastener and excluded. Notes: (1) Corrugated coverage is lap-dependent — 7/8\" Corrugated covers 37.33\" as siding (1 lapped rib) and 34.67\" as roofing (2 lapped ribs); 1/2\" Corrugated covers 42.67\" as siding and 40\" with a 2-rib roofing lap; I listed 34.67\" (roof) for the 7/8\" and 42.67\" (wall) for the 1/2\" since Petersen groups the 1/2\" with wall/equipment-screen panels. (2) Petersen explicitly states M-36, M-42, and 1/2\" Corrugated are for wall/equipment-screen use and that M-panels are \"not intended for... structural roof applications\"; M-42 is made only in the Tyler, TX plant. (3) On the M-panel spec sheet the 1\" (M-42) and 1-1/32\" (M-36) figures are rib-top widths, not heights — rib height is 3/4\" per the SPECS block. (4) Panel lengths: up to 30' steel, 22' aluminum; precut shorts 5'-0\" min (3'-0\" on M-42); most profiles can be perforated. (5) Min slope figures (7.2 panel ~2:12; 7/8\" corrugated ~2.5:12) come from secondary PAC literature summaries, not the spec sheets — confirm with Petersen. (6) A former R-41 panel URL now redirects to R-36; R-41 appears discontinued and is omitted."
+    },
+    {
+      "manufacturer": "Drexel Metals (drexmet.com, a Carlisle company)",
+      "found": true,
+      "panels": [
+        {
+          "tradeName": "DMC 5V Profile",
+          "genericType": "5V-Crimp",
+          "ribHeightIn": 0.375,
+          "ribSpacing": "Double V-crimps at each side lap plus mid-panel crimp (~12 in. between crimp sets on the 24 in. panel)",
+          "coverageIn": 24,
+          "gauges": "24 ga & 22 ga steel (painted Galvalume or Drexlume); .032 & .040 painted aluminum",
+          "use": "roof",
+          "sourceUrl": "https://www.drexmet.com/product-list/5v-profile"
+        },
+        {
+          "tradeName": "R-Panel (R-36)",
+          "genericType": "R-Panel / PBR",
+          "ribHeightIn": 1.25,
+          "ribSpacing": "Major ribs 12 in. o.c.",
+          "coverageIn": 36,
+          "gauges": "24 ga & 22 ga steel; .032, .040, .050 aluminum",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.drexmet.com/products/metal-wall-systems/r-panel/"
+        },
+        {
+          "tradeName": "7.2 Rib Panel",
+          "genericType": "7.2 trapezoidal structural rib",
+          "ribHeightIn": 1.5,
+          "ribSpacing": "Ribs 7.2 in. o.c.",
+          "coverageIn": 36,
+          "gauges": "24 ga & 22 ga steel; .032, .040, .050 aluminum",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.drexmet.com/products/metal-wall-systems/7-2-rib-panel/"
+        },
+        {
+          "tradeName": "M-36 Panel",
+          "genericType": "M-rib / multi-rib",
+          "ribHeightIn": 0.75,
+          "ribSpacing": "~7 in. rib module (6 in. flat + 1-1/32 in. rib)",
+          "coverageIn": 36,
+          "gauges": "24 ga & 22 ga steel; .032, .040, .050 aluminum",
+          "use": "wall",
+          "sourceUrl": "https://www.drexmet.com/products/metal-wall-systems/m-36-and-m-42-panel-page/"
+        },
+        {
+          "tradeName": "M-42 Panel",
+          "genericType": "M-rib / multi-rib",
+          "ribHeightIn": 0.75,
+          "ribSpacing": "7 in. rib module (6 in. flat + 1 in. rib)",
+          "coverageIn": 42,
+          "gauges": "24 ga & 22 ga steel; .032, .040, .050 aluminum",
+          "use": "wall",
+          "sourceUrl": "https://www.drexmet.com/products/metal-wall-systems/m-36-and-m-42-panel-page/"
+        },
+        {
+          "tradeName": "7/8\" Corrugated",
+          "genericType": "7/8 in. corrugated",
+          "ribHeightIn": 0.875,
+          "ribSpacing": "2.667 in. corrugation pitch",
+          "coverageIn": 37.33,
+          "gauges": "24 ga & 22 ga steel; .032, .040, .050 aluminum; Drexlume",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.drexmet.com/products/metal-wall-systems/1-2-corrugated-7-8-corrugated-panel/"
+        },
+        {
+          "tradeName": "1/2\" Corrugated",
+          "genericType": "1/2 in. x 2-2/3 in. low corrugated",
+          "ribHeightIn": 0.5,
+          "ribSpacing": "2.667 in. corrugation pitch",
+          "coverageIn": 42.67,
+          "gauges": "24 ga & 22 ga steel; .032, .040, .050 aluminum; Drexlume",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.drexmet.com/products/metal-wall-systems/1-2-corrugated-7-8-corrugated-panel/"
+        }
+      ],
+      "caveats": "All 7 panels confirmed exposed fastener from Drexel's own data sheets: the DMC Wall Series sheets (DM-12585 R-Panel, DM-12586 M-Panel, DM-12588 7.2 Rib, DM-12591 Corrugated) each print an \"EXPOSED FASTENER\" family chart listing R-36, M-42, M-36, 7.2, 1/2\" and 7/8\" Corrugated; the 5V sheet (DM-16422) states \"exposed fastener design.\" Details: (1) 5V rib height — the product page says 3/8\" but the data-sheet drawing dimensions the crimp at 0.5\"; 5V is also offered in a 20.5\" nominal width besides 24\". (2) Corrugated coverage listed is the siding coverage (1 lapped rib); roofing coverage with 2 lapped ribs is 34.67\" for 7/8\" (40\" nominal sheet) and 40\" for 1/2\" (44.5\" nominal sheet). (3) R-Panel coverage is 36\" net / 41\" overall including overlap; Drexel's old R-41 profile is marked DISCONTINUED on the family chart. (4) M-36/M-42 carry a note that they are \"not intended for use in the construction of metal buildings or structural roof applications\" — wall panels primarily; consult Drexel for roof use. (5) 7.2 Rib is sold under the Wall Series but the site lists walls/roofs applications (ICC-ES ESR-5838). Excluded as NOT exposed fastener: all DMC standing seam roof systems (100SS, 150SS/SL, 175S, 200S, 250T, 450, 450SL, 550S, Cap Seam), the NS nail-strip profiles (100NS, 150NS — fastener flange), FW1/FWQ100/FWQ150 flush panels, Board & Batten (fasteners concealed under batten, confirmed on product page), DMC 164 & 123 (clip or concealed fastener-flange, confirmed on data sheet DM-12578), Drexel Facade HL and Facade BR box-rib wall panels (clip or concealed fastener-flange, confirmed on data sheet DM-16222), and DMC 450 wall application."
+    },
+    {
+      "manufacturer": "Berridge Manufacturing Co.",
+      "found": true,
+      "panels": [
+        {
+          "tradeName": "Berridge \"R\" Panel",
+          "genericType": "R-Panel / PBR",
+          "ribHeightIn": 1.25,
+          "ribSpacing": "12 in. o.c. major ribs (1 in. rib crowns; two 3/4 in. minor stiffening flutes at 4 in. spacing between majors)",
+          "coverageIn": 36,
+          "gauges": "24 and 22 ga steel; 0.032 aluminum",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.berridge.com/products/exposed-fastener-panel-systems/r-panel/"
+        },
+        {
+          "tradeName": "Berridge \"M\" Panel",
+          "genericType": "M-rib / multi-rib",
+          "ribHeightIn": 0.75,
+          "ribSpacing": "paired 3/4 in. trapezoidal ribs (1 in. crowns) — 6 in. pan / 2-1/2 in. / 3-1/2 in. spacing module per data sheet drawing",
+          "coverageIn": 36,
+          "gauges": "24 and 22 ga steel; 0.032 aluminum",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.berridge.com/products/exposed-fastener-panel-systems/m-panel/"
+        },
+        {
+          "tradeName": "Berridge Deep-Deck Panel",
+          "genericType": "7.2 trapezoidal structural rib (7.2 panel)",
+          "ribHeightIn": 1.5,
+          "ribSpacing": "7.2 in. o.c. (2 in. rib crowns)",
+          "coverageIn": 36,
+          "gauges": "24 and 22 ga steel; 0.032 and 0.040 aluminum",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.berridge.com/products/exposed-fastener-panel-systems/deep-deck-panel/"
+        },
+        {
+          "tradeName": "Berridge S-Deck Panel",
+          "genericType": "7/8 in. corrugated",
+          "ribHeightIn": 0.875,
+          "ribSpacing": "2-2/3 in. pitch sinusoidal corrugation",
+          "coverageIn": 32,
+          "gauges": "24 and 22 ga steel; 0.032 and 0.040 aluminum",
+          "use": "roof+wall",
+          "sourceUrl": "https://www.berridge.com/products/exposed-fastener-panel-systems/s-deck-panel/"
+        },
+        {
+          "tradeName": "Berridge Double-Rib Panel",
+          "genericType": "5V-Crimp style / double-rib V-crimp panel",
+          "ribHeightIn": 0.5,
+          "ribSpacing": "double V-rib pairs at 12 in. o.c.",
+          "coverageIn": 24,
+          "gauges": "24 ga steel only",
+          "use": "roof",
+          "sourceUrl": "https://www.berridge.com/products/exposed-fastener-panel-systems/double-rib-panel/"
+        }
+      ],
+      "caveats": "All five panels are Berridge's official \"Exposed Fastener Panel Systems\" category (https://www.berridge.com/products/exposed-fastener-panel-systems/) — this is their complete exposed-fastener lineup; specs verified from Berridge's own data sheet PDFs. Notes: (1) S-Deck coverage is 32 in. OR 34-2/3 in. (two coverage options; only 32 in. fit the single numeric field); factory-curved S-Deck available (5 ft min radius). On roofs S-Deck installs vertical only. (2) Berridge calls their trapezoidal-rib panel simply \"R\" Panel (no purlin-bearing leg shown on the data sheet drawing, so \"R-Panel\" is more precise than \"PBR\"). (3) Double-Rib Panel is roof-only, vertical over solid sheathing; its geometry (1/2 in. V-type double ribs at 12 in. o.c., 24 in. coverage) is closest to the 5V-Crimp family but is not a true 5-crimp 5V — contractors would recognize it as a 5V-style/double-rib panel. (4) M-Panel rib spacing is a paired-rib module; the data sheet drawing dimensions (6 in. / 2-1/2 in. / 3-1/2 in., 1 in. rib tops) are reproduced as-is since a single o.c. number does not describe it. (5) Berridge's many wall/soffit/fascia panels (HR-16, HS-8, RS-series, FW-series, Vee-Panel, Board & Batten, BR-12, L-Panel, etc.) and all standing seam, batten, shingle, and tile systems are concealed-fastener and were excluded. Berridge does not list a U-Panel, ag/tuff-rib, 1/4 in. or 2-1/2 in. low-corrugated, or true 5V-Crimp product."
+    }
+  ],
+  "workflowProgress": [
+    {
+      "type": "workflow_phase",
+      "index": 1,
+      "title": "Research"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 1,
+      "label": "census:mcelroy",
+      "phaseIndex": 1,
+      "phaseTitle": "Research",
+      "agentId": "a9f5ba7b831dcb0c7",
+      "model": "claude-fable-5",
+      "state": "done",
+      "startedAt": 1787173950379,
+      "lastProgressAt": 1787173950379,
+      "cached": true,
+      "resultPreview": "{\"manufacturer\":\"McElroy Metal (mcelroymetal.com)\",\"found\":true,\"panels\":[{\"tradeName\":\"Max-Rib\",\"genericType\":\"ag panel / tuff rib (~3/4 in. rib, 9 in. o.c.)\",\"ribHeightIn\":0.75,\"ribSpacing\":\"9 in. o.c.\",\"coverageIn\":36,\"gauges\":\"29, 26 GA (Galvalume; 29 GA G-100 painted also offered)\",\"use\":\"roof+wall\",\"sourceUrl\":\"https://www.mcelroymetal.com/exposed-fastener-panels/max-rib\"},{\"tradeName\":\"Mult…",
+      "promptPreview": "You are cataloging EXPOSED FASTENER metal panels (screw-down panels — fasteners visible through the panel face; EXCLUDE standing seam, nail strip/fastener flange, and other concealed-fastener systems) for a roofing supply directory. Use ToolSearch to load WebSearch and WebFetch. Go to the manufacturer's own website (product pages / spec sheets) and list EVERY exposed fastener roof and wall panel t…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 2,
+      "label": "census:quality",
+      "phaseIndex": 1,
+      "phaseTitle": "Research",
+      "agentId": "a08c01038c58e4376",
+      "model": "claude-fable-5",
+      "state": "done",
+      "startedAt": 1787173950380,
+      "lastProgressAt": 1787173950380,
+      "cached": true,
+      "resultPreview": "{\"manufacturer\":\"Quality Metals (saqualitymetals.com — Texas: San Antonio, Dallas, Houston, McAllen)\",\"found\":true,\"panels\":[{\"tradeName\":\"R-Panel\",\"genericType\":\"R-Panel / PBR\",\"ribHeightIn\":1.25,\"ribSpacing\":\"12 in. o.c.\",\"coverageIn\":36,\"gauges\":\"26 ga standard; 22, 24 ga optional\",\"use\":\"roof+wall\",\"sourceUrl\":\"https://www.saqualitymetals.com/r-panel/\"},{\"tradeName\":\"PBR-Panel\",\"genericType\":\"…",
+      "promptPreview": "You are cataloging EXPOSED FASTENER metal panels (screw-down panels — fasteners visible through the panel face; EXCLUDE standing seam, nail strip/fastener flange, and other concealed-fastener systems) for a roofing supply directory. Use ToolSearch to load WebSearch and WebFetch. Go to the manufacturer's own website (product pages / spec sheets) and list EVERY exposed fastener roof and wall panel t…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 3,
+      "label": "census:pacclad",
+      "phaseIndex": 1,
+      "phaseTitle": "Research",
+      "agentId": "a73eda1b654e6158a",
+      "model": "claude-fable-5",
+      "state": "done",
+      "startedAt": 1787173953936,
+      "queuedAt": 1787173950380,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "PAC-CLAD / Petersen Aluminum",
+      "promptPreview": "You are cataloging EXPOSED FASTENER metal panels (screw-down panels — fasteners visible through the panel face; EXCLUDE standing seam, nail strip/fastener flange, and other concealed-fastener systems) for a roofing supply directory. Use ToolSearch to load WebSearch and WebFetch. Go to the manufacturer's own website (product pages / spec sheets) and list EVERY exposed fastener roof and wall panel t…",
+      "lastProgressAt": 1787174447661,
+      "tokens": 71109,
+      "toolCalls": 35,
+      "durationMs": 488723,
+      "resultPreview": "{\"manufacturer\":\"PAC-CLAD / Petersen Aluminum\",\"found\":true,\"panels\":[{\"tradeName\":\"7.2 Panel\",\"genericType\":\"7.2 trapezoidal structural rib\",\"ribHeightIn\":1.5,\"ribSpacing\":\"7.2\\\" o.c.\",\"coverageIn\":36,\"gauges\":\"24 & 22 ga steel; .032/.040/.050 aluminum; Galvalume Plus available\",\"use\":\"roof+wall\",\"sourceUrl\":\"https://www.pac-clad.com/products/exposed-fastener-panels/7-2-panel/\"},{\"tradeName\":\"R-3…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 4,
+      "label": "census:drexel",
+      "phaseIndex": 1,
+      "phaseTitle": "Research",
+      "agentId": "a12646a9600db0b5c",
+      "model": "claude-fable-5",
+      "state": "done",
+      "startedAt": 1787173954994,
+      "queuedAt": 1787173950381,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "Drexel Metals (drexmet.com, a Carlisle company)",
+      "promptPreview": "You are cataloging EXPOSED FASTENER metal panels (screw-down panels — fasteners visible through the panel face; EXCLUDE standing seam, nail strip/fastener flange, and other concealed-fastener systems) for a roofing supply directory. Use ToolSearch to load WebSearch and WebFetch. Go to the manufacturer's own website (product pages / spec sheets) and list EVERY exposed fastener roof and wall panel t…",
+      "lastProgressAt": 1787174502253,
+      "tokens": 88320,
+      "toolCalls": 39,
+      "durationMs": 542257,
+      "resultPreview": "{\"manufacturer\":\"Drexel Metals (drexmet.com, a Carlisle company)\",\"found\":true,\"panels\":[{\"tradeName\":\"DMC 5V Profile\",\"genericType\":\"5V-Crimp\",\"ribHeightIn\":0.375,\"ribSpacing\":\"Double V-crimps at each side lap plus mid-panel crimp (~12 in. between crimp sets on the 24 in. panel)\",\"coverageIn\":24,\"gauges\":\"24 ga & 22 ga steel (painted Galvalume or Drexlume); .032 & .040 painted aluminum\",\"use\":\"ro…"
+    },
+    {
+      "type": "workflow_agent",
+      "index": 5,
+      "label": "census:berridge",
+      "phaseIndex": 1,
+      "phaseTitle": "Research",
+      "agentId": "acfa21701a959aa70",
+      "model": "claude-fable-5",
+      "state": "done",
+      "startedAt": 1787173953922,
+      "queuedAt": 1787173950381,
+      "attempt": 1,
+      "lastToolName": "StructuredOutput",
+      "lastToolSummary": "Berridge Manufacturing Co.",
+      "promptPreview": "You are cataloging EXPOSED FASTENER metal panels (screw-down panels — fasteners visible through the panel face; EXCLUDE standing seam, nail strip/fastener flange, and other concealed-fastener systems) for a roofing supply directory. Use ToolSearch to load WebSearch and WebFetch. Go to the manufacturer's own website (product pages / spec sheets) and list EVERY exposed fastener roof and wall panel t…",
+      "lastProgressAt": 1787174179352,
+      "tokens": 80490,
+      "toolCalls": 25,
+      "durationMs": 225430,
+      "resultPreview": "{\"manufacturer\":\"Berridge Manufacturing Co.\",\"found\":true,\"panels\":[{\"tradeName\":\"Berridge \\\"R\\\" Panel\",\"genericType\":\"R-Panel / PBR\",\"ribHeightIn\":1.25,\"ribSpacing\":\"12 in. o.c. major ribs (1 in. rib crowns; two 3/4 in. minor stiffening flutes at 4 in. spacing between majors)\",\"coverageIn\":36,\"gauges\":\"24 and 22 ga steel; 0.032 aluminum\",\"use\":\"roof+wall\",\"sourceUrl\":\"https://www.berridge.com/pro…"
+    }
+  ],
+  "totalTokens": 239919,
+  "totalToolCalls": 99
+}

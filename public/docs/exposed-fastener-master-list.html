@@ -1,0 +1,304 @@
+<title>Exposed Fastener Master List</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F6F4EE; --card:#FFFFFF; --ink:#0A2B41; --body-c:#33475A; --steel:#7C8894;
+  --gold:#D4AF37; --gold-deep:#A9882B; --patina:#4E8C74; --line:rgba(10,43,65,.14);
+  --chip-off:rgba(10,43,65,.06); --chip-off-text:#9AA6B1; --row:rgba(10,43,65,.03);
+  --disp:'Oswald',system-ui,sans-serif; --bodyf:'Inter',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0B1E2C; --card:#122A3C; --ink:#EAF1F6; --body-c:#C2D0DB; --steel:#8FA0AD;
+    --gold:#D9B84A; --gold-deep:#D9B84A; --patina:#6FB598; --line:rgba(234,241,246,.16);
+    --chip-off:rgba(234,241,246,.07); --chip-off-text:#5F7280; --row:rgba(234,241,246,.04);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0B1E2C; --card:#122A3C; --ink:#EAF1F6; --body-c:#C2D0DB; --steel:#8FA0AD;
+  --gold:#D9B84A; --gold-deep:#D9B84A; --patina:#6FB598; --line:rgba(234,241,246,.16);
+  --chip-off:rgba(234,241,246,.07); --chip-off-text:#5F7280; --row:rgba(234,241,246,.04);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--body-c);font-family:var(--bodyf);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:960px;margin:0 auto;padding:40px 22px 64px}
+header.masthead{border-bottom:3px solid var(--gold);padding-bottom:18px;margin-bottom:10px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--steel);margin:0 0 10px}
+h1{font-family:var(--disp);font-size:clamp(30px,5vw,44px);font-weight:700;text-transform:uppercase;letter-spacing:.02em;color:var(--ink);margin:0 0 8px;text-wrap:balance;line-height:1.05}
+.lede{max-width:65ch;margin:0;color:var(--body-c)}
+.statline{display:flex;flex-wrap:wrap;gap:8px 26px;font-family:var(--mono);font-size:11.5px;letter-spacing:.06em;color:var(--steel);padding:12px 0 26px;font-variant-numeric:tabular-nums}
+.statline b{color:var(--ink);font-weight:600}
+.fam{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:14px;box-shadow:0 1px 3px rgba(10,30,44,.06)}
+.fam-top{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.sil{flex:0 0 128px;color:var(--ink)}
+.sil svg{display:block;width:128px;height:40px}
+.fam-name{flex:1 1 260px;min-width:0}
+.fam-name h2{font-family:var(--disp);font-size:19px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--ink);margin:0 0 2px;text-wrap:balance}
+.fam-name .aka{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;color:var(--steel)}
+.count{flex:0 0 auto;font-family:var(--disp);font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:6px 14px;border-radius:999px;border:1.5px solid var(--line);color:var(--steel);white-space:nowrap;font-variant-numeric:tabular-nums}
+.count.all{border-color:var(--patina);color:var(--patina)}
+.count.most{border-color:var(--gold);color:var(--gold-deep)}
+.bkwrap{overflow-x:auto;margin-top:14px;border-top:1px dashed var(--line);padding-top:12px}
+table.bk{width:100%;min-width:660px;border-collapse:collapse;font-family:var(--mono);font-size:11.5px;font-variant-numeric:tabular-nums}
+.bk th{text-align:left;font-weight:500;font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--steel);padding:4px 12px 6px 0;border-bottom:1px solid var(--line);white-space:nowrap}
+.bk td{padding:6px 12px 6px 0;border-bottom:1px solid var(--row);color:var(--body-c);vertical-align:top}
+.bk tr:last-child td{border-bottom:none}
+.bk td.mk{color:var(--ink);font-weight:600;white-space:nowrap}
+.bk td.tn{font-family:var(--bodyf);font-weight:600;color:var(--ink);white-space:nowrap}
+.bk td.tn a{color:inherit;text-decoration:none;border-bottom:1px dotted var(--steel)}
+.bk td.tn a:hover{border-bottom-color:var(--gold)}
+.note{font-size:12.5px;color:var(--steel);margin:10px 0 0;line-height:1.5}
+.note b{color:var(--body-c);font-weight:600}
+h3.sect{font-family:var(--disp);font-size:14px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--steel);margin:34px 0 12px;display:flex;align-items:center;gap:12px}
+h3.sect::after{content:"";flex:1;height:1px;background:var(--line)}
+footer.fine{margin-top:36px;border-top:1px solid var(--line);padding-top:16px;font-size:12.5px;color:var(--steel);line-height:1.6}
+footer.fine p{margin:0 0 8px;max-width:75ch}
+@media(max-width:560px){.fam-top{gap:10px}.sil{flex-basis:100%}}
+</style>
+
+<div class="wrap">
+<header class="masthead">
+  <p class="eyebrow">RoofCoil · Panel taxonomy · Researched from manufacturer spec sheets, Aug 19 2026</p>
+  <h1>Exposed Fastener Master List</h1>
+  <p class="lede">Every screw-down panel offered by McElroy Metal, Quality Metals, PAC-CLAD, Drexel Metals, and Berridge — organized by the <strong>generic name</strong> a contractor would use for the shape, with each maker's panel broken out underneath. Standing seam, nail-strip, and concealed-fastener systems are out of scope.</p>
+</header>
+<div class="statline">
+  <span><b>38</b> panels cataloged</span>
+  <span><b>5</b> manufacturers</span>
+  <span><b>11</b> generic families</span>
+  <span>sorted by how many make one</span>
+</div>
+
+<h3 class="sect">Everyone makes one</h3>
+
+<div class="fam">
+  <div class="fam-top">
+    <div class="sil"><svg viewBox="0 0 128 40" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 32 L10 32 13 18 21 18 24 32 46 32 49 18 57 18 60 32 82 32 85 18 93 18 96 32 118 32 121 18 126 18"/><path d="M30 32 33 28 36 32 M40 32 43 28 46 32" stroke-width="1.2" opacity=".5"/></svg></div>
+    <div class="fam-name">
+      <h2>R-Panel / PBR</h2>
+      <span class="aka">The general-purpose screw-down workhorse · PBR = purlin-bearing leg version</span>
+    </div>
+    <span class="count all">5 of 5 · 7 panels</span>
+  </div>
+  <div class="bkwrap"><table class="bk">
+    <thead><tr><th>Maker</th><th>Panel</th><th>Rib</th><th>Spacing</th><th>Coverage</th><th>Gauges / metals</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td class="mk">McElroy</td><td class="tn"><a href="https://www.mcelroymetal.com/exposed-fastener-panels/r-panel" target="_blank" rel="noopener">R-Panel</a></td><td>1-1/4"</td><td>12" o.c.</td><td>36"</td><td>26 ga std · PBR leg version</td><td>roof + wall</td></tr>
+      <tr><td class="mk">McElroy</td><td class="tn"><a href="https://www.mcelroymetal.com/exposed-fastener-panels/multi-rib" target="_blank" rel="noopener">Multi-Rib</a></td><td>1-3/16"</td><td>12" o.c.</td><td>36"</td><td>26 ga std · PBR leg version</td><td>roof + wall</td></tr>
+      <tr><td class="mk">Quality Metals</td><td class="tn"><a href="https://www.saqualitymetals.com/r-panel/" target="_blank" rel="noopener">R-Panel</a></td><td>1-1/4"</td><td>12" o.c.</td><td>36"</td><td>26 std · 22, 24 opt</td><td>roof + wall</td></tr>
+      <tr><td class="mk">Quality Metals</td><td class="tn"><a href="https://www.saqualitymetals.com/pbr-panel/" target="_blank" rel="noopener">PBR-Panel</a></td><td>1-1/4"</td><td>12" o.c.</td><td>36"</td><td>26 std · 22, 24, 29 opt</td><td>roof + wall</td></tr>
+      <tr><td class="mk">PAC-CLAD</td><td class="tn"><a href="https://www.pac-clad.com/products/exposed-fastener-panels/r-36/" target="_blank" rel="noopener">R-36</a></td><td>1-1/4"</td><td>12" o.c.</td><td>36"</td><td>24 &amp; 22 ga · .032–.050 alu</td><td>roof + wall</td></tr>
+      <tr><td class="mk">Drexel</td><td class="tn"><a href="https://www.drexmet.com/products/metal-wall-systems/r-panel/" target="_blank" rel="noopener">R-Panel (R-36)</a></td><td>1-1/4"</td><td>12" o.c.</td><td>36"</td><td>24 &amp; 22 ga · .032–.050 alu</td><td>roof + wall</td></tr>
+      <tr><td class="mk">Berridge</td><td class="tn"><a href="https://www.berridge.com/products/exposed-fastener-panel-systems/r-panel/" target="_blank" rel="noopener">"R" Panel</a></td><td>1-1/4"</td><td>12" o.c.</td><td>36"</td><td>24 &amp; 22 ga · .032 alu</td><td>roof + wall</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">Berridge's drawing shows no purlin-bearing leg — plain R only. Both trade-named "R" and "PBR" products share this geometry; the leg is the only difference.</p>
+</div>
+
+<div class="fam">
+  <div class="fam-top">
+    <div class="sil"><svg viewBox="0 0 128 40" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 33 L8 33 14 12 24 12 30 33 40 33 46 12 56 12 62 33 72 33 78 12 88 12 94 33 104 33 110 12 120 12 126 33"/></svg></div>
+    <div class="fam-name">
+      <h2>7.2 Trapezoidal Structural Rib</h2>
+      <span class="aka">"7.2 panel" — deep symmetric trapezoids, the structural / industrial pick</span>
+    </div>
+    <span class="count all">5 of 5 · 5 panels</span>
+  </div>
+  <div class="bkwrap"><table class="bk">
+    <thead><tr><th>Maker</th><th>Panel</th><th>Rib</th><th>Spacing</th><th>Coverage</th><th>Gauges / metals</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td class="mk">McElroy</td><td class="tn"><a href="https://www.mcelroymetal.com/exposed-fastener-panels/mega-rib" target="_blank" rel="noopener">Mega-Rib</a></td><td>1-1/2"</td><td>7.2" o.c.</td><td>28.8" (36" at CA plant)</td><td>24 std · 26, 22, 20, 18 opt</td><td>roof + wall</td></tr>
+      <tr><td class="mk">Quality Metals</td><td class="tn"><a href="https://www.saqualitymetals.com/7-2-panel/" target="_blank" rel="noopener">7.2-Panel</a></td><td>1-1/2"</td><td>7.2" o.c.</td><td>36"</td><td>26 std · 22, 24, 29 opt</td><td>roof + wall</td></tr>
+      <tr><td class="mk">PAC-CLAD</td><td class="tn"><a href="https://www.pac-clad.com/products/exposed-fastener-panels/7-2-panel/" target="_blank" rel="noopener">7.2 Panel</a></td><td>1-1/2"</td><td>7.2" o.c.</td><td>36"</td><td>24 &amp; 22 ga · .032–.050 alu</td><td>roof + wall</td></tr>
+      <tr><td class="mk">Drexel</td><td class="tn"><a href="https://www.drexmet.com/products/metal-wall-systems/7-2-rib-panel/" target="_blank" rel="noopener">7.2 Rib Panel</a></td><td>1-1/2"</td><td>7.2" o.c.</td><td>36"</td><td>24 &amp; 22 ga · .032–.050 alu</td><td>roof + wall</td></tr>
+      <tr><td class="mk">Berridge</td><td class="tn"><a href="https://www.berridge.com/products/exposed-fastener-panel-systems/deep-deck-panel/" target="_blank" rel="noopener">Deep-Deck Panel</a></td><td>1-1/2"</td><td>7.2" o.c.</td><td>36"</td><td>24 &amp; 22 ga · .032, .040 alu</td><td>roof + wall</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<div class="fam">
+  <div class="fam-top">
+    <div class="sil"><svg viewBox="0 0 128 40" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 32 Q8 8 14 32 T26 32 T38 32 T50 32 T62 32 T74 32 T86 32 T98 32 T110 32 T122 32"/></svg></div>
+    <div class="fam-name">
+      <h2>7/8" Corrugated</h2>
+      <span class="aka">Classic deep sinusoidal corrugation, 2-2/3 in. pitch</span>
+    </div>
+    <span class="count all">5 of 5 · 5 panels</span>
+  </div>
+  <div class="bkwrap"><table class="bk">
+    <thead><tr><th>Maker</th><th>Panel</th><th>Rib</th><th>Pitch</th><th>Coverage</th><th>Gauges / metals</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td class="mk">McElroy</td><td class="tn"><a href="https://www.mcelroymetal.com/exposed-fastener-panels/multi-cor" target="_blank" rel="noopener">Multi-Cor</a></td><td>7/8"</td><td>2-2/3"</td><td>32"</td><td>26 ga std</td><td>roof + wall</td></tr>
+      <tr><td class="mk">Quality Metals</td><td class="tn"><a href="https://www.saqualitymetals.com/corrugated-panel/" target="_blank" rel="noopener">Corrugated-Panel</a></td><td>7/8"</td><td>2-2/3"</td><td>32" roof · 34.67" wall</td><td>20, 22, 24, 26 ga</td><td>roof + wall</td></tr>
+      <tr><td class="mk">PAC-CLAD</td><td class="tn"><a href="https://www.pac-clad.com/products/exposed-fastener-panels/corrugated/" target="_blank" rel="noopener">7/8" Corrugated</a></td><td>7/8"</td><td>2-2/3"</td><td>34.67" roof · 37.33" wall</td><td>24 &amp; 22 ga · .032–.050 alu</td><td>roof + wall</td></tr>
+      <tr><td class="mk">Drexel</td><td class="tn"><a href="https://www.drexmet.com/products/metal-wall-systems/1-2-corrugated-7-8-corrugated-panel/" target="_blank" rel="noopener">7/8" Corrugated</a></td><td>7/8"</td><td>2-2/3"</td><td>34.67" roof · 37.33" wall</td><td>24 &amp; 22 ga · .032–.050 alu</td><td>roof + wall</td></tr>
+      <tr><td class="mk">Berridge</td><td class="tn"><a href="https://www.berridge.com/products/exposed-fastener-panel-systems/s-deck-panel/" target="_blank" rel="noopener">S-Deck Panel</a></td><td>7/8"</td><td>2-2/3"</td><td>32" or 34-2/3"</td><td>24 &amp; 22 ga · .032, .040 alu</td><td>roof + wall · curvable</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">Coverage depends on how many corrugations lap: roofing takes a two-rib lap, siding one — quote the application, not just the panel.</p>
+</div>
+
+<h3 class="sect">Most make one</h3>
+
+<div class="fam">
+  <div class="fam-top">
+    <div class="sil"><svg viewBox="0 0 128 40" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 32 L14 32 18 22 22 32 26 22 30 32 56 32 60 22 64 32 68 22 72 32 98 32 102 22 106 32 110 22 114 32 126 32"/></svg></div>
+    <div class="fam-name">
+      <h2>5V-Crimp</h2>
+      <span class="aka">Paired V-crimps on a flat pan — the porch-and-farmhouse classic</span>
+    </div>
+    <span class="count most">4 of 5 · 4 panels</span>
+  </div>
+  <div class="bkwrap"><table class="bk">
+    <thead><tr><th>Maker</th><th>Panel</th><th>Crimp</th><th>Spacing</th><th>Coverage</th><th>Gauges / metals</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td class="mk">McElroy</td><td class="tn"><a href="https://www.mcelroymetal.com/exposed-fastener-panels/5v" target="_blank" rel="noopener">5V</a></td><td>1/2"</td><td>12" o.c.</td><td>24"</td><td>26 ga Galvalume · 29 ga bare</td><td>roof + wall</td></tr>
+      <tr><td class="mk">Quality Metals</td><td class="tn"><a href="https://www.saqualitymetals.com/5v-panel/" target="_blank" rel="noopener">5V-Panel</a></td><td>1/2"</td><td>12" o.c.</td><td>24"</td><td>26 std · 29 opt</td><td>roof</td></tr>
+      <tr><td class="mk">Drexel</td><td class="tn"><a href="https://www.drexmet.com/product-list/5v-profile" target="_blank" rel="noopener">DMC 5V Profile</a></td><td>3/8"–1/2"</td><td>~12" crimp sets</td><td>24" (also 20.5")</td><td>24 &amp; 22 ga · .032, .040 alu</td><td>roof</td></tr>
+      <tr><td class="mk">Berridge</td><td class="tn"><a href="https://www.berridge.com/products/exposed-fastener-panel-systems/double-rib-panel/" target="_blank" rel="noopener">Double-Rib Panel</a></td><td>1/2"</td><td>12" o.c.</td><td>24"</td><td>24 ga steel only</td><td>roof · vertical, solid deck</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note"><b>Berridge's Double-Rib is a 5V-style panel</b>, not a true five-crimp 5V — same look and coverage, but spec it by the drawing if the job calls for exact 5V. PAC-CLAD does not make one.</p>
+</div>
+
+<div class="fam">
+  <div class="fam-top">
+    <div class="sil"><svg viewBox="0 0 128 40" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 32 L16 32 18 22 30 22 32 32 58 32 60 22 72 22 74 32 100 32 102 22 114 22 116 32 126 32"/></svg></div>
+    <div class="fam-name">
+      <h2>M-Rib / Box-Rib Wall Panel</h2>
+      <span class="aka">Squared 3/4 in. ribs on a wide pan — wall &amp; equipment-screen duty</span>
+    </div>
+    <span class="count most">4 of 5 · 6 panels</span>
+  </div>
+  <div class="bkwrap"><table class="bk">
+    <thead><tr><th>Maker</th><th>Panel</th><th>Rib</th><th>Module</th><th>Coverage</th><th>Gauges / metals</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td class="mk">PAC-CLAD</td><td class="tn"><a href="https://www.pac-clad.com/products/exposed-fastener-panels/m-42-m-36-panels/" target="_blank" rel="noopener">M-36</a></td><td>3/4"</td><td>6" o.c.</td><td>36"</td><td>24 &amp; 22 ga · .032–.050 alu</td><td>wall</td></tr>
+      <tr><td class="mk">PAC-CLAD</td><td class="tn"><a href="https://www.pac-clad.com/products/exposed-fastener-panels/m-42-m-36-panels/" target="_blank" rel="noopener">M-42</a></td><td>3/4"</td><td>6" o.c.</td><td>42"</td><td>24 &amp; 22 ga · .032–.050 alu · Tyler TX plant</td><td>wall</td></tr>
+      <tr><td class="mk">Drexel</td><td class="tn"><a href="https://www.drexmet.com/products/metal-wall-systems/m-36-and-m-42-panel-page/" target="_blank" rel="noopener">M-36</a></td><td>3/4"</td><td>~7" module</td><td>36"</td><td>24 &amp; 22 ga · .032–.050 alu</td><td>wall</td></tr>
+      <tr><td class="mk">Drexel</td><td class="tn"><a href="https://www.drexmet.com/products/metal-wall-systems/m-36-and-m-42-panel-page/" target="_blank" rel="noopener">M-42</a></td><td>3/4"</td><td>7" module</td><td>42"</td><td>24 &amp; 22 ga · .032–.050 alu</td><td>wall</td></tr>
+      <tr><td class="mk">Berridge</td><td class="tn"><a href="https://www.berridge.com/products/exposed-fastener-panel-systems/m-panel/" target="_blank" rel="noopener">"M" Panel</a></td><td>3/4"</td><td>paired-rib module</td><td>36"</td><td>24 &amp; 22 ga · .032 alu</td><td>roof + wall</td></tr>
+      <tr><td class="mk">McElroy</td><td class="tn"><a href="https://www.mcelroymetal.com/exposed-fastener-panels/multi-v" target="_blank" rel="noopener">Multi-V</a></td><td>1-3/16"</td><td>12" o.c.</td><td>36"</td><td>26 ga std · V-ribs, valley fasteners</td><td>wall-primary</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note"><b>McElroy's Multi-V is a V-rib variant</b> rather than a box rib. PAC-CLAD and Drexel state their M-panels are not for structural roof use.</p>
+</div>
+
+<div class="fam">
+  <div class="fam-top">
+    <div class="sil"><svg viewBox="0 0 128 40" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 30 Q8 18 14 30 T26 30 T38 30 T50 30 T62 30 T74 30 T86 30 T98 30 T110 30 T122 30"/></svg></div>
+    <div class="fam-name">
+      <h2>1/2" Low-Profile Corrugated</h2>
+      <span class="aka">Shallow sinusoidal corrugation, same 2-2/3 in. pitch</span>
+    </div>
+    <span class="count">3 of 5 · 3 panels</span>
+  </div>
+  <div class="bkwrap"><table class="bk">
+    <thead><tr><th>Maker</th><th>Panel</th><th>Rib</th><th>Pitch</th><th>Coverage</th><th>Gauges / metals</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td class="mk">McElroy</td><td class="tn"><a href="https://www.mcelroymetal.com/exposed-fastener-panels/m-cor" target="_blank" rel="noopener">M-Cor</a></td><td>1/2"</td><td>2-2/3"</td><td>34.67"</td><td>26 std · 29, 24 opt</td><td>roof + wall</td></tr>
+      <tr><td class="mk">PAC-CLAD</td><td class="tn"><a href="https://www.pac-clad.com/products/exposed-fastener-panels/corrugated/" target="_blank" rel="noopener">1/2" Corrugated</a></td><td>1/2"</td><td>2-2/3"</td><td>42.67" wall · 40" roof lap</td><td>24 &amp; 22 ga · .032–.050 alu</td><td>wall / screens</td></tr>
+      <tr><td class="mk">Drexel</td><td class="tn"><a href="https://www.drexmet.com/products/metal-wall-systems/1-2-corrugated-7-8-corrugated-panel/" target="_blank" rel="noopener">1/2" Corrugated</a></td><td>1/2"</td><td>2-2/3"</td><td>42.67" siding · 40" roof</td><td>24 &amp; 22 ga · .032–.050 alu</td><td>roof + wall</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<h3 class="sect">Some make one</h3>
+
+<div class="fam">
+  <div class="fam-top">
+    <div class="sil"><svg viewBox="0 0 128 40" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 32 L10 32 12 22 20 22 22 32 32 32 34 22 42 22 44 32 54 32 56 22 64 22 66 32 76 32 78 22 86 22 88 32 98 32 100 22 108 22 110 32 120 32 122 22 126 22"/></svg></div>
+    <div class="fam-name">
+      <h2>U-Panel</h2>
+      <span class="aka">Squared U-ribs every 6 in. — liner and light-duty screw-down</span>
+    </div>
+    <span class="count">2 of 5 · 3 panels</span>
+  </div>
+  <div class="bkwrap"><table class="bk">
+    <thead><tr><th>Maker</th><th>Panel</th><th>Rib</th><th>Spacing</th><th>Coverage</th><th>Gauges / metals</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td class="mk">McElroy</td><td class="tn"><a href="https://www.mcelroymetal.com/exposed-fastener-panels/u-panel" target="_blank" rel="noopener">U-Panel</a></td><td>47/64"</td><td>6" o.c.</td><td>36"</td><td>26 ga std</td><td>roof + wall</td></tr>
+      <tr><td class="mk">Quality Metals</td><td class="tn"><a href="https://www.saqualitymetals.com/u-panel-new/" target="_blank" rel="noopener">U-Panel</a></td><td>3/4"</td><td>6" o.c.</td><td>36"</td><td>26 std · 22, 24, 29 opt</td><td>roof + wall</td></tr>
+      <tr><td class="mk">Quality Metals</td><td class="tn"><a href="https://www.saqualitymetals.com/pbu-panel/" target="_blank" rel="noopener">PBU-Panel</a></td><td>3/4"</td><td>6" o.c.</td><td>36"</td><td>26 std · 22, 24 opt · purlin-bearing leg</td><td>roof + wall</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<div class="fam">
+  <div class="fam-top">
+    <div class="sil"><svg viewBox="0 0 128 40" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 32 L18 32 21 24 29 24 32 32 40 32 41 28 47 28 48 32 60 32 63 24 71 24 74 32 82 32 83 28 89 28 90 32 102 32 105 24 113 24 116 32 126 32" /></svg></div>
+    <div class="fam-name">
+      <h2>Ag Panel / Tuff Rib</h2>
+      <span class="aka">3/4 in. trapezoid ribs with minor flutes — the 29 ga barn-and-shop panel</span>
+    </div>
+    <span class="count">2 of 5 · 2 panels</span>
+  </div>
+  <div class="bkwrap"><table class="bk">
+    <thead><tr><th>Maker</th><th>Panel</th><th>Rib</th><th>Spacing</th><th>Coverage</th><th>Gauges / metals</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td class="mk">McElroy</td><td class="tn"><a href="https://www.mcelroymetal.com/exposed-fastener-panels/max-rib" target="_blank" rel="noopener">Max-Rib</a></td><td>3/4"</td><td>9" o.c.</td><td>36"</td><td>29, 26 ga</td><td>roof + wall</td></tr>
+      <tr><td class="mk">Quality Metals</td><td class="tn"><a href="https://www.saqualitymetals.com/ag-panel/" target="_blank" rel="noopener">AG-Panel</a></td><td>3/4"</td><td>12" o.c. per site</td><td>36"</td><td>26 std · 22, 24, 29 opt</td><td>roof + wall</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">Quality Metals publishes 12" o.c. rib spacing — wider than the typical 9" o.c. ag/tuff-rib pattern. Kept as published; confirm against their drawing.</p>
+</div>
+
+<h3 class="sect">One maker only — specialty shapes</h3>
+
+<div class="fam">
+  <div class="fam-top">
+    <div class="sil"><svg viewBox="0 0 128 40" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 32 L4 32 6 14 12 14 14 32 58 32 60 14 66 14 68 32 112 32 114 14 120 14 122 32 126 32"/></svg></div>
+    <div class="fam-name">
+      <h2>Standing-Seam-Look Vertical Rib</h2>
+      <span class="aka">Exposed fastener panel styled to read as standing seam from the street</span>
+    </div>
+    <span class="count">1 of 5 · 1 panel</span>
+  </div>
+  <div class="bkwrap"><table class="bk">
+    <thead><tr><th>Maker</th><th>Panel</th><th>Rib</th><th>Spacing</th><th>Coverage</th><th>Gauges / metals</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td class="mk">McElroy</td><td class="tn"><a href="https://www.mcelroymetal.com/exposed-fastener-panels/modern-rib" target="_blank" rel="noopener">Modern-Rib</a></td><td>3/4"</td><td>12" o.c.</td><td>36"</td><td>29, 26 ga</td><td>roof + wall</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<div class="fam">
+  <div class="fam-top">
+    <div class="sil"><svg viewBox="0 0 128 40" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M2 32 L16 32 20 25 32 25 36 32 60 32 64 25 76 25 80 32 104 32 108 25 120 25 124 32 126 32"/></svg></div>
+    <div class="fam-name">
+      <h2>Low-Profile Trapezoidal, Concealed-Look Laps</h2>
+      <span class="aka">Ag-class geometry with side laps engineered to disappear (patent-protected)</span>
+    </div>
+    <span class="count">1 of 5 · 1 panel</span>
+  </div>
+  <div class="bkwrap"><table class="bk">
+    <thead><tr><th>Maker</th><th>Panel</th><th>Rib</th><th>Spacing</th><th>Coverage</th><th>Gauges / metals</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td class="mk">McElroy</td><td class="tn"><a href="https://www.mcelroymetal.com/exposed-fastener-panels/mesa" target="_blank" rel="noopener">Mesa</a></td><td>3/4"</td><td>9" o.c.</td><td>36"</td><td>26, 29 ga</td><td>roof + wall</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<div class="fam">
+  <div class="fam-top">
+    <div class="sil"><svg viewBox="0 0 128 40" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2 31 L6 31 7 26 11 26 12 31 18 31 19 26 23 26 24 31 30 31 31 26 35 26 36 31 42 31 43 26 47 26 48 31 54 31 55 26 59 26 60 31 66 31 67 26 71 26 72 31 78 31 79 26 83 26 84 31 90 31 91 26 95 26 96 31 102 31 103 26 107 26 108 31 114 31 115 26 119 26 120 31 126 31"/></svg></div>
+    <div class="fam-name">
+      <h2>Mini-Rib / Liner Panel</h2>
+      <span class="aka">3/8 in. ribs every 3 in. — interiors, wainscot, soffit-adjacent accents</span>
+    </div>
+    <span class="count">1 of 5 · 1 panel</span>
+  </div>
+  <div class="bkwrap"><table class="bk">
+    <thead><tr><th>Maker</th><th>Panel</th><th>Rib</th><th>Spacing</th><th>Coverage</th><th>Gauges / metals</th><th>Use</th></tr></thead>
+    <tbody>
+      <tr><td class="mk">McElroy</td><td class="tn"><a href="https://www.mcelroymetal.com/exposed-fastener-panels/mini-rib" target="_blank" rel="noopener">Mini-Rib</a></td><td>3/8"</td><td>3" o.c.</td><td>36"</td><td>26 ga</td><td>wall / liner</td></tr>
+    </tbody>
+  </table></div>
+</div>
+
+<footer class="fine">
+  <p><strong style="color:var(--ink)">How to read this list.</strong> Each family is the generic shape a contractor would name; the rows underneath are every individual product the five manufacturers roll in that shape, with each maker's trade name linked to its product page. Specs come from the manufacturers' own spec sheets and product pages (verified Aug 19, 2026) — confirm the exact drawing before ordering.</p>
+  <p>Quality Metals here is the Texas company (San Antonio · Dallas · Houston · McAllen). Two Quality Metals wall systems were excluded as concealed-fastener; all standing seam, nail-strip/fastener-flange, flush, and board-and-batten systems from every maker are likewise out of scope. A former PAC-CLAD R-41 and Drexel R-41 are discontinued and omitted.</p>
+</footer>
+</div>

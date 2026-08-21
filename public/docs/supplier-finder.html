@@ -1,0 +1,206 @@
+<title>Supplier Finder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F6F4EE; --card:#FFFFFF; --ink:#0A2B41; --body-c:#33475A; --steel:#7C8894;
+  --gold:#D4AF37; --gold-deep:#A9882B; --patina:#4E8C74; --copper:#A0602E; --line:rgba(10,43,65,.14);
+  --chip-off:rgba(10,43,65,.06); --row:rgba(10,43,65,.03); --finder:#0F3D5C; --finder-text:#EAF1F6; --finder-line:rgba(255,255,255,.18);
+  --disp:'Oswald',system-ui,sans-serif; --bodyf:'Inter',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --paper:#0B1E2C; --card:#122A3C; --ink:#EAF1F6; --body-c:#C2D0DB; --steel:#8FA0AD;
+    --gold:#D9B84A; --gold-deep:#D9B84A; --patina:#6FB598; --copper:#C98A56; --line:rgba(234,241,246,.16);
+    --chip-off:rgba(234,241,246,.07); --row:rgba(234,241,246,.04); --finder:#081826; --finder-text:#EAF1F6; --finder-line:rgba(255,255,255,.14);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0B1E2C; --card:#122A3C; --ink:#EAF1F6; --body-c:#C2D0DB; --steel:#8FA0AD;
+  --gold:#D9B84A; --gold-deep:#D9B84A; --patina:#6FB598; --copper:#C98A56; --line:rgba(234,241,246,.16);
+  --chip-off:rgba(234,241,246,.07); --row:rgba(234,241,246,.04); --finder:#081826; --finder-text:#EAF1F6; --finder-line:rgba(255,255,255,.14);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--body-c);font-family:var(--bodyf);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+.wrap{max-width:960px;margin:0 auto;padding:40px 22px 64px}
+header.masthead{border-bottom:3px solid var(--copper);padding-bottom:18px;margin-bottom:22px}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--steel);margin:0 0 10px}
+h1{font-family:var(--disp);font-size:clamp(30px,5vw,44px);font-weight:700;text-transform:uppercase;letter-spacing:.02em;color:var(--ink);margin:0 0 8px;text-wrap:balance;line-height:1.05}
+.lede{max-width:65ch;margin:0;color:var(--body-c)}
+/* finder */
+.finder{background:var(--finder);color:var(--finder-text);border-radius:14px;padding:24px 26px;margin-bottom:34px;box-shadow:0 4px 18px rgba(10,30,44,.18)}
+.finder .q{font-family:var(--disp);font-size:18px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px}
+.finder .crumb{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#8FA9BC;margin:0 0 14px;min-height:14px}
+.opts{display:flex;flex-wrap:wrap;gap:9px}
+.opt{font-family:var(--bodyf);font-weight:600;font-size:13.5px;padding:11px 18px;border-radius:999px;border:1.5px solid var(--finder-line);background:transparent;color:var(--finder-text);cursor:pointer;transition:border-color .15s,background .15s}
+.opt:hover{border-color:var(--gold);background:rgba(212,175,55,.12)}
+.opt:focus-visible{outline:2.5px solid var(--gold);outline-offset:2px}
+.backrow{margin-top:16px}
+.back{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;background:none;border:none;color:#8FA9BC;cursor:pointer;padding:0}
+.back:hover{color:var(--gold)}
+.results{margin-top:18px;display:none}
+.results.on{display:block}
+.results .rhead{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold);margin:0 0 10px}
+.rcard{background:rgba(255,255,255,.06);border:1px solid var(--finder-line);border-radius:10px;padding:13px 16px;margin-bottom:8px;display:flex;flex-wrap:wrap;gap:6px 14px;align-items:baseline}
+.rcard b{font-family:var(--disp);font-size:15px;letter-spacing:.04em;text-transform:uppercase;font-weight:600}
+.rcard .rl{font-family:var(--mono);font-size:10px;letter-spacing:.05em;color:#8FA9BC}
+.rcard .rd{flex-basis:100%;font-size:12.5px;color:#C7D6E2;line-height:1.5}
+.noyet{font-size:13px;color:#C7D6E2;background:rgba(255,255,255,.05);border:1px dashed var(--finder-line);border-radius:10px;padding:12px 16px}
+/* listing */
+h3.sect{font-family:var(--disp);font-size:14px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--steel);margin:34px 0 12px;display:flex;align-items:center;gap:12px}
+h3.sect::after{content:"";flex:1;height:1px;background:var(--line)}
+.co{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin-bottom:12px}
+.co-head{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 14px;margin-bottom:8px}
+.co-head h2{font-family:var(--disp);font-size:19px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--ink);margin:0}
+.badges{display:flex;gap:6px;flex-wrap:wrap}
+.badge{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;padding:4px 10px;border-radius:999px}
+.badge.coil{background:var(--gold);color:#0A2B41}
+.badge.fab{background:var(--patina);color:#fff}
+.co-head .loc{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;color:var(--steel);margin-left:auto}
+.co p{margin:4px 0 0;font-size:13px;line-height:1.55}
+.co p b{color:var(--ink);font-weight:600}
+.empty{border-style:dashed;color:var(--steel);font-size:13px;padding:14px 20px}
+footer.fine{margin-top:36px;border-top:1px solid var(--line);padding-top:16px;font-size:12.5px;color:var(--steel);line-height:1.6}
+footer.fine p{margin:0 0 8px;max-width:75ch}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+<header class="masthead">
+  <p class="eyebrow">RoofCoil · Coil suppliers, fabricators &amp; companies that do both · Aug 19 2026</p>
+  <h1>Supplier Finder</h1>
+  <p class="lede">Some companies just make <strong>coil and flats</strong>. Some just <strong>fabricate</strong> — rolling panels and bending trim from purchased coil. Some do <strong>both</strong>, running their own coil line and their own machines. Answer a couple of questions and the finder narrows the list to who can actually fill the order.</p>
+</header>
+
+<div class="finder" id="finder">
+  <p class="crumb" id="crumb">Start here</p>
+  <p class="q" id="question">What does the job need?</p>
+  <div class="opts" id="opts"></div>
+  <div class="results" id="results"></div>
+  <div class="backrow"><button class="back" id="back" style="display:none">← Back a step</button></div>
+</div>
+
+<h3 class="sect">Coil line + fabrication — they do both</h3>
+
+<div class="co">
+  <div class="co-head">
+    <h2>Fortified Sheet Metal</h2>
+    <span class="badges"><span class="badge coil">Coil &amp; Flats</span><span class="badge fab">Fabrication</span></span>
+    <span class="loc">605 E Mulberry · Sherman, TX</span>
+  </div>
+  <p><b>Their coil line:</b> Fortified Metal painted coil (PVDF &amp; 40-yr SMP, 19 colors) plus bare G90, Galvalume, Bonderized, and copper — slit coil and flat sheet cut to size. Also stocks and runs coil from McElroy, Una-Clad, Adax, Berridge, and Quality Metals.</p>
+  <p><b>Fabrication:</b> standing seam snap-lock (1-1/2"–1-3/4"), mechanical seam (1"–2", incl. ARMCO), 2" convertible snap/mech, nail strip (1"–1-1/2"), 2-1/2" trapezoidal, flush wall &amp; soffit, board &amp; batten, custom trim &amp; flashing, 3D parts (collector boxes, scuppers, chimney caps). Portable machines — job-site runs available.</p>
+</div>
+
+<div class="co">
+  <div class="co-head">
+    <h2>Adax Metals</h2>
+    <span class="badges"><span class="badge coil">Coil &amp; Flats</span><span class="badge fab">Fabrication</span></span>
+    <span class="loc">1901 B Mineral Wells Hwy · Weatherford, TX</span>
+  </div>
+  <p><b>Their coil line:</b> painted coil (Kynar 500, 20 colors), PaintGrip, slit coil and flat sheet.</p>
+  <p><b>Fabrication:</b> licensed Ultra Seam systems — snap-on cap seam (1", curvable), Lok-Seam snap-lock (1-1/2"–1-3/4"), mechanical seam (1-1/2"–2", curved &amp; clip-offset options), 2" seam with snap-on batten, nail strip (1"–1-1/2"), flush wall &amp; soffit, plus exposed fastener panels (profiles unpublished). On-site roll forming for extra-long runs.</p>
+</div>
+
+<div class="co">
+  <div class="co-head">
+    <h2>Quality Metals</h2>
+    <span class="badges"><span class="badge coil">Coil &amp; Flats</span><span class="badge fab">Fabrication</span></span>
+    <span class="loc">San Antonio · Dallas · Houston · McAllen, TX</span>
+  </div>
+  <p><b>Their coil line:</b> painted steel coil and flats sold direct to contractors and shops.</p>
+  <p><b>Fabrication:</b> exposed fastener lineup (R/PBR, U/PBU, ag panel, 7.2, 5V, 7/8" corrugated) plus standing seam, nail strip, and concealed wall systems.</p>
+</div>
+
+<h3 class="sect">Coil &amp; flats only</h3>
+<div class="co empty">No coil-only suppliers listed yet — the first one that comes through the <a href="https://www.roofcoil.com/get-listed.html" style="color:var(--copper);font-weight:600">Get Listed intake</a> lands here.</div>
+
+<h3 class="sect">Fabrication only — they run other companies' coil</h3>
+<div class="co empty">No fabrication-only shops listed yet — this is where trim benders and panel roll-formers without a coil line will go.</div>
+
+<h3 class="sect">Manufacturer panel lines</h3>
+<div class="co">
+  <div class="co-head">
+    <h2>McElroy · PAC-CLAD · Drexel · Berridge</h2>
+    <span class="badges"><span class="badge fab">Panels</span></span>
+  </div>
+  <p>National manufacturer lines, cataloged panel-by-panel in the <b>Exposed Fastener Master List</b> — all four also make standing seam systems. Whether each sells coil direct hasn't been verified yet, so they're listed here for panels only.</p>
+</div>
+
+<footer class="fine">
+  <p><strong style="color:var(--ink)">How this fits together.</strong> The finder above and the listings below share one registry. Panel family names match the Exposed Fastener Master List's generic taxonomy. Capabilities shown are only what's verified from each company's own site, spec sheets, or the Fortified shop app — anything unverified says so rather than guessing.</p>
+  <p>New companies join through the roofcoil.com Get Listed intake and slot into whichever section fits: coil &amp; flats only, fabrication only, or both.</p>
+</footer>
+</div>
+
+<script>
+const REG = {
+  fortified: { n: "Fortified Sheet Metal", l: "Sherman, TX", d: "" },
+  adax: { n: "Adax Metals", l: "Weatherford, TX", d: "" },
+  quality: { n: "Quality Metals", l: "San Antonio · Dallas · Houston · McAllen, TX", d: "" },
+  mcelroy: { n: "McElroy Metal", l: "national — see master list", d: "" },
+  pacclad: { n: "PAC-CLAD / Petersen", l: "national — see master list", d: "" },
+  drexel: { n: "Drexel Metals", l: "national — see master list", d: "" },
+  berridge: { n: "Berridge", l: "national — see master list", d: "" },
+};
+const D = (ids, note) => ({ ids, note });
+// Question tree. Each node: q, options [{label, next|result}]
+const TREE = {
+  start: { q: "What does the job need?", o: [
+    { t: "Bare or painted coil & flat sheet", r: D(["fortified","adax","quality"], "All three run their own coil lines. Fortified also stocks McElroy, Una-Clad, Adax, Berridge, and Quality Metals coil.") },
+    { t: "Finished panels", n: "ptype" },
+    { t: "Custom trim & flashing", r: D(["fortified"], "Custom-drawn trim with hem options; draw it in the Panel & Trim app and it goes straight to the shop.") },
+    { t: "3D parts — collector boxes, scuppers, chimney caps", r: D(["fortified"], "Modeled and quoted in the Panel & Trim app.") },
+  ]},
+  ptype: { q: "What kind of panel?", o: [
+    { t: "Standing seam (concealed fastener)", n: "seam" },
+    { t: "Exposed fastener / screw-down", n: "ef" },
+    { t: "Not sure — show everyone who rolls panels", r: D(["fortified","adax","quality","mcelroy","pacclad","drexel","berridge"], "Every listed company rolls panels of some kind — narrow by fastening type for a tighter list.") },
+  ]},
+  seam: { q: "Which seam system?", o: [
+    { t: "Snap-lock", r: D(["fortified","adax","mcelroy","pacclad","drexel","quality"], "Fortified: 1-1/2\"–1-3/4\" + 2\" convertible. Adax: Lok-Seam 1-1/2\"–1-3/4\" + 1\" cap seam.") },
+    { t: "Mechanical seam", r: D(["fortified","adax","mcelroy","pacclad","drexel","quality"], "Fortified: 1\"–2\" incl. ARMCO + 2-1/2\" trapezoidal. Adax: 1-1/2\"–2\", curved & batten-cap options.") },
+    { t: "Nail strip / fastener flange", r: D(["fortified","adax","drexel","quality"], "Fortified: 1\"–1-1/2\" slotted flange. Adax: 1\" (1-1/2\" available), Class 4 hail rated.") },
+    { t: "Any standing seam", r: D(["fortified","adax","mcelroy","pacclad","drexel","quality","berridge"], "All seven make standing seam systems; the network shops (Fortified, Adax) can quote through RoofCoil today.") },
+  ]},
+  ef: { q: "Which shape? (generic names — see the master list)", o: [
+    { t: "R-Panel / PBR", r: D(["quality","mcelroy","pacclad","drexel","berridge"], "All five manufacturer versions are 1-1/4\" ribs at 12\" o.c., 36\" coverage.") },
+    { t: "7.2 trapezoidal rib", r: D(["quality","mcelroy","pacclad","drexel","berridge"], "Identical geometry across all five — availability and freight decide the buy.") },
+    { t: "7/8\" corrugated", r: D(["quality","mcelroy","pacclad","drexel","berridge"], "Coverage depends on the lap — quote roof vs. wall.") },
+    { t: "5V-Crimp", r: D(["quality","mcelroy","drexel","berridge"], "Berridge's is a 5V-style double-rib; PAC-CLAD doesn't make one.") },
+    { t: "U-Panel or ag panel", r: D(["quality","mcelroy"], "Texas-supplier shapes — only these two roll them.") },
+    { t: "Something else / not sure", r: D(["quality","mcelroy","pacclad","drexel","berridge","adax"], "See the Exposed Fastener Master List for all 11 generic families; Adax also offers exposed fastener panels with unpublished profiles.") },
+  ]},
+};
+let path = ["start"];
+const $ = s => document.querySelector(s);
+function render(){
+  const node = TREE[path[path.length-1]];
+  $("#crumb").textContent = path.length > 1 ? "Step " + path.length : "Start here";
+  $("#question").textContent = node.q;
+  $("#results").className = "results"; $("#results").innerHTML = "";
+  $("#opts").style.display = "flex";
+  $("#opts").innerHTML = node.o.map((o,i)=>`<button class="opt" data-i="${i}">${o.t}</button>`).join("");
+  $("#back").style.display = path.length > 1 ? "inline" : "none";
+  document.querySelectorAll("#opts .opt").forEach(b => b.onclick = () => {
+    const o = node.o[+b.dataset.i];
+    if (o.n) { path.push(o.n); render(); }
+    else showResult(o);
+  });
+}
+function showResult(o){
+  $("#opts").style.display = "none";
+  $("#question").textContent = "Who can fill it";
+  $("#crumb").textContent = o.t;
+  const r = $("#results"); r.className = "results on";
+  r.innerHTML = '<p class="rhead">' + o.r.ids.length + ' match' + (o.r.ids.length===1?'':'es') + '</p>' +
+    o.r.ids.map(id => `<div class="rcard"><b>${REG[id].n}</b><span class="rl">${REG[id].l}</span></div>`).join("") +
+    (o.r.note ? `<div class="rcard"><span class="rd">${o.r.note}</span></div>` : "");
+  $("#back").style.display = "inline";
+}
+$("#back").onclick = () => {
+  if ($("#results").classList.contains("on")) { render(); return; }
+  path.pop(); render();
+};
+render();
+</script>
