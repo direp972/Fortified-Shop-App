@@ -4257,14 +4257,27 @@ export default function ShopOrderApp() {
                 {(() => {
                   const coilFeet = (+metalCoilLength || 0) / 12;
                   return (
-                    <div style={{ marginTop: 10, padding: 10, background: theme.inputBg, borderRadius: 8, border: `1px solid ${theme.border}` }}>
-                      <div style={{ fontSize: 11.5, color: theme.text, marginBottom: 4 }}>
-                        <strong>Flat Sheet:</strong> {money(flatSheetPrice)} each — {quantity || 0} × = <strong>{money(flatSheetPrice * (+quantity || 0))}</strong>
+                    <>
+                      <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                        <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                          Flat Sheet $/Sheet
+                          <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.highlight, boxSizing: "border-box", color: theme.text, fontWeight: 600 }}>
+                            {money(flatSheetPrice)}
+                          </div>
+                          <div className="mono" style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3 }}>× {quantity || 0} sheets = {money(flatSheetPrice * (+quantity || 0))}</div>
+                        </label>
+                        <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                          Coil $/Linear Ft
+                          <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.highlight, boxSizing: "border-box", color: theme.text, fontWeight: 600 }}>
+                            {money(metalCoilPricePerFt)}
+                          </div>
+                          <div className="mono" style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3 }}>× {Math.round(coilFeet)} ft = {money(metalCoilPricePerFt * coilFeet)}</div>
+                        </label>
                       </div>
-                      <div style={{ fontSize: 11.5, color: theme.text }}>
-                        <strong>Coil:</strong> {money(metalCoilPricePerFt)} per linear ft — {Math.round(coilFeet)} ft = <strong>{money(metalCoilPricePerFt * coilFeet)}</strong>
+                      <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
+                        Prices shown do not include sales tax.
                       </div>
-                    </div>
+                    </>
                   );
                 })()}
 
@@ -5230,7 +5243,7 @@ export default function ShopOrderApp() {
             </div>
           )}
           <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 8, textAlign: "center" }}>
-            Estimate only — final pricing confirmed by the shop. Orders are visible to shop staff.
+            Estimate only — final pricing confirmed by the shop. Prices shown do not include sales tax. Orders are visible to shop staff.
           </div>
             </>
           )}
