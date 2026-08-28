@@ -3,6 +3,8 @@ import { useAuth } from "./lib/AuthProvider";
 
 const INK = "#1C1C1E";
 const SAFETY = "#D4AF37";
+// Served on fortifiedmetals.com via that site's /app proxy — brand accordingly.
+const ON_FORTIFIED = typeof window !== "undefined" && window.location.hostname.includes("fortifiedmetals");
 
 export default function AuthGate({ children }) {
   const { user, loading, signUp, signIn } = useAuth();
@@ -64,7 +66,7 @@ export default function AuthGate({ children }) {
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(180deg, #0B1E2C, #0F3D5C)", fontFamily: "'Inter', system-ui, sans-serif", padding: 20 }}>
       <form onSubmit={handleSubmit} style={{ width: "100%", maxWidth: 380, background: "#fff", borderRadius: 16, padding: 28, boxShadow: "0 30px 80px rgba(0,0,0,0.5)" }}>
-        <div style={{ fontFamily: "'Oswald', sans-serif", textTransform: "uppercase", letterSpacing: "0.03em", fontSize: 22, fontWeight: 700, marginBottom: 4, color: "#0A2B41", textAlign: "center" }}>RoofCoil.com Tools</div>
+        <div style={{ fontFamily: "'Oswald', sans-serif", textTransform: "uppercase", letterSpacing: "0.03em", fontSize: 22, fontWeight: 700, marginBottom: 4, color: "#0A2B41", textAlign: "center" }}>{ON_FORTIFIED ? "Fortified Metals" : "RoofCoil.com Tools"}</div>
         <div style={{ fontSize: 12.5, color: "#777", marginBottom: 22, textAlign: "center" }}>
           {mode === "signin" ? "Sign in to place or view orders" : "Create an account to get started"}
         </div>
@@ -112,6 +114,12 @@ export default function AuthGate({ children }) {
             </>
           )}
         </div>
+
+        {ON_FORTIFIED && (
+          <div style={{ textAlign: "center", marginTop: 14, fontSize: 11, color: "#98A2AC" }}>
+            Powered by <a href="https://www.roofcoil.com" target="_blank" rel="noopener noreferrer" style={{ color: "#0F3D5C", fontWeight: 700, textDecoration: "none" }}>RoofCoil.com</a>
+          </div>
+        )}
       </form>
     </div>
   );

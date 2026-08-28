@@ -15,6 +15,9 @@ const SAFETY = "#D4AF37";     // gold accent (was orange)
 const AMBER = "#EFA623";      // brighter gold
 const GREEN = "#2FA84F";      // brighter green
 
+// Served on fortifiedmetals.com via that site's /app proxy — show its attribution footer there.
+const ON_FORTIFIED = typeof window !== "undefined" && window.location.hostname.includes("fortifiedmetals");
+
 // Densities in lb/in³ — used by the coil weight calculator (standard material physics
 // constants, not specific to any particular calculator app).
 const MATERIAL_DENSITIES = {
@@ -4211,70 +4214,64 @@ export default function ShopOrderApp() {
           <div style={{ background: theme.card, borderRadius: 10, padding: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
             {shapeType === "metal" ? (
               <>
-                <div className="disp" style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 4 }}>Flat Sheet</div>
-                <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-                  <label style={{ width: 70, fontSize: 11, color: theme.textSecondary }}>
-                    Qty
-                    <input type="number" min={1} value={quantity}
-                      onChange={(e) => setQuantity(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
-                      onBlur={(e) => { if (e.target.value === "") setQuantity(1); }}
-                      className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
-                  </label>
-                  <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                    Width (in)
-                    <input type="number" min={0.1} step="0.1" value={flatWidth}
-                      onChange={(e) => setFlatWidth(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
-                      onBlur={(e) => { if (e.target.value === "") setFlatWidth(48); }}
-                      className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
-                  </label>
-                  <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                    Length (ft)
-                    <input type="number" min={0.1} step="0.1" value={flatLength === "" ? "" : +(flatLength / 12).toFixed(2)}
-                      onChange={(e) => setFlatLength(e.target.value === "" ? "" : Math.max(0, +e.target.value * 12))}
-                      onBlur={(e) => { if (e.target.value === "") setFlatLength(120); }}
-                      className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
-                  </label>
-                </div>
-
-                <div className="disp" style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 12 }}>Coil</div>
-                <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
-                  <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                    Coil Width (in)
-                    <input type="number" min={0.1} step="0.1" value={metalCoilWidth}
-                      onChange={(e) => setMetalCoilWidth(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
-                      onBlur={(e) => { if (e.target.value === "") setMetalCoilWidth(21); }}
-                      className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
-                  </label>
-                  <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                    Coil Length (ft)
-                    <input type="number" min={1} step="1" value={metalCoilLength === "" ? "" : Math.round(metalCoilLength / 12)}
-                      onChange={(e) => setMetalCoilLength(e.target.value === "" ? "" : Math.max(0, +e.target.value * 12))}
-                      onBlur={(e) => { if (e.target.value === "") setMetalCoilLength(12000); }}
-                      className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
-                  </label>
-                </div>
-
                 {(() => {
                   const coilFeet = (+metalCoilLength || 0) / 12;
+                  const priceBox = { width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.highlight, boxSizing: "border-box", color: theme.text, fontWeight: 600, whiteSpace: "nowrap" };
                   return (
                     <>
-                      <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
-                        <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                          Flat Sheet $/Sheet
-                          <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.highlight, boxSizing: "border-box", color: theme.text, fontWeight: 600 }}>
-                            {money(flatSheetPrice)}
-                          </div>
-                          <div className="mono" style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3 }}>× {quantity || 0} sheets = {money(flatSheetPrice * (+quantity || 0))}</div>
+                      <div className="disp" style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 4 }}>Flat Sheet</div>
+                      <div style={{ display: "flex", gap: 10, marginTop: 4, alignItems: "flex-start" }}>
+                        <label style={{ width: 70, fontSize: 11, color: theme.textSecondary }}>
+                          Qty
+                          <input type="number" min={1} value={quantity}
+                            onChange={(e) => setQuantity(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
+                            onBlur={(e) => { if (e.target.value === "") setQuantity(1); }}
+                            className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
                         </label>
                         <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                          Coil $/Linear Ft
-                          <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.highlight, boxSizing: "border-box", color: theme.text, fontWeight: 600 }}>
-                            {money(metalCoilPricePerFt)}
-                          </div>
-                          <div className="mono" style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3 }}>× {Math.round(coilFeet)} ft = {money(metalCoilPricePerFt * coilFeet)}</div>
+                          Width (in)
+                          <input type="number" min={0.1} step="0.1" value={flatWidth}
+                            onChange={(e) => setFlatWidth(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
+                            onBlur={(e) => { if (e.target.value === "") setFlatWidth(48); }}
+                            className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
+                        </label>
+                        <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                          Length (ft)
+                          <input type="number" min={0.1} step="0.1" value={flatLength === "" ? "" : +(flatLength / 12).toFixed(2)}
+                            onChange={(e) => setFlatLength(e.target.value === "" ? "" : Math.max(0, +e.target.value * 12))}
+                            onBlur={(e) => { if (e.target.value === "") setFlatLength(120); }}
+                            className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
+                        </label>
+                        <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                          $/Sheet
+                          <div className="mono" style={priceBox}>{money(flatSheetPrice)}</div>
+                          <div className="mono" style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3, whiteSpace: "nowrap" }}>× {quantity || 0} = {money(flatSheetPrice * (+quantity || 0))}</div>
                         </label>
                       </div>
-                      <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
+
+                      <div className="disp" style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 12 }}>Coil</div>
+                      <div style={{ display: "flex", gap: 10, marginTop: 4, alignItems: "flex-start" }}>
+                        <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                          Coil Width (in)
+                          <input type="number" min={0.1} step="0.1" value={metalCoilWidth}
+                            onChange={(e) => setMetalCoilWidth(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
+                            onBlur={(e) => { if (e.target.value === "") setMetalCoilWidth(21); }}
+                            className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
+                        </label>
+                        <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                          Coil Length (ft)
+                          <input type="number" min={1} step="1" value={metalCoilLength === "" ? "" : Math.round(metalCoilLength / 12)}
+                            onChange={(e) => setMetalCoilLength(e.target.value === "" ? "" : Math.max(0, +e.target.value * 12))}
+                            onBlur={(e) => { if (e.target.value === "") setMetalCoilLength(12000); }}
+                            className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
+                        </label>
+                        <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                          $/Linear Ft
+                          <div className="mono" style={priceBox}>{money(metalCoilPricePerFt)}</div>
+                          <div className="mono" style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3, whiteSpace: "nowrap" }}>× {Math.round(coilFeet)} ft = {money(metalCoilPricePerFt * coilFeet)}</div>
+                        </label>
+                      </div>
+                      <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 6 }}>
                         Prices shown do not include sales tax.
                       </div>
                     </>
@@ -6224,6 +6221,15 @@ export default function ShopOrderApp() {
           )}
             </>
           )}
+        </div>
+      )}
+
+      {ON_FORTIFIED && (
+        <div style={{ textAlign: "center", padding: "18px 12px 26px", fontSize: 11.5, color: STEEL }}>
+          Powered by{" "}
+          <a href="https://www.roofcoil.com" target="_blank" rel="noopener noreferrer" style={{ color: SAFETY, fontWeight: 700, textDecoration: "none" }}>
+            RoofCoil.com
+          </a>
         </div>
       )}
     </div>
