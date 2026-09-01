@@ -78,6 +78,7 @@
       <div class="fld"><label>Tap every ability — this is exactly how contractors filter the directory</label>
         <div class="chipgrid" id="f-types"></div>
       </div>
+      <div class="fld"><label>Run a profile we don't list? Add it (comma separated) — it goes on your listing after we review and approve it</label><input id="f-moretypes" placeholder="2″ batten cap, curved snap-lock…"></div>
     </div>
 
     <div class="step"><h3><span class="sn">4</span>Roll-formed gutters</h3>
@@ -87,6 +88,7 @@
       <div class="fld"><label>Materials you can run gutters in</label>
         <div class="chipgrid" id="f-gutmats"></div>
       </div>
+      <div class="fld"><label>Roll a gutter profile we don't list? Add it (comma separated) — it goes on your listing after we review and approve it</label><input id="f-moregutters" placeholder="5″ fascia-wrap, custom radius…"></div>
     </div>
 
     <div class="step"><h3><span class="sn">5</span>Gauges you run</h3>
@@ -206,12 +208,16 @@ $("#f-go").onclick=async()=>{
   const gutters=[...$$("#f-gutters .seg.sel")].map(b=>b.dataset.v);
   const gutmats=[...$$("#f-gutmats .seg.sel")].map(b=>b.dataset.v);
   const allAbilities=types.concat(gutters,gutmats);
+  // write-in profiles ride along for review — they only reach the live listing
+  // if staff approve them in the directory admin
+  const extraProfiles=$("#f-moretypes").value.split(",").map(s=>s.trim()).filter(Boolean);
+  const extraGutters=$("#f-moregutters").value.split(",").map(s=>s.trim()).filter(Boolean);
   const gauges=[...$$("#f-gauges .seg.sel")].map(b=>b.dataset.v);
   if(!co){showErr("Company name is required.");return}
   if(!name){showErr("Contact name is required.");return}
   if(!/.+@.+\..+/.test(em)){showErr("A valid email is required so we can get back to you.");return}
-  if(allAbilities.length===0){showErr("Tap at least one ability — it's how contractors will find you.");return}
-  if(gutters.length>0&&gutmats.length===0){showErr("You picked gutter profiles — tap at least one gutter material so contractors can filter by it.");return}
+  if(allAbilities.length===0&&extraProfiles.length===0&&extraGutters.length===0){showErr("Tap at least one ability — it's how contractors will find you.");return}
+  if((gutters.length>0||extraGutters.length>0)&&gutmats.length===0){showErr("You picked gutter profiles — tap at least one gutter material so contractors can filter by it.");return}
   const btn=$("#f-go");btn.disabled=true;btn.textContent="Sending…";
   try{
     let chartUrl="";
@@ -236,6 +242,8 @@ $("#f-go").onclick=async()=>{
         // structured details drive the directory listing a staff member builds from this
         details:{
           abilities:allAbilities,
+          extra_profiles:extraProfiles,
+          extra_gutters:extraGutters,
           colors:[...$$("#f-colors .seg.sel")].map(b=>b.dataset.v),
           extra_colors:$("#f-morecolors").value.trim(),
           service_area:$("#f-area").value.trim(),

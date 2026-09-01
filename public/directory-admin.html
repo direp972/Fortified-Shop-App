@@ -86,6 +86,7 @@
       <div class="fld"><label>Abilities — the search facets *</label><div class="chipgrid" id="e-abilities"></div></div>
       <div class="fld"><label>Gutter profiles they roll</label><div class="chipgrid" id="e-gutters"></div></div>
       <div class="fld"><label>Gutter materials</label><div class="chipgrid" id="e-gutmats"></div></div>
+      <div class="fld"><label>Custom profiles — applicant write-ins land here for approval; whatever you leave in this box goes on the live listing (comma separated)</label><input id="e-moreabilities"></div>
       <div class="fld"><label>Colors carried — powers color search</label><div class="chipgrid" id="e-colors"></div></div>
       <div class="fld"><label>Extra colors (comma separated — added as searchable colors)</label><input id="e-morecolors"></div>
       <div class="fld"><label>Coil line — one sentence for the card</label><textarea id="e-coildesc" rows="2"></textarea></div>
@@ -107,6 +108,7 @@ const KEY="sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
 const ABILITIES=["Coil & flat sheet","Painted coil — PVDF / Kynar","Painted coil — SMP","Bare — Galvalume · G90 · bonderized","Copper","1″ mechanical lock","1.5″ / 1.75″ snap-lock","1.5″ mechanical lock (single/double)","2″ mechanical lock","1″ / 1.5″ nail strip","T-panel (138T / 238T)","Batten seam","2.5″ trapezoidal","3″ trapezoidal structural","Exposed fastener","Flush wall & soffit","Board & batten","Trim & flashing","3D parts — boxes · scuppers · caps","On-site roll forming"];
 const GUTTER_PROFILES=["5″ K-style gutter","6″ K-style gutter","7″ K-style gutter","5″ half-round gutter","6″ half-round gutter","6″ box gutter","7″ box gutter","8″ box gutter","6″ euro box gutter","Fascia gutter","Straight-face / square gutter"];
 const GUTTER_MATERIALS=["Gutter — aluminum (.027 / .032)","Gutter — painted steel (26 / 24 ga)","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
+const ALL_CANON=[...ABILITIES,...GUTTER_PROFILES,...GUTTER_MATERIALS];
 const STOCK_COLORS=["Regal White","Almond","Ash Gray","Slate Gray","Burnished Slate","Charcoal","Medium Bronze","Dark Bronze","Matte Black","Evergreen","Copper Metallic","Galvalume","Texas Silver","Bare Copper","Bonderized"];
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
 let token=null, editingId=null, apps=[], listings=[];
@@ -170,6 +172,7 @@ async function loadApps(){
       +'\n'+(a.plants||'').split('\n').join(' · ')
       +(d.service_area?' · serves: '+d.service_area:'')
       +'\nruns: '+((d.abilities||a.panel_types||[]).join(', ')||'—')
+      +((d.extra_profiles||[]).length||(d.extra_gutters||[]).length?'\n⚠ REQUESTED NEW PROFILES (approve in the editor): '+[...(d.extra_profiles||[]),...(d.extra_gutters||[])].join(', '):'')
       +(a.gauges&&a.gauges.length?' · '+a.gauges.join(', '):'')
       +((d.colors||[]).length?'\ncolors: '+d.colors.join(', '):'')
       +(d.extra_colors?' + '+d.extra_colors:'')
@@ -209,6 +212,7 @@ function prefillFromApp(a){
   setChips('#e-abilities',abil);
   setChips('#e-gutters',abil);
   setChips('#e-gutmats',abil);
+  $('#e-moreabilities').value=[...(d.extra_profiles||[]),...(d.extra_gutters||[])].join(', ');
   setChips('#e-colors',d.colors||[]);
   $('#e-morecolors').value=d.extra_colors||'';
   const firstPlant=(a.plants||'').split('\n')[0]||'';
@@ -251,6 +255,12 @@ $('#e-save').onclick=async()=>{
   const name=$('#e-name').value.trim();
   if(!name){note.textContent='Company name is required.';note.classList.add('errline');return}
   const abilities=[...$$('#e-abilities .seg.sel, #e-gutters .seg.sel, #e-gutmats .seg.sel')].map(b=>b.dataset.v);
+  // approved custom profiles: whatever staff leave in the box joins the listing;
+  // anything matching a standard chip is canonicalized instead of duplicated
+  $('#e-moreabilities').value.split(',').map(s=>s.trim()).filter(Boolean).forEach(c=>{
+    const canon=ALL_CANON.find(s=>s.toLowerCase()===c.toLowerCase())||c;
+    if(!abilities.some(x=>x.toLowerCase()===canon.toLowerCase()))abilities.push(canon);
+  });
   if(!abilities.length){note.textContent='Pick at least one ability or nothing can find this listing.';note.classList.add('errline');return}
   // free-typed colors are canonicalized against stock spellings so the public
   // color filter (case-sensitive) never fragments into 'Charcoal'/'charcoal'
@@ -316,6 +326,7 @@ async function loadListings(){
       setChips('#e-abilities',l.abilities||[]);
       setChips('#e-gutters',l.abilities||[]);
       setChips('#e-gutmats',l.abilities||[]);
+      $('#e-moreabilities').value=(l.abilities||[]).filter(a=>!ALL_CANON.includes(a)).join(', ');
       setChips('#e-colors',l.colors||[]);
       $('#e-morecolors').value=(l.colors||[]).filter(c=>!STOCK_COLORS.includes(c)).join(', ');
       $('#e-coildesc').value=l.coil_desc||'';$('#e-fabdesc').value=l.fab_desc||'';
