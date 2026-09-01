@@ -174,8 +174,9 @@ async function loadApps(){
       +'\nruns: '+((d.abilities||a.panel_types||[]).join(', ')||'—')
       +((d.extra_profiles||[]).length||(d.extra_gutters||[]).length?'\n⚠ REQUESTED NEW PROFILES (approve in the editor): '+[...(d.extra_profiles||[]),...(d.extra_gutters||[])].join(', '):'')
       +(a.gauges&&a.gauges.length?' · '+a.gauges.join(', '):'')
-      +((d.colors||[]).length?'\ncolors: '+d.colors.join(', '):'')
+      +((d.colors||[]).length?'\nown colors: '+d.colors.join(', '):'')
       +(d.extra_colors?' + '+d.extra_colors:'')
+      +((d.brands||[]).length||d.extra_brands?'\nstocks brands: '+[...(d.brands||[]),d.extra_brands].filter(Boolean).join(', '):'')
       +(a.notes?'\nnotes: '+a.notes:'');
     meta.style.whiteSpace='pre-line';card.appendChild(meta);
     const chartUrl=safeUrl(a.colorchart_url,true);

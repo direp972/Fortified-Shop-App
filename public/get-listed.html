@@ -95,10 +95,24 @@
     </div>
 
     <div class="step"><h3><span class="sn">5</span>Colors you carry</h3>
-      <div class="fld"><label>Tap the stock colors you keep — color search matches these</label>
-        <div class="chipgrid" id="f-colors"></div>
+      <div class="fld"><label>How do you stock color? Tap one — or both</label>
+        <div class="chipgrid">
+          <button type="button" class="seg" id="f-mode-own">We carry our own colors</button>
+          <button type="button" class="seg" id="f-mode-brand">We stock a brand's coil</button>
+        </div>
       </div>
-      <div class="fld"><label>Other colors (comma separated)</label><input id="f-morecolors" placeholder="Slate Blue, Weathered Zinc…"></div>
+      <div id="f-owncolors" style="display:none">
+        <div class="fld"><label>Tap the stock colors you keep — color search matches these</label>
+          <div class="chipgrid" id="f-colors"></div>
+        </div>
+        <div class="fld"><label>Other colors (comma separated)</label><input id="f-morecolors" placeholder="Slate Blue, Weathered Zinc…"></div>
+      </div>
+      <div id="f-brandsec" style="display:none">
+        <div class="fld"><label>Brands you stock — tap all that apply</label>
+          <div class="chipgrid" id="f-brands"></div>
+        </div>
+        <div class="fld"><label>Other brands (comma separated)</label><input id="f-morebrands" placeholder="Custom-Bilt, Quality Metals…"></div>
+      </div>
     </div>
 
     <div class="step"><h3><span class="sn">6</span>Color chart &amp; sales book</h3>
@@ -171,6 +185,7 @@ const ABILITIES=[
 const GUTTER_PROFILES=["5″ K-style gutter","6″ K-style gutter","7″ K-style gutter","5″ half-round gutter","6″ half-round gutter","6″ box gutter","7″ box gutter","8″ box gutter","6″ euro box gutter","Fascia gutter","Straight-face / square gutter"];
 const GUTTER_MATERIALS=["Gutter — .027 aluminum","Gutter — .032 aluminum","Gutter — 26 ga painted steel","Gutter — 24 ga painted steel","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
 const STOCK_COLORS=["Regal White","Almond","Ash Gray","Slate Gray","Burnished Slate","Charcoal","Medium Bronze","Dark Bronze","Matte Black","Evergreen","Copper Metallic","Galvalume","Texas Silver","Bare Copper","Bonderized"];
+const COIL_BRANDS=["Fortified Metal","Sheffield Metals","McElroy Metal","Berridge","Drexel Metals","PAC-CLAD (Petersen)","Una-Clad","Adax Metals","ATAS","Englert","Central States","Metal Sales"];
 const GAUGES=["29 ga","28 ga","26 ga","24 ga","22 ga","20 ga"];
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
 const chip=(t)=>`<button type="button" class="seg" data-v="${t}">${t}</button>`;
@@ -182,6 +197,14 @@ $("#f-gutters").innerHTML=GUTTER_PROFILES.map(gchip).join("");
 $("#f-gutmats").innerHTML=GUTTER_MATERIALS.map(gchip).join("");
 $("#f-gauges").innerHTML=GAUGES.map(chip).join("");
 $("#f-colors").innerHTML=STOCK_COLORS.map(chip).join("");
+$("#f-brands").innerHTML=COIL_BRANDS.map(chip).join("");
+// color-mode toggles: a shop can carry its own colors, stock brands, or both
+function syncColorModes(){
+  $("#f-owncolors").style.display=$("#f-mode-own").classList.contains("sel")?"":"none";
+  $("#f-brandsec").style.display=$("#f-mode-brand").classList.contains("sel")?"":"none";
+}
+$("#f-mode-own").onclick=()=>{$("#f-mode-own").classList.toggle("sel");syncColorModes()};
+$("#f-mode-brand").onclick=()=>{$("#f-mode-brand").classList.toggle("sel");syncColorModes()};
 // Signed-in members get their contact details prefilled from their account.
 document.addEventListener("rc:auth",e=>{
   const s=e.detail&&e.detail.session;if(!s)return;
@@ -190,7 +213,7 @@ document.addEventListener("rc:auth",e=>{
   if(!$("#f-co").value)$("#f-co").value=md.company||"";
   if(!$("#f-em").value)$("#f-em").value=s.user.email||"";
 });
-$$("#f-types .seg, #f-gutters .seg, #f-gutmats .seg, #f-gauges .seg, #f-colors .seg").forEach(b=>b.onclick=()=>b.classList.toggle("sel"));
+$$("#f-types .seg, #f-gutters .seg, #f-gutmats .seg, #f-gauges .seg, #f-colors .seg, #f-brands .seg").forEach(b=>b.onclick=()=>b.classList.toggle("sel"));
 
 // Two independent uploads: a color chart and a sales book / line card.
 const uploads={chart:null,book:null};
@@ -240,6 +263,9 @@ $("#f-go").onclick=async()=>{
   if(!/.+@.+\..+/.test(em)){showErr("A valid email is required so we can get back to you.");return}
   if(allAbilities.length===0&&extraProfiles.length===0&&extraGutters.length===0){showErr("Tap at least one ability — it's how contractors will find you.");return}
   if((gutters.length>0||extraGutters.length>0)&&gutmats.length===0){showErr("You picked gutter profiles — tap at least one gutter material so contractors can filter by it.");return}
+  const ownColorsOn=$("#f-mode-own").classList.contains("sel");
+  const stockBrandsOn=$("#f-mode-brand").classList.contains("sel");
+  if(stockBrandsOn&&$$("#f-brands .seg.sel").length===0&&!$("#f-morebrands").value.trim()){showErr("You said you stock a brand's coil — tap the brands you carry, or type them in.");return}
   const btn=$("#f-go");btn.disabled=true;btn.textContent="Sending…";
   try{
     const chartUrl=uploads.chart?await uploadToBucket(uploads.chart,"chart",co):"";
@@ -256,8 +282,10 @@ $("#f-go").onclick=async()=>{
           abilities:allAbilities,
           extra_profiles:extraProfiles,
           extra_gutters:extraGutters,
-          colors:[...$$("#f-colors .seg.sel")].map(b=>b.dataset.v),
-          extra_colors:$("#f-morecolors").value.trim(),
+          colors:ownColorsOn?[...$$("#f-colors .seg.sel")].map(b=>b.dataset.v):[],
+          extra_colors:ownColorsOn?$("#f-morecolors").value.trim():"",
+          brands:stockBrandsOn?[...$$("#f-brands .seg.sel")].map(b=>b.dataset.v):[],
+          extra_brands:stockBrandsOn?$("#f-morebrands").value.trim():"",
           service_area:$("#f-area").value.trim(),
         },
       })});
