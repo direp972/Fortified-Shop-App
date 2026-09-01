@@ -433,6 +433,7 @@ function buildCard(l){
   };
   para('Coil line',l.coil_desc);
   para('Fabrication',l.fab_desc);
+  para('Licensed in',l.licensed_states);
   const contactBits=[];
   if(l.website){
     let raw=l.website.trim();
@@ -471,7 +472,7 @@ function buildCard(l){
 }
 (async()=>{
   try{
-    const r=await fetch(SUPA+"/rest/v1/directory_listings?select=name,badges,address,city,area_keywords,lat,lng,abilities,colors,coil_desc,fab_desc,website,phone,photos,logo_url&status=eq.live&order=name.asc",{headers:{apikey:KEY}});
+    const r=await fetch(SUPA+"/rest/v1/directory_listings?select=name,badges,address,city,area_keywords,lat,lng,abilities,colors,coil_desc,fab_desc,website,phone,photos,logo_url,licensed_states&status=eq.live&order=name.asc",{headers:{apikey:KEY}});
     if(!r.ok)return;
     const rows=await r.json();
     const have=new Set(cards.map(c=>c.dataset.name.toLowerCase()));

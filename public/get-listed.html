@@ -82,6 +82,7 @@
         <div class="chipgrid" id="f-gauges"></div>
       </div>
       <div class="fld"><label>Run a profile we don't list? Add it (comma separated) — it goes on your listing after we review and approve it</label><input id="f-moretypes" placeholder="2″ batten cap, curved snap-lock…"></div>
+      <div class="fld" id="f-licrow" style="display:none"><label>Turnkey — which states are you licensed in? Shown on your listing</label><input id="f-lic" placeholder="TX, OK, LA"></div>
     </div>
 
     <div class="step"><h3><span class="sn">4</span>Roll-formed gutters</h3>
@@ -229,6 +230,10 @@ document.addEventListener("rc:auth",e=>{
   if(!$("#f-em").value)$("#f-em").value=s.user.email||"";
 });
 $$("#f-types .seg, #f-gutters .seg, #f-gutmats .seg, #f-gauges .seg, #f-colors .seg, #f-brands .seg").forEach(b=>b.onclick=()=>b.classList.toggle("sel"));
+// the licensed-states question only appears once Turnkey is tapped
+const TURNKEY_LABEL="Turnkey — supply · fabrication · labor";
+function syncLic(){const on=[...$$("#f-types .seg.sel")].some(b=>b.dataset.v===TURNKEY_LABEL);$("#f-licrow").style.display=on?"":"none"}
+$$("#f-types .seg").forEach(b=>b.addEventListener("click",syncLic));
 
 // Two independent uploads: a color chart and a sales book / line card.
 const uploads={chart:null,book:null,logo:null};
@@ -324,6 +329,7 @@ $("#f-go").onclick=async()=>{
           job_photos:photoUrls,
           logo_url:logoUrl,
           service_area:$("#f-area").value.trim(),
+          licensed_states:$("#f-lic").value.trim(),
         },
       })});
     if(!ins.ok)throw new Error("submit failed ("+ins.status+")");

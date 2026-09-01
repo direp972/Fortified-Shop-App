@@ -73,6 +73,7 @@
       <div class="fld"><label>Badges</label>
         <div class="chipgrid"><button type="button" class="seg" id="e-bcoil" data-v="coil">Coil &amp; Flats</button><button type="button" class="seg" id="e-bfab" data-v="fab">Fabrication</button><button type="button" class="seg" id="e-bturnkey" data-v="turnkey">Turnkey — supply · fab · labor</button></div>
       </div>
+      <div class="fld"><label>Licensed states — shown on the card for turnkey shops (comma separated)</label><input id="e-lic" placeholder="TX, OK, LA"></div>
       <div class="frow">
         <div class="fld"><label>Street address (optional — shown on card)</label><input id="e-address" placeholder="123 Commerce St"></div>
         <div class="fld"><label>City, State (shown + searched)</label><input id="e-city" placeholder="Sherman, TX"></div>
@@ -184,6 +185,7 @@ async function loadApps(){
       +((d.colors||[]).length?'\nown colors: '+d.colors.join(', '):'')
       +(d.extra_colors?' + '+d.extra_colors:'')
       +((d.brands||[]).length||d.extra_brands?'\nstocks brands: '+[...(d.brands||[]),d.extra_brands].filter(Boolean).join(', '):'')
+      +(d.licensed_states?'\nlicensed in: '+d.licensed_states:'')
       +(a.notes?'\nnotes: '+a.notes:'');
     meta.style.whiteSpace='pre-line';card.appendChild(meta);
     const chartUrl=safeUrl(a.colorchart_url,true);
@@ -236,6 +238,7 @@ function prefillFromApp(a){
   $('#ed-title').textContent='New listing — '+(a.company||'');
   $('#e-name').value=a.company||'';
   $('#e-status').value='draft';
+  $('#e-lic').value=(a.details&&a.details.licensed_states)||'';
   const abil=d.abilities||a.panel_types||[];
   setChips('#e-abilities',abil);
   setChips('#e-gutters',abil);
@@ -393,6 +396,7 @@ $('#e-save').onclick=async()=>{
   if(photosClean.length!==photoLines.length){note.textContent='One of the photo URLs isn\'t a normal http(s) address — fix or remove it.';note.classList.add('errline');return}
   const body={
     name,status:$('#e-status').value,badges,abilities,colors,
+    licensed_states:$('#e-lic').value.trim()||null,
     address:$('#e-address').value.trim(),city:$('#e-city').value.trim(),
     area_keywords:$('#e-area').value.trim(),
     lat:parseFloat($('#e-lat').value)||null,lng:parseFloat($('#e-lng').value)||null,
@@ -435,6 +439,7 @@ async function loadListings(){
       $('#e-bcoil').classList.toggle('sel',(l.badges||[]).includes('coil'));
       $('#e-bfab').classList.toggle('sel',(l.badges||[]).includes('fab'));
       $('#e-bturnkey').classList.toggle('sel',(l.badges||[]).includes('turnkey'));
+      $('#e-lic').value=l.licensed_states||'';
       $('#e-address').value=l.address||'';$('#e-city').value=l.city||'';$('#e-area').value=l.area_keywords||'';
       $('#e-lat').value=l.lat==null?'':l.lat;$('#e-lng').value=l.lng==null?'':l.lng;
       setChips('#e-abilities',l.abilities||[]);
