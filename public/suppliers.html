@@ -121,6 +121,28 @@
         <option value="Board &amp; batten">Board &amp; batten</option>
       </select>
     </div>
+    <div class="fsel"><label>Roll-formed gutters</label>
+      <select id="s-gutter">
+        <option value="">Any / not needed</option>
+        <option value="5″ K-style gutter">5″ K-style</option>
+        <option value="6″ K-style gutter">6″ K-style</option>
+        <option value="7″ K-style gutter">7″ K-style</option>
+        <option value="5″ / 6″ half-round gutter">5″ / 6″ half-round</option>
+        <option value="6″ / 7″ / 8″ box gutter">6″ / 7″ / 8″ box</option>
+        <option value="Fascia gutter">Fascia gutter</option>
+        <option value="Straight-face / square gutter">Straight-face / square</option>
+      </select>
+    </div>
+    <div class="fsel"><label>Gutter material</label>
+      <select id="s-gutmat">
+        <option value="">Any material</option>
+        <option value="Gutter — aluminum (.027 / .032)">Aluminum (.027 / .032)</option>
+        <option value="Gutter — painted steel (26 / 24 ga)">Painted steel (26 / 24 ga)</option>
+        <option value="Gutter — galvalume">Galvalume</option>
+        <option value="Gutter — galvanized / bonderized (paint-grip)">Galvanized / bonderized (paint-grip)</option>
+        <option value="Gutter — copper (16 / 20 oz)">Copper (16 / 20 oz)</option>
+      </select>
+    </div>
     <div class="fsel"><label>Coil &amp; flat sheet</label>
       <select id="s-coil">
         <option value="">Any / not needed</option>
@@ -299,7 +321,7 @@ function requestGeo(){
 }
 
 function apply(){
-  const wants=[$('#s-panel').value,$('#s-coil').value,$('#s-trim').value,$('#s-onsite').value].filter(Boolean);
+  const wants=[$('#s-panel').value,$('#s-gutter').value,$('#s-gutmat').value,$('#s-coil').value,$('#s-trim').value,$('#s-onsite').value].filter(Boolean);
   const color=$('#s-color').value, locq=$('#loc-q').value.toLowerCase().trim(), radius=+$('#s-radius').value||0;
   let shown=0;
   cards.forEach(c=>{
@@ -336,7 +358,7 @@ $('#fclear').onclick=()=>{
 // Deep links: /suppliers.html?ability=Trim%20%26%20flashing · &color=Matte%20Black · &loc=dallas
 const qp=new URLSearchParams(location.search);
 const ab=qp.get('ability');
-if(ab)for(const s of ['#s-panel','#s-coil','#s-trim','#s-onsite']){
+if(ab)for(const s of ['#s-panel','#s-gutter','#s-gutmat','#s-coil','#s-trim','#s-onsite']){
   const o=[...$(s).options].find(o=>o.value.toLowerCase()===ab.toLowerCase());
   if(o){$(s).value=o.value;break}
 }

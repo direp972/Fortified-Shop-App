@@ -84,6 +84,8 @@
       </div>
       <div class="row" style="display:flex;gap:8px;margin:-4px 0 12px"><button class="mini" id="e-geocode">Geocode from City, State</button><span class="okline" id="geo-note" style="margin:0;align-self:center"></span></div>
       <div class="fld"><label>Abilities — the search facets *</label><div class="chipgrid" id="e-abilities"></div></div>
+      <div class="fld"><label>Gutter profiles they roll</label><div class="chipgrid" id="e-gutters"></div></div>
+      <div class="fld"><label>Gutter materials</label><div class="chipgrid" id="e-gutmats"></div></div>
       <div class="fld"><label>Colors carried — powers color search</label><div class="chipgrid" id="e-colors"></div></div>
       <div class="fld"><label>Extra colors (comma separated — added as searchable colors)</label><input id="e-morecolors"></div>
       <div class="fld"><label>Coil line — one sentence for the card</label><textarea id="e-coildesc" rows="2"></textarea></div>
@@ -103,6 +105,8 @@
 const SUPA="https://znueitseoqijhkkvdomc.supabase.co";
 const KEY="sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
 const ABILITIES=["Coil & flat sheet","Painted coil — PVDF / Kynar","Painted coil — SMP","Bare — Galvalume · G90 · bonderized","Copper","1″ mechanical lock","1.5″ / 1.75″ snap-lock","1.5″ mechanical lock (single/double)","2″ mechanical lock","1″ / 1.5″ nail strip","T-panel (138T / 238T)","Batten seam","2.5″ trapezoidal","3″ trapezoidal structural","Exposed fastener","Flush wall & soffit","Board & batten","Trim & flashing","3D parts — boxes · scuppers · caps","On-site roll forming"];
+const GUTTER_PROFILES=["5″ K-style gutter","6″ K-style gutter","7″ K-style gutter","5″ / 6″ half-round gutter","6″ / 7″ / 8″ box gutter","Fascia gutter","Straight-face / square gutter"];
+const GUTTER_MATERIALS=["Gutter — aluminum (.027 / .032)","Gutter — painted steel (26 / 24 ga)","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
 const STOCK_COLORS=["Regal White","Almond","Ash Gray","Slate Gray","Burnished Slate","Charcoal","Medium Bronze","Dark Bronze","Matte Black","Evergreen","Copper Metallic","Galvalume","Texas Silver","Bare Copper","Bonderized"];
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
 let token=null, editingId=null, apps=[], listings=[];
@@ -124,6 +128,8 @@ function safeUrl(raw,requireBucket){
 
 const segChip=(t)=>{const b=document.createElement('button');b.type='button';b.className='seg';b.dataset.v=t;b.textContent=t;b.onclick=()=>b.classList.toggle('sel');return b};
 ABILITIES.forEach(a=>$('#e-abilities').appendChild(segChip(a)));
+GUTTER_PROFILES.forEach(a=>$('#e-gutters').appendChild(segChip(a)));
+GUTTER_MATERIALS.forEach(a=>$('#e-gutmats').appendChild(segChip(a)));
 STOCK_COLORS.forEach(c=>$('#e-colors').appendChild(segChip(c)));
 $('#e-bcoil').onclick=()=>$('#e-bcoil').classList.toggle('sel');
 $('#e-bfab').onclick=()=>$('#e-bfab').classList.toggle('sel');
@@ -199,6 +205,8 @@ function prefillFromApp(a){
   $('#e-status').value='draft';
   const abil=d.abilities||a.panel_types||[];
   setChips('#e-abilities',abil);
+  setChips('#e-gutters',abil);
+  setChips('#e-gutmats',abil);
   setChips('#e-colors',d.colors||[]);
   $('#e-morecolors').value=d.extra_colors||'';
   const firstPlant=(a.plants||'').split('\n')[0]||'';
@@ -207,7 +215,7 @@ function prefillFromApp(a){
   $('#e-area').value=((firstPlant+' '+(d.service_area||'')).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim());
   $('#e-lat').value='';$('#e-lng').value='';
   const hasCoil=abil.some(x=>/coil|flat sheet|copper/i.test(x));
-  const hasFab=abil.some(x=>/seam|lock|strip|panel|trim|batten|soffit|fastener|3d|roll forming|trapezoidal/i.test(x));
+  const hasFab=abil.some(x=>/seam|lock|strip|panel|gutter|trim|batten|soffit|fastener|3d|roll forming|trapezoidal/i.test(x));
   $('#e-bcoil').classList.toggle('sel',hasCoil);
   $('#e-bfab').classList.toggle('sel',hasFab);
   $('#e-coildesc').value='';$('#e-fabdesc').value='';
@@ -240,7 +248,7 @@ $('#e-save').onclick=async()=>{
   const note=$('#save-note');note.classList.remove('errline');note.textContent='';
   const name=$('#e-name').value.trim();
   if(!name){note.textContent='Company name is required.';note.classList.add('errline');return}
-  const abilities=[...$$('#e-abilities .seg.sel')].map(b=>b.dataset.v);
+  const abilities=[...$$('#e-abilities .seg.sel, #e-gutters .seg.sel, #e-gutmats .seg.sel')].map(b=>b.dataset.v);
   if(!abilities.length){note.textContent='Pick at least one ability or nothing can find this listing.';note.classList.add('errline');return}
   // free-typed colors are canonicalized against stock spellings so the public
   // color filter (case-sensitive) never fragments into 'Charcoal'/'charcoal'
@@ -304,6 +312,8 @@ async function loadListings(){
       $('#e-address').value=l.address||'';$('#e-city').value=l.city||'';$('#e-area').value=l.area_keywords||'';
       $('#e-lat').value=l.lat==null?'':l.lat;$('#e-lng').value=l.lng==null?'':l.lng;
       setChips('#e-abilities',l.abilities||[]);
+      setChips('#e-gutters',l.abilities||[]);
+      setChips('#e-gutmats',l.abilities||[]);
       setChips('#e-colors',l.colors||[]);
       $('#e-morecolors').value=(l.colors||[]).filter(c=>!STOCK_COLORS.includes(c)).join(', ');
       $('#e-coildesc').value=l.coil_desc||'';$('#e-fabdesc').value=l.fab_desc||'';
