@@ -242,8 +242,13 @@ $('#e-save').onclick=async()=>{
   if(!name){note.textContent='Company name is required.';note.classList.add('errline');return}
   const abilities=[...$$('#e-abilities .seg.sel')].map(b=>b.dataset.v);
   if(!abilities.length){note.textContent='Pick at least one ability or nothing can find this listing.';note.classList.add('errline');return}
-  const colors=[...$$('#e-colors .seg.sel')].map(b=>b.dataset.v)
-    .concat($('#e-morecolors').value.split(',').map(s=>s.trim()).filter(Boolean));
+  // free-typed colors are canonicalized against stock spellings so the public
+  // color filter (case-sensitive) never fragments into 'Charcoal'/'charcoal'
+  const colors=[...$$('#e-colors .seg.sel')].map(b=>b.dataset.v);
+  $('#e-morecolors').value.split(',').map(s=>s.trim()).filter(Boolean).forEach(c=>{
+    const canon=STOCK_COLORS.find(s=>s.toLowerCase()===c.toLowerCase())||c;
+    if(!colors.some(x=>x.toLowerCase()===canon.toLowerCase()))colors.push(canon);
+  });
   const badges=[];
   if($('#e-bcoil').classList.contains('sel'))badges.push('coil');
   if($('#e-bfab').classList.contains('sel'))badges.push('fab');

@@ -151,49 +151,49 @@ const ABILITIES=[
 ];
 const STOCK_COLORS=["Regal White","Almond","Ash Gray","Slate Gray","Burnished Slate","Charcoal","Medium Bronze","Dark Bronze","Matte Black","Evergreen","Copper Metallic","Galvalume","Texas Silver","Bare Copper","Bonderized"];
 const GAUGES=["29 ga","28 ga","26 ga","24 ga","22 ga","20 ga"];
-const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
-const chip=(t)=>`<button type="button" class="seg" data-v="${t}">${t}</button>`;
-$("#f-types").innerHTML=ABILITIES.map(chip).join("");
-$("#f-gauges").innerHTML=GAUGES.map(chip).join("");
-$("#f-colors").innerHTML=STOCK_COLORS.map(chip).join("");
+const (=s=>document.querySelector(s);const ((=s=>document.querySelectorAll(s);
+const chip=(t)=>`<button type="button" class="seg" data-v="({t}">({t}</button>`;
+(("#f-types").innerHTML=ABILITIES.map(chip).join("");
+(("#f-gauges").innerHTML=GAUGES.map(chip).join("");
+(("#f-colors").innerHTML=STOCK_COLORS.map(chip).join("");
 // Signed-in members get their contact details prefilled from their account.
 document.addEventListener("rc:auth",e=>{
   const s=e.detail&&e.detail.session;if(!s)return;
   const md=s.user.user_metadata||{};
-  if(!$("#f-name").value)$("#f-name").value=md.name||"";
-  if(!$("#f-co").value)$("#f-co").value=md.company||"";
-  if(!$("#f-em").value)$("#f-em").value=s.user.email||"";
+  if(!(("#f-name").value)(("#f-name").value=md.name||"";
+  if(!(("#f-co").value)(("#f-co").value=md.company||"";
+  if(!(("#f-em").value)(("#f-em").value=s.user.email||"";
 });
-$$("#f-types .seg, #f-gauges .seg, #f-colors .seg").forEach(b=>b.onclick=()=>b.classList.toggle("sel"));
+((("#f-types .seg, #f-gauges .seg, #f-colors .seg").forEach(b=>b.onclick=()=>b.classList.toggle("sel"));
 
 let file=null;
-$("#f-filebox").onclick=()=>$("#f-file").click();
-$("#f-file").onchange=e=>{
+(("#f-filebox").onclick=()=>(("#f-file").click();
+(("#f-file").onchange=e=>{
   const f=e.target.files[0];
   if(!f)return;
   if(f.size>10485760){showErr("That file is over 10 MB — export a smaller PDF or image and try again.");return}
   file=f;
-  $("#f-filebox").classList.add("has");
-  $("#f-filelabel").textContent=f.name;
-  $("#f-filehint").textContent=(f.size/1048576).toFixed(1)+" MB — tap to change";
+  (("#f-filebox").classList.add("has");
+  (("#f-filelabel").textContent=f.name;
+  (("#f-filehint").textContent=(f.size/1048576).toFixed(1)+" MB — tap to change";
 };
-function showErr(m){const e=$("#f-err");e.textContent=m;e.style.display="block";e.scrollIntoView({block:"center"})}
-function hideErr(){$("#f-err").style.display="none"}
+function showErr(m){const e=(("#f-err");e.textContent=m;e.style.display="block";e.scrollIntoView({block:"center"})}
+function hideErr(){(("#f-err").style.display="none"}
 
-$("#f-go").onclick=async()=>{
+(("#f-go").onclick=async()=>{
   hideErr();
-  const co=$("#f-co").value.trim(),name=$("#f-name").value.trim(),em=$("#f-em").value.trim();
-  const types=[...$$("#f-types .seg.sel")].map(b=>b.dataset.v);
-  const gauges=[...$$("#f-gauges .seg.sel")].map(b=>b.dataset.v);
+  const co=(("#f-co").value.trim(),name=(("#f-name").value.trim(),em=(("#f-em").value.trim();
+  const types=[...((("#f-types .seg.sel")].map(b=>b.dataset.v);
+  const gauges=[...((("#f-gauges .seg.sel")].map(b=>b.dataset.v);
   if(!co){showErr("Company name is required.");return}
   if(!name){showErr("Contact name is required.");return}
   if(!/.+@.+\..+/.test(em)){showErr("A valid email is required so we can get back to you.");return}
   if(types.length===0){showErr("Tap at least one ability — it's how contractors will find you.");return}
-  const btn=$("#f-go");btn.disabled=true;btn.textContent="Sending…";
+  const btn=(("#f-go");btn.disabled=true;btn.textContent="Sending…";
   try{
     let chartUrl="";
     if(file){
-      const safe=co.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,40)||"chart";
+      const safe=co.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-(/g,"").slice(0,40)||"chart";
       const ext=(file.name.split(".").pop()||"pdf").toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,5);
       const path=Date.now()+"-"+safe+"."+ext;
       const up=await fetch(SUPA+"/storage/v1/object/mfr-colorcharts/"+path,{
@@ -207,19 +207,19 @@ $("#f-go").onclick=async()=>{
       method:"POST",
       headers:{"Content-Type":"application/json","apikey":KEY,"Prefer":"return=minimal"},
       body:JSON.stringify({
-        company:co,contact_name:name,phone:$("#f-ph").value.trim(),email:em,
-        website:$("#f-web").value.trim(),plants:$("#f-plants").value.trim(),
-        panel_types:types,gauges:gauges,notes:$("#f-notes").value.trim(),colorchart_url:chartUrl,
+        company:co,contact_name:name,phone:(("#f-ph").value.trim(),email:em,
+        website:(("#f-web").value.trim(),plants:(("#f-plants").value.trim(),
+        panel_types:types,gauges:gauges,notes:(("#f-notes").value.trim(),colorchart_url:chartUrl,
         // structured details drive the directory listing a staff member builds from this
         details:{
           abilities:types,
-          colors:[...$$("#f-colors .seg.sel")].map(b=>b.dataset.v),
-          extra_colors:$("#f-morecolors").value.trim(),
-          service_area:$("#f-area").value.trim(),
+          colors:[...((("#f-colors .seg.sel")].map(b=>b.dataset.v),
+          extra_colors:(("#f-morecolors").value.trim(),
+          service_area:(("#f-area").value.trim(),
         },
       })});
     if(!ins.ok)throw new Error("submit failed ("+ins.status+")");
-    $("#intake").style.display="none";$("#done").style.display="block";window.scrollTo({top:0});
+    (("#intake").style.display="none";(("#done").style.display="block";window.scrollTo({top:0});
   }catch(x){
     showErr("Something went wrong sending your application — try again, or email orders@roofcoil.com and we'll take it from there.");
     btn.disabled=false;btn.textContent="Submit — get listed";

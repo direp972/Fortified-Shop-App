@@ -410,6 +410,12 @@ function buildCard(l){
     if(added){
       cards=[...$$('#dir .co[data-name]')];
       rebuildColorOptions();
+      // a ?color deep link may name a color only a just-loaded listing carries
+      const wantColor=qp.get('color');
+      if(wantColor&&!$('#s-color').value){
+        const o=[...$('#s-color').options].find(o=>o.value.toLowerCase()===wantColor.toLowerCase());
+        if(o)$('#s-color').value=o.value;
+      }
       apply();
     }
   }catch(e){/* offline or table unreachable — the built-in listings still work */}
