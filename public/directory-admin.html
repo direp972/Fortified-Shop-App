@@ -96,6 +96,7 @@
         <div class="fld"><label>Phone (public)</label><input id="e-phone"></div>
       </div>
       <div class="fld"><label>Color chart URL</label><input id="e-chart"></div>
+      <div class="fld"><label>Job photos — applicant uploads land here for approval; every URL you leave in this box shows on the live listing (one per line)</label><textarea id="e-photos" rows="2"></textarea></div>
       <button class="btn" style="width:100%" id="e-save">Save listing</button>
       <div class="okline" id="save-note"></div>
     </div>
@@ -195,6 +196,18 @@ async function loadApps(){
       const warn2=document.createElement('div');warn2.className='meta';
       warn2.textContent='⚠ sales book link rejected (not an application upload): '+a.salesbook_url;card.appendChild(warn2);
     }
+    const photos=(d.job_photos||[]).map(u=>safeUrl(u,true)).filter(Boolean);
+    if(photos.length){
+      const strip=document.createElement('div');
+      strip.style.cssText='display:flex;flex-wrap:wrap;gap:6px;margin-top:8px';
+      photos.forEach(u=>{
+        const link=document.createElement('a');link.href=u;link.target='_blank';link.rel='noopener';
+        const img=document.createElement('img');img.src=u;img.loading='lazy';
+        img.style.cssText='height:54px;border-radius:6px;border:1px solid rgba(15,61,92,.15);display:block';
+        link.appendChild(img);strip.appendChild(link);
+      });
+      card.appendChild(strip);
+    }
     const row=document.createElement('div');row.className='row';
     const build=document.createElement('button');build.className='mini gold';build.textContent='Build listing →';
     build.onclick=()=>prefillFromApp(a);row.appendChild(build);
@@ -237,6 +250,7 @@ function prefillFromApp(a){
   $('#e-website').value=safeUrl(a.website)||'';
   $('#e-phone').value=a.phone||'';
   $('#e-chart').value=safeUrl(a.colorchart_url,true)||'';
+  $('#e-photos').value=(d.job_photos||[]).map(u=>safeUrl(u,true)).filter(Boolean).join('\n');
   $('#e-save').dataset.appId=a.id;
   $('#save-note').textContent='';
   $('#editor').scrollIntoView({behavior:'smooth',block:'start'});
@@ -289,6 +303,9 @@ $('#e-save').onclick=async()=>{
   const chart=$('#e-chart').value.trim();
   const chartClean=chart?safeUrl(chart):'';
   if(chart&&!chartClean){note.textContent='Color chart URL must be a normal http(s) address.';note.classList.add('errline');return}
+  const photoLines=$('#e-photos').value.split('\n').map(s=>s.trim()).filter(Boolean);
+  const photosClean=photoLines.map(u=>safeUrl(u)).filter(Boolean);
+  if(photosClean.length!==photoLines.length){note.textContent='One of the photo URLs isn\'t a normal http(s) address — fix or remove it.';note.classList.add('errline');return}
   const body={
     name,status:$('#e-status').value,badges,abilities,colors,
     address:$('#e-address').value.trim(),city:$('#e-city').value.trim(),
@@ -297,6 +314,7 @@ $('#e-save').onclick=async()=>{
     coil_desc:$('#e-coildesc').value.trim(),fab_desc:$('#e-fabdesc').value.trim(),
     website:websiteClean||'',phone:$('#e-phone').value.trim(),
     colorchart_url:chartClean||'',
+    photos:photosClean,
     updated_at:new Date().toISOString(),
   };
   if(!editingId&&$('#e-save').dataset.appId)body.application_id=$('#e-save').dataset.appId;
@@ -340,6 +358,7 @@ async function loadListings(){
       $('#e-morecolors').value=(l.colors||[]).filter(c=>!STOCK_COLORS.includes(c)).join(', ');
       $('#e-coildesc').value=l.coil_desc||'';$('#e-fabdesc').value=l.fab_desc||'';
       $('#e-website').value=l.website||'';$('#e-phone').value=l.phone||'';$('#e-chart').value=l.colorchart_url||'';
+      $('#e-photos').value=(l.photos||[]).join('\n');
       delete $('#e-save').dataset.appId;
       $('#save-note').textContent='';
       $('#editor').scrollIntoView({behavior:'smooth',block:'start'});

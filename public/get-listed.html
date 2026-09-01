@@ -115,7 +115,7 @@
       </div>
     </div>
 
-    <div class="step"><h3><span class="sn">6</span>Color chart &amp; sales book</h3>
+    <div class="step"><h3><span class="sn">6</span>Color chart, sales book &amp; job photos</h3>
       <div class="fld"><label>Do you have a color chart? Upload it (PDF or image, up to 10 MB)</label>
         <div class="filebox" id="f-filebox">
           <b id="f-filelabel">Tap to choose a file</b>
@@ -129,6 +129,13 @@
           <small id="f-bookhint">PDF · PNG · JPG — your sales book or line card</small>
         </div>
         <input type="file" id="f-bookfile" accept="application/pdf,image/png,image/jpeg,image/webp,image/gif" style="display:none">
+      </div>
+      <div class="fld"><label>Job photos — show contractors what your shop does best (up to 6, 10 MB each)</label>
+        <div class="filebox" id="f-photobox">
+          <b id="f-photolabel">Tap to add job photos</b>
+          <small id="f-photohint">JPG · PNG — finished roofs, gutter runs, trim work. They go on your listing so contractors can see your specialty at a glance.</small>
+        </div>
+        <input type="file" id="f-photos" accept="image/png,image/jpeg,image/webp" multiple style="display:none">
       </div>
       <div class="fld"><label>Anything else we should know?</label><textarea id="f-notes" rows="2" placeholder="Finishes, lead times, delivery radius, minimums…"></textarea></div>
     </div>
@@ -232,6 +239,22 @@ function wireUpload(kind,boxId,fileId,labelId,hintId){
 }
 wireUpload("chart","f-filebox","f-file","f-filelabel","f-filehint");
 wireUpload("book","f-bookbox","f-bookfile","f-booklabel","f-bookhint");
+// job photos: multi-select, up to 6, each photo goes to the listing after review
+let jobPhotos=[];
+$("#f-photobox").onclick=()=>$("#f-photos").click();
+$("#f-photos").onchange=e=>{
+  hideErr();
+  const fs=[...e.target.files];
+  if(!fs.length)return;
+  for(const f of fs){
+    if(f.size>10485760){showErr("One of those photos is over 10 MB — resize it and try again.");e.target.value="";return}
+  }
+  jobPhotos=jobPhotos.concat(fs).slice(0,6);
+  e.target.value="";
+  $("#f-photobox").classList.add("has");
+  $("#f-photolabel").textContent=jobPhotos.length+" photo"+(jobPhotos.length===1?"":"s")+" ready";
+  $("#f-photohint").textContent=jobPhotos.length>=6?"6 photo limit reached":"tap to add more (up to 6)";
+};
 async function uploadToBucket(f,prefix,co){
   const safe=co.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,40)||prefix;
   const ext=(f.name.split(".").pop()||"pdf").toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,5);
@@ -270,6 +293,8 @@ $("#f-go").onclick=async()=>{
   try{
     const chartUrl=uploads.chart?await uploadToBucket(uploads.chart,"chart",co):"";
     const bookUrl=uploads.book?await uploadToBucket(uploads.book,"salesbook",co):"";
+    const photoUrls=[];
+    for(const f of jobPhotos){photoUrls.push(await uploadToBucket(f,"jobphoto",co))}
     const ins=await fetch(SUPA+"/rest/v1/manufacturer_applications",{
       method:"POST",
       headers:{"Content-Type":"application/json","apikey":KEY,"Prefer":"return=minimal"},
@@ -286,6 +311,7 @@ $("#f-go").onclick=async()=>{
           extra_colors:ownColorsOn?$("#f-morecolors").value.trim():"",
           brands:stockBrandsOn?[...$$("#f-brands .seg.sel")].map(b=>b.dataset.v):[],
           extra_brands:stockBrandsOn?$("#f-morebrands").value.trim():"",
+          job_photos:photoUrls,
           service_area:$("#f-area").value.trim(),
         },
       })});

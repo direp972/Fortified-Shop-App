@@ -69,6 +69,9 @@
 .sw-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}
 .sw-row .lbl{font-family:var(--mono);font-size:9.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--steel);margin-right:4px}
 .sw-row .dot{width:18px;height:18px;border-radius:999px;border:1px solid rgba(15,61,92,.25)}
+.ph-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.ph-row img{height:72px;border-radius:8px;border:1px solid rgba(15,61,92,.15);display:block;transition:transform .15s}
+.ph-row a:hover img{transform:scale(1.05)}
 .co.cta{border-style:dashed;background:transparent;display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between}
 .co.cta p{margin:0;font-size:14px}
 #noresults{display:none;border:1px dashed rgba(15,61,92,.25);border-radius:12px;padding:22px;color:var(--steel);font-size:14px;line-height:1.6}
@@ -431,12 +434,25 @@ function buildCard(l){
     contactBits.forEach((n,i)=>{if(i)p.appendChild(document.createTextNode(' · '));p.appendChild(n)});
     c.appendChild(p);
   }
+  // approved job photos — a quick visual read on what the shop specializes in
+  const photos=(Array.isArray(l.photos)?l.photos:[]).map(raw=>{
+    try{const u=new URL(raw);return (u.protocol==='https:'||u.protocol==='http:')?u.href:null}catch(e){return null}
+  }).filter(Boolean).slice(0,6);
+  if(photos.length){
+    const strip=document.createElement('div');strip.className='ph-row';
+    photos.forEach(u=>{
+      const a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';
+      const img=document.createElement('img');img.src=u;img.loading='lazy';img.alt='Job photo';
+      a.appendChild(img);strip.appendChild(a);
+    });
+    c.appendChild(strip);
+  }
   decorate(c);
   return c;
 }
 (async()=>{
   try{
-    const r=await fetch(SUPA+"/rest/v1/directory_listings?select=name,badges,address,city,area_keywords,lat,lng,abilities,colors,coil_desc,fab_desc,website,phone&status=eq.live&order=name.asc",{headers:{apikey:KEY}});
+    const r=await fetch(SUPA+"/rest/v1/directory_listings?select=name,badges,address,city,area_keywords,lat,lng,abilities,colors,coil_desc,fab_desc,website,phone,photos&status=eq.live&order=name.asc",{headers:{apikey:KEY}});
     if(!r.ok)return;
     const rows=await r.json();
     const have=new Set(cards.map(c=>c.dataset.name.toLowerCase()));
