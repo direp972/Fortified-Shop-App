@@ -223,7 +223,7 @@
      data-colors="Regal White|Almond|Ash Gray|Slate Gray|Burnished Slate|Charcoal|Medium Bronze|Dark Bronze|Matte Black|Evergreen|Copper Metallic|Galvalume|Texas Silver|Bare Copper|Bonderized">
   <div class="co-head">
     <h2>Fortified Sheet Metal</h2>
-    <span class="cobadge coil">Coil &amp; Flats</span><span class="cobadge fab">Fabrication</span>
+    <span class="cobadge coil">Supply Materials</span><span class="cobadge fab">Fabrication</span>
     <span class="loc">605 E Mulberry · Sherman, TX<span class="dist"></span></span>
   </div>
   <p><b>Coil line:</b> Fortified Metal painted coil (PVDF &amp; 40-yr SMP) plus bare G90, Galvalume, Bonderized, and copper — slit coil and flat sheet cut to size. Also stocks and runs coil from the other listed brands.</p>
@@ -238,7 +238,7 @@
   <div class="co-head">
     <img class="co-logo" src="https://www.google.com/s2/favicons?domain=adaxmetals.com&amp;sz=128" alt="" loading="lazy">
     <h2>Adax Metals</h2>
-    <span class="cobadge coil">Coil &amp; Flats</span><span class="cobadge fab">Fabrication</span>
+    <span class="cobadge coil">Supply Materials</span><span class="cobadge fab">Fabrication</span>
     <span class="loc">1901 B Mineral Wells Hwy · Weatherford, TX<span class="dist"></span></span>
   </div>
   <p><b>Coil line:</b> painted coil in Sherwin-Williams PVDF (Kynar-class) and SMP systems, PaintGrip, slit coil and flat sheet — 38+ published colors across both finishes.</p>
@@ -418,7 +418,7 @@ function buildCard(l){
   }
   const h2=document.createElement('h2');h2.textContent=l.name;head.appendChild(h2);
   const badges=l.badges||[];
-  if(badges.includes('coil')){const s=document.createElement('span');s.className='cobadge coil';s.textContent='Coil & Flats';head.appendChild(s)}
+  if(badges.includes('coil')){const s=document.createElement('span');s.className='cobadge coil';s.textContent='Supply Materials';head.appendChild(s)}
   if(badges.includes('fab')){const s=document.createElement('span');s.className='cobadge fab';s.textContent='Fabrication';head.appendChild(s)}
   if(badges.includes('turnkey')){const s=document.createElement('span');s.className='cobadge turnkey';s.textContent='Turnkey — supply · fab · labor';head.appendChild(s)}
   const loc=document.createElement('span');loc.className='loc';
