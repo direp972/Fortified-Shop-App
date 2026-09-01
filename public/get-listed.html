@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>List Your Coil Line or Roll Forming Shop on RoofCoil | Suppliers &amp; Fabricators</title>
+<meta name="description" content="Metal coil suppliers and panel roll forming fabricators: list your lines, gauges, colors and plant locations on RoofCoil and get orders from contractors routed to your closest plant." />
+<link rel="canonical" href="https://www.roofcoil.com/get-listed.html">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<script src="/auth.js" defer></script>
+<script defer src="/_vercel/insights/script.js"></script>
+<style>
+.chipgrid{display:flex;flex-wrap:wrap;gap:8px}
+.filebox{border:1.5px dashed rgba(15,61,92,.28);border-radius:var(--r-sm);padding:18px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;background:var(--paper)}
+.filebox:hover{border-color:var(--gold);background:#FDF8E7}
+.filebox.has{border-style:solid;border-color:var(--patina);background:#F0F7F3}
+.filebox b{display:block;font-size:14px;color:var(--ink-deep);margin-bottom:3px}
+.filebox small{font-family:var(--mono);font-size:10.5px;color:var(--steel);letter-spacing:.05em}
+.err{color:#B3261E;background:#FDECEA;border-radius:8px;padding:10px 14px;font-size:13px;display:none;margin-bottom:12px}
+</style>
+</head>
+<body>
+<header class="nav"><div class="nav-in">
+  <a class="brand" href="/"><b>Roof<i>Coil</i></b><span>Get listed</span></a>
+  <nav class="nav-links">
+    <a href="/">Home</a>
+    <a href="/articles/">Resources</a>
+    <a href="/members.html">Member tools</a>
+  </nav>
+  <a class="btn" href="#form">Apply below</a>
+  <a class="nav-phone" href="tel:+19729447963">972-944-7963</a><span data-auth-slot></span>
+</div></header>
+
+<div class="dhero" style="min-height:0">
+  <div class="seam dseam" style="--c:#A0602E"></div>
+  <div class="scrim"></div>
+  <div class="wrap" style="padding-block:clamp(34px,5vw,56px)">
+    <p class="eyebrow" style="color:#C7D6E2">For suppliers &amp; fabricators</p>
+    <h1 style="font-family:var(--disp);font-size:clamp(26px,4vw,42px);text-transform:uppercase;font-weight:700;margin:6px 0;text-shadow:0 2px 18px rgba(0,0,0,.5)">Get your lines listed</h1>
+    <p class="sub">Make coil, roll panels, or both — tell us what you produce, where, and what colors you carry.</p>
+  </div>
+</div>
+
+<div class="wrap" id="form" style="max-width:820px;padding-block:clamp(30px,4vw,48px)">
+  <div id="intake">
+    <div class="step"><h3><span class="sn">1</span>Your company</h3>
+      <div class="frow">
+        <div class="fld"><label>Company name *</label><input id="f-co" placeholder="Company"></div>
+        <div class="fld"><label>Website</label><input id="f-web" placeholder="https://"></div>
+      </div>
+      <div class="frow">
+        <div class="fld"><label>Contact name *</label><input id="f-name" placeholder="Your name"></div>
+        <div class="fld"><label>Phone</label><input id="f-ph" inputmode="tel" placeholder="(555) 555-5555"></div>
+      </div>
+      <div class="fld"><label>Email *</label><input id="f-em" type="email" placeholder="you@company.com"></div>
+    </div>
+
+    <div class="step"><h3><span class="sn">2</span>Plant locations</h3>
+      <div class="fld"><label>One per line — City, State</label><textarea id="f-plants" rows="3" placeholder="Sherman, TX&#10;Tulsa, OK"></textarea></div>
+    </div>
+
+    <div class="step"><h3><span class="sn">3</span>What panels do you make?</h3>
+      <div class="fld"><label>Tap everything you roll</label>
+        <div class="chipgrid" id="f-types"></div>
+      </div>
+    </div>
+
+    <div class="step"><h3><span class="sn">4</span>Gauges you run</h3>
+      <div class="fld"><label>Tap all that apply</label>
+        <div class="chipgrid" id="f-gauges"></div>
+      </div>
+    </div>
+
+    <div class="step"><h3><span class="sn">5</span>Your color chart</h3>
+      <div class="fld"><label>Upload your color chart (PDF or image, up to 10 MB)</label>
+        <div class="filebox" id="f-filebox">
+          <b id="f-filelabel">Tap to choose a file</b>
+          <small id="f-filehint">PDF · PNG · JPG — your published color chart</small>
+        </div>
+        <input type="file" id="f-file" accept="application/pdf,image/png,image/jpeg,image/webp,image/gif" style="display:none">
+      </div>
+      <div class="fld"><label>Anything else we should know?</label><textarea id="f-notes" rows="2" placeholder="Finishes, lead times, delivery radius, minimums…"></textarea></div>
+    </div>
+
+    <div class="err" id="f-err"></div>
+    <button class="btn" style="width:100%" id="f-go">Submit — get listed</button>
+    <p class="mono" style="font-size:10px;color:#7C8894;margin:14px 0 0;letter-spacing:.05em;text-align:center">We review every application and call you back before anything goes live on the site.</p>
+  </div>
+
+  <div id="done" style="display:none;text-align:center;padding-block:clamp(30px,5vw,60px)">
+    <div class="seam" style="height:110px;border-radius:var(--r);box-shadow:var(--shadow-2);margin:0 auto 26px;max-width:420px;--c:#1F3D2E"></div>
+    <p class="eyebrow" style="justify-content:center">Application received</p>
+    <div style="font-family:var(--disp);font-size:clamp(26px,4vw,40px);text-transform:uppercase;font-weight:700;margin:8px 0 12px">You're in the queue</div>
+    <p style="color:#4E6273;font-size:16px;max-width:52ch;margin:0 auto 12px" id="done-body">Thanks — we've got your lines, gauges and colors. We'll review and get in contact before anything goes live.</p>
+    <a class="btn" href="/" style="margin-top:14px">Back to RoofCoil</a>
+  </div>
+</div>
+
+
+
+<footer><div class="f-bot" style="flex-direction:column;gap:10px;align-items:flex-start">
+  <nav style="display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12.5px">
+    <a href="/standing-seam-panels.html" style="color:#CFE0EC;text-decoration:none">Standing seam panels</a>
+    <a href="/sheet-metal-trim.html" style="color:#CFE0EC;text-decoration:none">Sheet metal trim</a>
+    <a href="/roll-forming.html" style="color:#CFE0EC;text-decoration:none">On-site roll forming</a>
+    <a href="/coil-and-flats.html" style="color:#CFE0EC;text-decoration:none">Coil &amp; flat sheet</a>
+    <a href="/articles/" style="color:#CFE0EC;text-decoration:none">Resources</a>
+    <a href="/suppliers.html" style="color:#CFE0EC;text-decoration:none">Find a supplier</a>
+    <a href="/get-listed.html" style="color:#CFE0EC;text-decoration:none">Get listed</a>
+    <a href="/members.html" style="color:#CFE0EC;text-decoration:none">Member tools</a>
+  </nav>
+  <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;width:100%">
+    <span>© 2026 RoofCoil · <a href="tel:+19729447963" style="color:inherit;text-decoration:none">972-944-7963</a> · <a href="mailto:orders@roofcoil.com" style="color:inherit;text-decoration:none">orders@roofcoil.com</a></span>
+    <span class="mono" style="letter-spacing:.12em;text-transform:uppercase">Search by ability · color · location</span>
+  </div>
+</div></footer>
+
+<script>
+const SUPA="https://znueitseoqijhkkvdomc.supabase.co";
+const KEY="sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
+const PANEL_TYPES=[
+  "Exposed Fastener — R-Panel / PBR",
+  "Exposed Fastener — Corrugated / Ag",
+  "Standing Seam — Snap-Lock",
+  "Standing Seam — Mechanical Seam",
+  "Standing Seam — Nail Strip / Fastener Flange",
+  "Trapezoidal / Structural",
+  "Flush Wall & Soffit",
+  "Board & Batten",
+  "Trim & Flashing",
+  "Slit Coil & Flat Sheet",
+];
+const GAUGES=["29 ga","28 ga","26 ga","24 ga","22 ga","20 ga"];
+const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
+const chip=(t)=>`<button type="button" class="seg" data-v="${t}">${t}</button>`;
+$("#f-types").innerHTML=PANEL_TYPES.map(chip).join("");
+$("#f-gauges").innerHTML=GAUGES.map(chip).join("");
+// Signed-in members get their contact details prefilled from their account.
+document.addEventListener("rc:auth",e=>{
+  const s=e.detail&&e.detail.session;if(!s)return;
+  const md=s.user.user_metadata||{};
+  if(!$("#f-name").value)$("#f-name").value=md.name||"";
+  if(!$("#f-co").value)$("#f-co").value=md.company||"";
+  if(!$("#f-em").value)$("#f-em").value=s.user.email||"";
+});
+$$("#f-types .seg, #f-gauges .seg").forEach(b=>b.onclick=()=>b.classList.toggle("sel"));
+
+let file=null;
+$("#f-filebox").onclick=()=>$("#f-file").click();
+$("#f-file").onchange=e=>{
+  const f=e.target.files[0];
+  if(!f)return;
+  if(f.size>10485760){showErr("That file is over 10 MB — export a smaller PDF or image and try again.");return}
+  file=f;
+  $("#f-filebox").classList.add("has");
+  $("#f-filelabel").textContent=f.name;
+  $("#f-filehint").textContent=(f.size/1048576).toFixed(1)+" MB — tap to change";
+};
+function showErr(m){const e=$("#f-err");e.textContent=m;e.style.display="block";e.scrollIntoView({block:"center"})}
+function hideErr(){$("#f-err").style.display="none"}
+
+$("#f-go").onclick=async()=>{
+  hideErr();
+  const co=$("#f-co").value.trim(),name=$("#f-name").value.trim(),em=$("#f-em").value.trim();
+  const types=[...$$("#f-types .seg.sel")].map(b=>b.dataset.v);
+  const gauges=[...$$("#f-gauges .seg.sel")].map(b=>b.dataset.v);
+  if(!co){showErr("Company name is required.");return}
+  if(!name){showErr("Contact name is required.");return}
+  if(!/.+@.+\..+/.test(em)){showErr("A valid email is required so we can get back to you.");return}
+  if(types.length===0){showErr("Tap at least one panel type you make.");return}
+  const btn=$("#f-go");btn.disabled=true;btn.textContent="Sending…";
+  try{
+    let chartUrl="";
+    if(file){
+      const safe=co.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,40)||"chart";
+      const ext=(file.name.split(".").pop()||"pdf").toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,5);
+      const path=Date.now()+"-"+safe+"."+ext;
+      const up=await fetch(SUPA+"/storage/v1/object/mfr-colorcharts/"+path,{
+        method:"POST",
+        headers:{"apikey":KEY,"Authorization":"Bearer "+KEY,"Content-Type":file.type||"application/octet-stream"},
+        body:file});
+      if(!up.ok)throw new Error("color chart upload failed ("+up.status+")");
+      chartUrl=SUPA+"/storage/v1/object/public/mfr-colorcharts/"+path;
+    }
+    const ins=await fetch(SUPA+"/rest/v1/manufacturer_applications",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","apikey":KEY,"Prefer":"return=minimal"},
+      body:JSON.stringify({
+        company:co,contact_name:name,phone:$("#f-ph").value.trim(),email:em,
+        website:$("#f-web").value.trim(),plants:$("#f-plants").value.trim(),
+        panel_types:types,gauges:gauges,notes:$("#f-notes").value.trim(),colorchart_url:chartUrl,
+      })});
+    if(!ins.ok)throw new Error("submit failed ("+ins.status+")");
+    $("#intake").style.display="none";$("#done").style.display="block";window.scrollTo({top:0});
+  }catch(x){
+    showErr("Something went wrong sending your application — try again, or email orders@roofcoil.com and we'll take it from there.");
+    btn.disabled=false;btn.textContent="Submit — get listed";
+  }
+};
+</script>
+</body>
+</html>
