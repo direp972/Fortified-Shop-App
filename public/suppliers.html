@@ -49,12 +49,6 @@
 .gpsbtn{flex:none;font-size:16px;padding:0 13px;border-radius:10px;border:1.5px solid rgba(255,255,255,.25);background:rgba(255,255,255,.07);color:#fff;cursor:pointer;transition:border-color .15s}
 .gpsbtn:hover{border-color:var(--gold)}
 .gpsbtn.set{background:linear-gradient(180deg,var(--gold-soft),var(--gold));border-color:var(--gold)}
-.gutcall{display:flex;flex-wrap:wrap;gap:14px 24px;align-items:center;justify-content:space-between;background:var(--card);border:1px solid rgba(15,61,92,.1);border-left:4px solid var(--gold);border-radius:12px;padding:18px 22px;margin-bottom:14px;box-shadow:var(--shadow-1)}
-.gutcall h3{font-family:var(--disp);font-size:17px;text-transform:uppercase;font-weight:600;margin:0 0 4px;color:var(--ink-deep)}
-.gutcall p{margin:0;font-size:13.5px;color:#4E6273;line-height:1.6;max-width:64ch}
-.gutcall p a{color:var(--copper);font-weight:600;text-decoration:none}
-.gutcall p a:hover{text-decoration:underline}
-.gutcall .btn{flex-shrink:0}
 .fstatus{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,.12)}
 .fstatus .rc{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold)}
 .fstatus .gnote{font-size:12px;color:#C7D6E2}
@@ -207,15 +201,6 @@
     <span class="gnote" id="gnote"></span>
     <button class="fclear" id="fclear">✕ Clear all</button>
   </div>
-</div>
-
-<div class="gutcall">
-  <div>
-    <p class="eyebrow" style="margin-bottom:6px">On-site roll-formed gutters</p>
-    <h3>Can't find an exotic gutter profile you need roll formed?</h3>
-    <p>Search here and find a fabricator that can chop-and-drop it — or install it for you — today. Or email <a href="mailto:orders@roofcoil.com">orders@roofcoil.com</a> and we'll track down a shop with the machine for it.</p>
-  </div>
-  <button class="btn" id="gutcall-go">Search gutter fabricators →</button>
 </div>
 
 <div id="dir">
@@ -382,16 +367,6 @@ $('#fclear').onclick=()=>{
   $$('.fsel select').forEach(s=>s.value='');
   $('#loc-q').value='';
   apply();
-};
-
-// Gutter callout: flip the search to on-site gutter fabricators and put the
-// cursor on the profile dropdown so they can narrow to the exact shape.
-$('#gutcall-go').onclick=()=>{
-  const s=$('#s-onsite');
-  s.value='On-site gutter roll forming';
-  s.dispatchEvent(new Event('change'));
-  document.querySelector('.finder').scrollIntoView({behavior:'smooth',block:'start'});
-  $('#s-gutter').focus();
 };
 
 // Deep links: /suppliers.html?ability=Trim%20%26%20flashing · &color=Matte%20Black · &loc=dallas
