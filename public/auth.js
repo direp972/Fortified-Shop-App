@@ -131,6 +131,8 @@
   .rc-chip .rc-who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:none}
   .rc-chip button{font-family:inherit;font-size:9px;letter-spacing:.1em;text-transform:uppercase;border:none;border-radius:999px;background:rgba(255,255,255,.14);color:#EAF1F6;padding:4px 9px;cursor:pointer}
   .rc-chip button:hover{background:rgba(255,255,255,.25)}
+  .rc-chip a.rc-admin{font-family:inherit;font-size:9px;letter-spacing:.1em;text-transform:uppercase;border-radius:999px;background:#D4AF37;color:#0B1E2C;padding:4px 9px;text-decoration:none;font-weight:700}
+  .rc-chip a.rc-admin:hover{background:#EFC94C}
   #rc-auth{position:fixed;inset:0;z-index:300;background:linear-gradient(180deg,rgba(11,30,44,.92),rgba(15,61,92,.92));display:none;align-items:center;justify-content:center;padding:20px}
   #rc-auth.on{display:flex}
   #rc-auth .card{background:#fff;border-radius:16px;max-width:430px;width:100%;padding:30px 28px;box-shadow:0 30px 80px rgba(0,0,0,.5);color:#0A2B41;font-family:var(--body,'Inter',sans-serif)}
@@ -245,8 +247,15 @@
     if (session) {
       const who = (session.user.user_metadata && session.user.user_metadata.name) || session.user.email;
       if (slot) {
-        slot.innerHTML = '<span class="rc-chip" title="' + session.user.email + '"><span class="rc-who">👤 ' + who + '</span><button id="rc-out">Sign out</button></span>';
+        slot.innerHTML = '<span class="rc-chip" title="' + session.user.email + '"><span class="rc-who">👤 ' + who + '</span><a class="rc-admin" id="rc-admin" href="/directory-admin.html" style="display:none">Admin</a><button id="rc-out">Sign out</button></span>';
         slot.querySelector("#rc-out").onclick = signOut;
+        // Staff-only shortcut to the directory admin. RLS on the staff table means
+        // non-staff accounts get an empty result, so the link never renders for them.
+        fetch(SUPA + "/rest/v1/staff?select=id&id=eq." + session.user.id, {
+          headers: { apikey: KEY, Authorization: "Bearer " + session.access_token },
+        }).then(function (r) { return r.ok ? r.json() : []; }).then(function (rows) {
+          if (rows && rows.length) { var a = slot.querySelector("#rc-admin"); if (a) a.style.display = ""; }
+        }).catch(function () {});
       }
       document.querySelectorAll("[data-auth-open]").forEach(function (el) { el.style.display = "none"; });
       document.documentElement.setAttribute("data-signed-in", "1");
