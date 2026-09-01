@@ -151,3 +151,13 @@ footer{background:var(--night);color:#8B98A3;padding-block:30px;font-size:13px}
 .nav-phone{display:inline-flex;align-items:center;font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--gold);background:rgba(212,175,55,.08);border:1px solid rgba(212,175,55,.4);border-radius:999px;padding:8px 14px;text-decoration:none;white-space:nowrap;flex:none;transition:background .15s,color .15s}
 .nav-phone:hover{background:rgba(212,175,55,.16);color:var(--gold-soft)}
 @media(max-width:680px){.nav-phone{display:none}}
+
+/* slim top ribbon — the "get listed" call-to-action (added 2026-09-01) */
+.ribbon{display:flex;align-items:center;justify-content:center;gap:10px;text-decoration:none;padding:8px 16px;color:var(--ink-deep);background:linear-gradient(100deg,#B8942C,var(--gold) 32%,var(--gold-soft) 50%,var(--gold) 68%,#B8942C);background-size:200% 100%;animation:ribshine 7s linear infinite}
+.ribbon b{font-family:var(--mono);font-size:9.5px;letter-spacing:.14em;text-transform:uppercase;font-weight:600;opacity:.72}
+.ribbon span{font-family:var(--disp);font-size:13px;letter-spacing:.07em;text-transform:uppercase;font-weight:700}
+.ribbon i{font-style:normal;font-weight:700;transition:transform .15s}
+.ribbon:hover i{transform:translateX(5px)}
+.ribbon:hover span{text-decoration:underline;text-underline-offset:3px}
+@keyframes ribshine{0%{background-position:0% 0}100%{background-position:200% 0}}
+@media(max-width:640px){.ribbon b{display:none}}
