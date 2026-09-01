@@ -78,6 +78,9 @@
       <div class="fld"><label>Tap every ability — this is exactly how contractors filter the directory</label>
         <div class="chipgrid" id="f-types"></div>
       </div>
+      <div class="fld"><label>Panel gauges you run — tap all that apply</label>
+        <div class="chipgrid" id="f-gauges"></div>
+      </div>
       <div class="fld"><label>Run a profile we don't list? Add it (comma separated) — it goes on your listing after we review and approve it</label><input id="f-moretypes" placeholder="2″ batten cap, curved snap-lock…"></div>
     </div>
 
@@ -91,20 +94,14 @@
       <div class="fld"><label>Roll a gutter profile we don't list? Add it (comma separated) — it goes on your listing after we review and approve it</label><input id="f-moregutters" placeholder="5″ fascia-wrap, custom radius…"></div>
     </div>
 
-    <div class="step"><h3><span class="sn">5</span>Gauges you run</h3>
-      <div class="fld"><label>Tap all that apply</label>
-        <div class="chipgrid" id="f-gauges"></div>
-      </div>
-    </div>
-
-    <div class="step"><h3><span class="sn">6</span>Colors you carry</h3>
+    <div class="step"><h3><span class="sn">5</span>Colors you carry</h3>
       <div class="fld"><label>Tap the stock colors you keep — color search matches these</label>
         <div class="chipgrid" id="f-colors"></div>
       </div>
       <div class="fld"><label>Other colors (comma separated)</label><input id="f-morecolors" placeholder="Slate Blue, Weathered Zinc…"></div>
     </div>
 
-    <div class="step"><h3><span class="sn">7</span>Your color chart</h3>
+    <div class="step"><h3><span class="sn">6</span>Your color chart</h3>
       <div class="fld"><label>Upload your color chart (PDF or image, up to 10 MB)</label>
         <div class="filebox" id="f-filebox">
           <b id="f-filelabel">Tap to choose a file</b>
@@ -163,7 +160,7 @@ const ABILITIES=[
   "Trim & flashing","3D parts — boxes · scuppers · caps","On-site roll forming",
 ];
 const GUTTER_PROFILES=["5″ K-style gutter","6″ K-style gutter","7″ K-style gutter","5″ half-round gutter","6″ half-round gutter","6″ box gutter","7″ box gutter","8″ box gutter","6″ euro box gutter","Fascia gutter","Straight-face / square gutter"];
-const GUTTER_MATERIALS=["Gutter — aluminum (.027 / .032)","Gutter — painted steel (26 / 24 ga)","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
+const GUTTER_MATERIALS=["Gutter — .027 aluminum","Gutter — .032 aluminum","Gutter — 26 ga painted steel","Gutter — 24 ga painted steel","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
 const STOCK_COLORS=["Regal White","Almond","Ash Gray","Slate Gray","Burnished Slate","Charcoal","Medium Bronze","Dark Bronze","Matte Black","Evergreen","Copper Metallic","Galvalume","Texas Silver","Bare Copper","Bonderized"];
 const GAUGES=["29 ga","28 ga","26 ga","24 ga","22 ga","20 ga"];
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
