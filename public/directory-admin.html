@@ -126,10 +126,12 @@ function safeUrl(raw,requireBucket){
   }catch(e){return null}
 }
 
-const segChip=(t)=>{const b=document.createElement('button');b.type='button';b.className='seg';b.dataset.v=t;b.textContent=t;b.onclick=()=>b.classList.toggle('sel');return b};
+const segChip=(t,label)=>{const b=document.createElement('button');b.type='button';b.className='seg';b.dataset.v=t;b.textContent=label||t;b.onclick=()=>b.classList.toggle('sel');return b};
+// gutter chips show clean labels; dataset.v keeps the full canonical string
+const gutLabel=(t)=>{const d=t.replace(/ gutter$/,'').replace(/^Gutter — /,'');return d.charAt(0).toUpperCase()+d.slice(1)};
 ABILITIES.forEach(a=>$('#e-abilities').appendChild(segChip(a)));
-GUTTER_PROFILES.forEach(a=>$('#e-gutters').appendChild(segChip(a)));
-GUTTER_MATERIALS.forEach(a=>$('#e-gutmats').appendChild(segChip(a)));
+GUTTER_PROFILES.forEach(a=>$('#e-gutters').appendChild(segChip(a,gutLabel(a))));
+GUTTER_MATERIALS.forEach(a=>$('#e-gutmats').appendChild(segChip(a,gutLabel(a))));
 STOCK_COLORS.forEach(c=>$('#e-colors').appendChild(segChip(c)));
 $('#e-bcoil').onclick=()=>$('#e-bcoil').classList.toggle('sel');
 $('#e-bfab').onclick=()=>$('#e-bfab').classList.toggle('sel');

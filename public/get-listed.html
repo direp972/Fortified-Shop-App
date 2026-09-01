@@ -167,8 +167,11 @@ const GAUGES=["29 ga","28 ga","26 ga","24 ga","22 ga","20 ga"];
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
 const chip=(t)=>`<button type="button" class="seg" data-v="${t}">${t}</button>`;
 $("#f-types").innerHTML=ABILITIES.map(chip).join("");
-$("#f-gutters").innerHTML=GUTTER_PROFILES.map(chip).join("");
-$("#f-gutmats").innerHTML=GUTTER_MATERIALS.map(chip).join("");
+// gutter chips drop the redundant "gutter" wording — the section heading says it;
+// the stored value keeps the full label so search matching stays exact
+const gchip=(t)=>{const d=t.replace(/ gutter$/,"").replace(/^Gutter — /,"");const label=d.charAt(0).toUpperCase()+d.slice(1);return `<button type="button" class="seg" data-v="${t}">${label}</button>`};
+$("#f-gutters").innerHTML=GUTTER_PROFILES.map(gchip).join("");
+$("#f-gutmats").innerHTML=GUTTER_MATERIALS.map(gchip).join("");
 $("#f-gauges").innerHTML=GAUGES.map(chip).join("");
 $("#f-colors").innerHTML=STOCK_COLORS.map(chip).join("");
 // Signed-in members get their contact details prefilled from their account.
