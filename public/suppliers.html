@@ -60,6 +60,7 @@
 .cobadge{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;padding:4px 10px;border-radius:999px}
 .cobadge.coil{background:linear-gradient(180deg,var(--gold-soft),var(--gold));color:var(--ink-deep)}
 .cobadge.fab{background:var(--patina);color:#fff}
+.cobadge.turnkey{background:#A0602E;color:#fff}
 .co-head .loc{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;color:var(--steel);margin-left:auto}
 .co-head .loc .dist{color:var(--copper);font-weight:600}
 .co p{margin:4px 0 0;font-size:13.5px;line-height:1.6;color:#4E6273}
@@ -179,6 +180,12 @@
         <option value="">Either way</option>
         <option value="On-site roll forming">Panels — roll at the job</option>
         <option value="On-site gutter roll forming">Gutters — roll at the job</option>
+      </select>
+    </div>
+    <div class="fsel"><label>Turnkey — install crew</label>
+      <select id="s-turnkey">
+        <option value="">Either way</option>
+        <option value="Turnkey — supply · fabrication · labor">Yes — supply, fab &amp; labor</option>
       </select>
     </div>
     <div class="fsel"><label>Color</label>
@@ -340,7 +347,7 @@ function requestGeo(){
 }
 
 function apply(){
-  const wants=[$('#s-panel').value,$('#s-gutter').value,$('#s-gutmat').value,$('#s-coil').value,$('#s-trim').value,$('#s-onsite').value].filter(Boolean);
+  const wants=[$('#s-panel').value,$('#s-gutter').value,$('#s-gutmat').value,$('#s-coil').value,$('#s-trim').value,$('#s-onsite').value,$('#s-turnkey').value].filter(Boolean);
   const color=$('#s-color').value, locq=$('#loc-q').value.toLowerCase().trim(), radius=+$('#s-radius').value||0;
   let shown=0;
   cards.forEach(c=>{
@@ -377,7 +384,7 @@ $('#fclear').onclick=()=>{
 // Deep links: /suppliers.html?ability=Trim%20%26%20flashing · &color=Matte%20Black · &loc=dallas
 const qp=new URLSearchParams(location.search);
 const ab=qp.get('ability');
-if(ab)for(const s of ['#s-panel','#s-gutter','#s-gutmat','#s-coil','#s-trim','#s-onsite']){
+if(ab)for(const s of ['#s-panel','#s-gutter','#s-gutmat','#s-coil','#s-trim','#s-onsite','#s-turnkey']){
   const o=[...$(s).options].find(o=>o.value.toLowerCase()===ab.toLowerCase());
   if(o){$(s).value=o.value;break}
 }
@@ -413,6 +420,7 @@ function buildCard(l){
   const badges=l.badges||[];
   if(badges.includes('coil')){const s=document.createElement('span');s.className='cobadge coil';s.textContent='Coil & Flats';head.appendChild(s)}
   if(badges.includes('fab')){const s=document.createElement('span');s.className='cobadge fab';s.textContent='Fabrication';head.appendChild(s)}
+  if(badges.includes('turnkey')){const s=document.createElement('span');s.className='cobadge turnkey';s.textContent='Turnkey — supply · fab · labor';head.appendChild(s)}
   const loc=document.createElement('span');loc.className='loc';
   loc.textContent=[l.address,l.city].filter(Boolean).join(' · ');
   const dist=document.createElement('span');dist.className='dist';loc.appendChild(dist);

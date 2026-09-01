@@ -71,7 +71,7 @@
         </div>
       </div>
       <div class="fld"><label>Badges</label>
-        <div class="chipgrid"><button type="button" class="seg" id="e-bcoil" data-v="coil">Coil &amp; Flats</button><button type="button" class="seg" id="e-bfab" data-v="fab">Fabrication</button></div>
+        <div class="chipgrid"><button type="button" class="seg" id="e-bcoil" data-v="coil">Coil &amp; Flats</button><button type="button" class="seg" id="e-bfab" data-v="fab">Fabrication</button><button type="button" class="seg" id="e-bturnkey" data-v="turnkey">Turnkey — supply · fab · labor</button></div>
       </div>
       <div class="frow">
         <div class="fld"><label>Street address (optional — shown on card)</label><input id="e-address" placeholder="123 Commerce St"></div>
@@ -112,7 +112,7 @@
 <script>
 const SUPA="https://znueitseoqijhkkvdomc.supabase.co";
 const KEY="sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
-const ABILITIES=["Coil & flat sheet","Painted coil — PVDF / Kynar","Painted coil — SMP","Bare — Galvalume · G90 · bonderized","Copper","1″ mechanical lock","1.5″ snap-lock","1.75″ snap-lock","1.5″ mechanical lock (single)","1.5″ mechanical lock (double)","2″ mechanical lock","1″ nail strip","1.5″ nail strip","T-panel (138T)","T-panel (238T)","Batten seam","2.5″ trapezoidal","3″ trapezoidal structural","Exposed fastener","Flush wall & soffit","Board & batten","Trim & flashing","3D parts — boxes · scuppers · caps","On-site roll forming","On-site gutter roll forming"];
+const ABILITIES=["Coil & flat sheet","Painted coil — PVDF / Kynar","Painted coil — SMP","Bare — Galvalume · G90 · bonderized","Copper","1″ mechanical lock","1.5″ snap-lock","1.75″ snap-lock","1.5″ mechanical lock (single)","1.5″ mechanical lock (double)","2″ mechanical lock","1″ nail strip","1.5″ nail strip","T-panel (138T)","T-panel (238T)","Batten seam","2.5″ trapezoidal","3″ trapezoidal structural","Exposed fastener","Flush wall & soffit","Board & batten","Trim & flashing","3D parts — boxes · scuppers · caps","On-site roll forming","On-site gutter roll forming","Turnkey — supply · fabrication · labor"];
 const GUTTER_PROFILES=["5″ K-style gutter","6″ K-style gutter","7″ K-style gutter","5″ half-round gutter","6″ half-round gutter","6″ box gutter","7″ box gutter","8″ box gutter","6″ euro box gutter","Fascia gutter","Straight-face / square gutter"];
 const GUTTER_MATERIALS=["Gutter — .027 aluminum","Gutter — .032 aluminum","Gutter — 26 ga painted steel","Gutter — 24 ga painted steel","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
 const ALL_CANON=[...ABILITIES,...GUTTER_PROFILES,...GUTTER_MATERIALS];
@@ -288,6 +288,7 @@ function extractAbilities(t){
   if(has(/\btrim\b|flashing/i))out.push("Trim & flashing");
   if(has(/collector box|scupper|chimney cap/i))out.push("3D parts — boxes · scuppers · caps");
   if(has(/roll[- ]?form/i)&&has(/on[- ]?site|job[- ]?site|portable/i))out.push("On-site roll forming");
+  if(has(/turn[- ]?key/i)||has(/install/i)&&has(/crew|labor|roofing contractor/i))out.push("Turnkey — supply · fabrication · labor");
   if(/gutter/i.test(t)){
     if(has(/5["″ ]?(inch)?[- ]?k[- ]?style/i))out.push("5″ K-style gutter");
     if(has(/6["″ ]?(inch)?[- ]?k[- ]?style|seamless gutter/i))out.push("6″ K-style gutter");
@@ -375,6 +376,7 @@ $('#e-save').onclick=async()=>{
   const badges=[];
   if($('#e-bcoil').classList.contains('sel'))badges.push('coil');
   if($('#e-bfab').classList.contains('sel'))badges.push('fab');
+  if($('#e-bturnkey').classList.contains('sel'))badges.push('turnkey');
   // URLs are re-validated at publish time — a listing row must never carry a
   // non-http(s) URL even if a bad one was typed or prefilled.
   const site=$('#e-website').value.trim();
@@ -432,6 +434,7 @@ async function loadListings(){
       $('#e-name').value=l.name;$('#e-status').value=l.status;
       $('#e-bcoil').classList.toggle('sel',(l.badges||[]).includes('coil'));
       $('#e-bfab').classList.toggle('sel',(l.badges||[]).includes('fab'));
+      $('#e-bturnkey').classList.toggle('sel',(l.badges||[]).includes('turnkey'));
       $('#e-address').value=l.address||'';$('#e-city').value=l.city||'';$('#e-area').value=l.area_keywords||'';
       $('#e-lat').value=l.lat==null?'':l.lat;$('#e-lng').value=l.lng==null?'':l.lng;
       setChips('#e-abilities',l.abilities||[]);
