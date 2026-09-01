@@ -3,9 +3,21 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>List Your Coil Line or Roll Forming Shop on RoofCoil | Suppliers &amp; Fabricators</title>
-<meta name="description" content="Metal coil suppliers and panel roll forming fabricators: list your lines, gauges, colors and plant locations on RoofCoil and get orders from contractors routed to your closest plant." />
+<title>Get Listed in the Metal Roofing Supplier &amp; Fabricator Directory | RoofCoil</title>
+<meta name="description" content="Suppliers and fabricators: list what you run — panels, trim, coil, on-site roll forming — plus your colors and plant locations, so contractors searching RoofCoil find you." />
 <link rel="canonical" href="https://www.roofcoil.com/get-listed.html">
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="RoofCoil" />
+<meta property="og:url" content="https://www.roofcoil.com/get-listed.html" />
+<meta property="og:title" content="Get Listed on RoofCoil" />
+<meta property="og:description" content="Put your abilities, colors, and plant locations in front of contractors searching for who can run their metal." />
+<meta property="og:image" content="https://www.roofcoil.com/og-card.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Get Listed on RoofCoil" />
+<meta name="twitter:description" content="Put your abilities, colors, and plant locations in front of contractors searching for who can run their metal." />
+<meta name="twitter:image" content="https://www.roofcoil.com/og-card.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
@@ -57,12 +69,13 @@
       <div class="fld"><label>Email *</label><input id="f-em" type="email" placeholder="you@company.com"></div>
     </div>
 
-    <div class="step"><h3><span class="sn">2</span>Plant locations</h3>
+    <div class="step"><h3><span class="sn">2</span>Plant locations &amp; service area</h3>
       <div class="fld"><label>One per line — City, State</label><textarea id="f-plants" rows="3" placeholder="Sherman, TX&#10;Tulsa, OK"></textarea></div>
+      <div class="fld"><label>Service area — how far you sell or deliver</label><input id="f-area" placeholder="DFW metro · 150 mile radius · statewide…"></div>
     </div>
 
-    <div class="step"><h3><span class="sn">3</span>What panels do you make?</h3>
-      <div class="fld"><label>Tap everything you roll</label>
+    <div class="step"><h3><span class="sn">3</span>What can you run?</h3>
+      <div class="fld"><label>Tap every ability — this is exactly how contractors filter the directory</label>
         <div class="chipgrid" id="f-types"></div>
       </div>
     </div>
@@ -73,7 +86,14 @@
       </div>
     </div>
 
-    <div class="step"><h3><span class="sn">5</span>Your color chart</h3>
+    <div class="step"><h3><span class="sn">5</span>Colors you carry</h3>
+      <div class="fld"><label>Tap the stock colors you keep — color search matches these</label>
+        <div class="chipgrid" id="f-colors"></div>
+      </div>
+      <div class="fld"><label>Other colors (comma separated)</label><input id="f-morecolors" placeholder="Slate Blue, Weathered Zinc…"></div>
+    </div>
+
+    <div class="step"><h3><span class="sn">6</span>Your color chart</h3>
       <div class="fld"><label>Upload your color chart (PDF or image, up to 10 MB)</label>
         <div class="filebox" id="f-filebox">
           <b id="f-filelabel">Tap to choose a file</b>
@@ -120,23 +140,22 @@
 <script>
 const SUPA="https://znueitseoqijhkkvdomc.supabase.co";
 const KEY="sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
-const PANEL_TYPES=[
-  "Exposed Fastener — R-Panel / PBR",
-  "Exposed Fastener — Corrugated / Ag",
-  "Standing Seam — Snap-Lock",
-  "Standing Seam — Mechanical Seam",
-  "Standing Seam — Nail Strip / Fastener Flange",
-  "Trapezoidal / Structural",
-  "Flush Wall & Soffit",
-  "Board & Batten",
-  "Trim & Flashing",
-  "Slit Coil & Flat Sheet",
+// These labels must stay in lock-step with the ability filters on suppliers.html —
+// an approved application maps 1:1 onto the directory's search facets.
+const ABILITIES=[
+  "Coil & flat sheet","Painted coil — PVDF / Kynar","Painted coil — SMP",
+  "Bare — Galvalume · G90 · bonderized","Copper",
+  "Snap-lock standing seam","Mechanical seam","Nail strip","Snap-on cap seam",
+  "Trapezoidal / structural","Exposed fastener","Flush wall & soffit","Board & batten",
+  "Trim & flashing","3D parts — boxes · scuppers · caps","On-site roll forming",
 ];
+const STOCK_COLORS=["Regal White","Almond","Ash Gray","Slate Gray","Burnished Slate","Charcoal","Medium Bronze","Dark Bronze","Matte Black","Evergreen","Copper Metallic","Galvalume","Texas Silver","Bare Copper","Bonderized"];
 const GAUGES=["29 ga","28 ga","26 ga","24 ga","22 ga","20 ga"];
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
 const chip=(t)=>`<button type="button" class="seg" data-v="${t}">${t}</button>`;
-$("#f-types").innerHTML=PANEL_TYPES.map(chip).join("");
+$("#f-types").innerHTML=ABILITIES.map(chip).join("");
 $("#f-gauges").innerHTML=GAUGES.map(chip).join("");
+$("#f-colors").innerHTML=STOCK_COLORS.map(chip).join("");
 // Signed-in members get their contact details prefilled from their account.
 document.addEventListener("rc:auth",e=>{
   const s=e.detail&&e.detail.session;if(!s)return;
@@ -145,7 +164,7 @@ document.addEventListener("rc:auth",e=>{
   if(!$("#f-co").value)$("#f-co").value=md.company||"";
   if(!$("#f-em").value)$("#f-em").value=s.user.email||"";
 });
-$$("#f-types .seg, #f-gauges .seg").forEach(b=>b.onclick=()=>b.classList.toggle("sel"));
+$$("#f-types .seg, #f-gauges .seg, #f-colors .seg").forEach(b=>b.onclick=()=>b.classList.toggle("sel"));
 
 let file=null;
 $("#f-filebox").onclick=()=>$("#f-file").click();
@@ -169,7 +188,7 @@ $("#f-go").onclick=async()=>{
   if(!co){showErr("Company name is required.");return}
   if(!name){showErr("Contact name is required.");return}
   if(!/.+@.+\..+/.test(em)){showErr("A valid email is required so we can get back to you.");return}
-  if(types.length===0){showErr("Tap at least one panel type you make.");return}
+  if(types.length===0){showErr("Tap at least one ability — it's how contractors will find you.");return}
   const btn=$("#f-go");btn.disabled=true;btn.textContent="Sending…";
   try{
     let chartUrl="";
@@ -191,6 +210,13 @@ $("#f-go").onclick=async()=>{
         company:co,contact_name:name,phone:$("#f-ph").value.trim(),email:em,
         website:$("#f-web").value.trim(),plants:$("#f-plants").value.trim(),
         panel_types:types,gauges:gauges,notes:$("#f-notes").value.trim(),colorchart_url:chartUrl,
+        // structured details drive the directory listing a staff member builds from this
+        details:{
+          abilities:types,
+          colors:[...$$("#f-colors .seg.sel")].map(b=>b.dataset.v),
+          extra_colors:$("#f-morecolors").value.trim(),
+          service_area:$("#f-area").value.trim(),
+        },
       })});
     if(!ins.ok)throw new Error("submit failed ("+ins.status+")");
     $("#intake").style.display="none";$("#done").style.display="block";window.scrollTo({top:0});

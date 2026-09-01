@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Directory Admin — Review &amp; Publish Listings | RoofCoil</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<script src="/auth.js" defer></script>
+<style>
+.admwrap{max-width:1100px;margin:0 auto;padding:clamp(18px,3vw,34px) var(--gut) 60px}
+.cols{display:grid;grid-template-columns:1fr 1.2fr;gap:22px;align-items:start}
+@media(max-width:960px){.cols{grid-template-columns:1fr}}
+.panel{background:var(--card);border:1px solid rgba(15,61,92,.1);border-radius:var(--r);padding:20px 22px;box-shadow:var(--shadow-1);margin-bottom:18px}
+.panel h2{font-family:var(--disp);font-size:17px;text-transform:uppercase;font-weight:600;margin:0 0 14px;display:flex;align-items:center;gap:10px}
+.panel h2 .cnt{font-family:var(--mono);font-size:10px;background:var(--paper);border:1px solid rgba(15,61,92,.14);border-radius:999px;padding:3px 9px;color:var(--steel)}
+.appcard,.lcard{border:1px solid rgba(15,61,92,.12);border-radius:var(--r-sm);padding:13px 15px;margin-bottom:10px;background:var(--paper)}
+.appcard b,.lcard b{font-size:14px;color:var(--ink-deep)}
+.appcard .meta,.lcard .meta{font-family:var(--mono);font-size:10.5px;color:var(--steel);letter-spacing:.03em;margin:3px 0 6px;line-height:1.7;word-break:break-word}
+.appcard .row,.lcard .row{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.mini{font-family:var(--disp);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;padding:7px 14px;border-radius:999px;border:1.5px solid rgba(15,61,92,.25);background:#fff;color:var(--ink);cursor:pointer}
+.mini:hover{border-color:var(--gold)}
+.mini.gold{background:linear-gradient(180deg,var(--gold-soft),var(--gold));border-color:var(--gold);color:var(--ink-deep)}
+.mini.red{color:#B3261E;border-color:rgba(179,38,30,.4)}
+.stat{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;padding:3px 9px;border-radius:999px}
+.stat.live{background:var(--patina);color:#fff}
+.stat.draft{background:#E4DFD2;color:#6b6353}
+.stat.hidden{background:#8A94A6;color:#fff}
+.lockmsg{max-width:520px;margin:80px auto;text-align:center;color:var(--steel);font-size:15px;line-height:1.7}
+.okline{font-size:12.5px;color:var(--patina);font-weight:600;min-height:16px;margin-top:8px}
+.errline{color:#B3261E}
+#editor .chipgrid{display:flex;flex-wrap:wrap;gap:7px}
+.empty{color:var(--steel);font-size:13px}
+</style>
+</head>
+<body data-auth-required>
+<header class="nav"><div class="nav-in">
+  <a class="brand" href="/"><b>Roof<i>Coil</i></b><span>Directory admin</span></a>
+  <nav class="nav-links">
+    <a href="/suppliers.html">View directory</a>
+    <a href="/get-listed.html">Application form</a>
+  </nav>
+  <span data-auth-slot></span>
+</div></header>
+
+<div id="locked" class="lockmsg" style="display:none">
+  <p class="eyebrow" style="justify-content:center">Staff only</p>
+  <p>This page publishes directory listings, so it needs a staff account. You're signed in, but this account isn't on the staff list — if it should be, ask whoever runs the Supabase project to add you.</p>
+  <a class="btn" href="/">Back to RoofCoil</a>
+</div>
+
+<div id="admin" class="admwrap" style="display:none">
+  <p class="eyebrow">Get Listed pipeline</p>
+  <h1 class="disp" style="font-size:clamp(24px,3.5vw,34px);margin:0 0 6px">Applications → Listings</h1>
+  <p style="color:#4E6273;font-size:14.5px;max-width:70ch;margin:0 0 24px">Review what suppliers submitted, build a listing from an application (edit anything — their words go live only after you publish), geocode the city so distance search works, then set it <b>Live</b>. Live listings appear on <a href="/suppliers.html" style="color:var(--copper);font-weight:600">Find a supplier</a> immediately.</p>
+
+  <div class="cols">
+    <div>
+      <div class="panel"><h2>Applications <span class="cnt" id="app-count">…</span></h2><div id="apps"><p class="empty">Loading…</p></div></div>
+      <div class="panel"><h2>Listings <span class="cnt" id="l-count">…</span></h2><div id="listings"><p class="empty">Loading…</p></div></div>
+    </div>
+
+    <div class="panel" id="editor">
+      <h2 id="ed-title">Listing editor</h2>
+      <div class="frow">
+        <div class="fld"><label>Company name *</label><input id="e-name"></div>
+        <div class="fld"><label>Status</label>
+          <select id="e-status"><option value="draft">Draft — not public</option><option value="live">Live — on the directory</option><option value="hidden">Hidden — taken down</option></select>
+        </div>
+      </div>
+      <div class="fld"><label>Badges</label>
+        <div class="chipgrid"><button type="button" class="seg" id="e-bcoil" data-v="coil">Coil &amp; Flats</button><button type="button" class="seg" id="e-bfab" data-v="fab">Fabrication</button></div>
+      </div>
+      <div class="frow">
+        <div class="fld"><label>Street address (shown on card)</label><input id="e-address" placeholder="605 E Mulberry"></div>
+        <div class="fld"><label>City, State (shown + searched)</label><input id="e-city" placeholder="Sherman, TX"></div>
+      </div>
+      <div class="fld"><label>Area keywords — every word location search can match</label><input id="e-area" placeholder="sherman texas tx north texas dfw dallas…"></div>
+      <div class="frow">
+        <div class="fld"><label>Latitude</label><input id="e-lat" inputmode="decimal"></div>
+        <div class="fld"><label>Longitude</label><input id="e-lng" inputmode="decimal"></div>
+      </div>
+      <div class="row" style="display:flex;gap:8px;margin:-4px 0 12px"><button class="mini" id="e-geocode">Geocode from City, State</button><span class="okline" id="geo-note" style="margin:0;align-self:center"></span></div>
+      <div class="fld"><label>Abilities — the search facets *</label><div class="chipgrid" id="e-abilities"></div></div>
+      <div class="fld"><label>Colors carried — powers color search</label><div class="chipgrid" id="e-colors"></div></div>
+      <div class="fld"><label>Extra colors (comma separated — added as searchable colors)</label><input id="e-morecolors"></div>
+      <div class="fld"><label>Coil line — one sentence for the card</label><textarea id="e-coildesc" rows="2"></textarea></div>
+      <div class="fld"><label>Fabrication — one sentence for the card</label><textarea id="e-fabdesc" rows="2"></textarea></div>
+      <div class="frow">
+        <div class="fld"><label>Website</label><input id="e-website" placeholder="https://"></div>
+        <div class="fld"><label>Phone (public)</label><input id="e-phone"></div>
+      </div>
+      <div class="fld"><label>Color chart URL</label><input id="e-chart"></div>
+      <button class="btn" style="width:100%" id="e-save">Save listing</button>
+      <div class="okline" id="save-note"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPA="https://znueitseoqijhkkvdomc.supabase.co";
+const KEY="sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
+const ABILITIES=["Coil & flat sheet","Painted coil — PVDF / Kynar","Painted coil — SMP","Bare — Galvalume · G90 · bonderized","Copper","Snap-lock standing seam","Mechanical seam","Nail strip","Snap-on cap seam","Trapezoidal / structural","Exposed fastener","Flush wall & soffit","Board & batten","Trim & flashing","3D parts — boxes · scuppers · caps","On-site roll forming"];
+const STOCK_COLORS=["Regal White","Almond","Ash Gray","Slate Gray","Burnished Slate","Charcoal","Medium Bronze","Dark Bronze","Matte Black","Evergreen","Copper Metallic","Galvalume","Texas Silver","Bare Copper","Bonderized"];
+const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
+let token=null, editingId=null, apps=[], listings=[];
+
+// Applications are UNREVIEWED, attacker-reachable input (open anon insert).
+// Any URL from an application must pass this gate before it can become an
+// href — otherwise a javascript:/data: link would run in the staff session.
+function safeUrl(raw,requireBucket){
+  if(!raw)return null;
+  let s=String(raw).trim();
+  if(!/^https?:\/\//i.test(s))s='https://'+s;
+  try{
+    const u=new URL(s);
+    if(u.protocol!=='https:'&&u.protocol!=='http:')return null;
+    if(requireBucket&&!u.href.startsWith(SUPA+'/storage/v1/object/public/mfr-colorcharts/'))return null;
+    return u.href;
+  }catch(e){return null}
+}
+
+const segChip=(t)=>{const b=document.createElement('button');b.type='button';b.className='seg';b.dataset.v=t;b.textContent=t;b.onclick=()=>b.classList.toggle('sel');return b};
+ABILITIES.forEach(a=>$('#e-abilities').appendChild(segChip(a)));
+STOCK_COLORS.forEach(c=>$('#e-colors').appendChild(segChip(c)));
+$('#e-bcoil').onclick=()=>$('#e-bcoil').classList.toggle('sel');
+$('#e-bfab').onclick=()=>$('#e-bfab').classList.toggle('sel');
+
+async function api(path,opts){
+  opts=opts||{};opts.headers=Object.assign({apikey:KEY,Authorization:'Bearer '+token,'Content-Type':'application/json'},opts.headers||{});
+  const r=await fetch(SUPA+path,opts);
+  if(!r.ok)throw new Error((await r.text()).slice(0,300)||('HTTP '+r.status));
+  const t=await r.text();return t?JSON.parse(t):null;
+}
+
+/* ── boot: require a staff account ─────────────────────────────────────── */
+document.addEventListener('rc:auth',async e=>{
+  const s=e.detail&&e.detail.session;if(!s)return; // auth.js shows its blocking sign-in modal
+  token=s.access_token;
+  let staff=[];
+  try{staff=await api('/rest/v1/staff?select=id&id=eq.'+s.user.id)}catch(x){}
+  if(!staff.length){$('#locked').style.display='block';return}
+  $('#admin').style.display='block';
+  loadApps();loadListings();
+});
+
+/* ── applications ──────────────────────────────────────────────────────── */
+async function loadApps(){
+  const box=$('#apps');box.textContent='';
+  try{apps=await api('/rest/v1/manufacturer_applications?select=*&order=created_at.desc')}
+  catch(x){box.textContent='Could not load applications.';return}
+  $('#app-count').textContent=apps.length;
+  if(!apps.length){const p=document.createElement('p');p.className='empty';p.textContent='No applications waiting.';box.appendChild(p);return}
+  apps.forEach(a=>{
+    const d=a.details||{};
+    const card=document.createElement('div');card.className='appcard';
+    const b=document.createElement('b');b.textContent=a.company||'(no company)';card.appendChild(b);
+    const meta=document.createElement('div');meta.className='meta';
+    meta.textContent=[a.contact_name,a.email,a.phone,a.website].filter(Boolean).join(' · ')
+      +'\n'+(a.plants||'').split('\n').join(' · ')
+      +(d.service_area?' · serves: '+d.service_area:'')
+      +'\nruns: '+((d.abilities||a.panel_types||[]).join(', ')||'—')
+      +(a.gauges&&a.gauges.length?' · '+a.gauges.join(', '):'')
+      +((d.colors||[]).length?'\ncolors: '+d.colors.join(', '):'')
+      +(d.extra_colors?' + '+d.extra_colors:'')
+      +(a.notes?'\nnotes: '+a.notes:'');
+    meta.style.whiteSpace='pre-line';card.appendChild(meta);
+    const chartUrl=safeUrl(a.colorchart_url,true);
+    if(chartUrl){
+      const link=document.createElement('a');link.href=chartUrl;link.target='_blank';link.rel='noopener';
+      link.textContent='Color chart ↗';link.style.cssText='font-size:12px;color:var(--copper);font-weight:600';card.appendChild(link);
+    }else if(a.colorchart_url){
+      const warn=document.createElement('div');warn.className='meta';
+      warn.textContent='⚠ color chart link rejected (not a chart upload): '+a.colorchart_url;card.appendChild(warn);
+    }
+    const row=document.createElement('div');row.className='row';
+    const build=document.createElement('button');build.className='mini gold';build.textContent='Build listing →';
+    build.onclick=()=>prefillFromApp(a);row.appendChild(build);
+    const del=document.createElement('button');del.className='mini red';del.textContent='Delete';
+    del.onclick=async()=>{if(!confirm('Delete this application? This cannot be undone.'))return;
+      try{await api('/rest/v1/manufacturer_applications?id=eq.'+a.id,{method:'DELETE'});loadApps()}catch(x){alert('Delete failed: '+x.message)}};
+    row.appendChild(del);card.appendChild(row);
+    box.appendChild(card);
+  });
+}
+
+function setChips(sel,values){
+  const want=(values||[]).map(v=>String(v).toLowerCase());
+  $$(sel+' .seg').forEach(b=>b.classList.toggle('sel',want.includes(b.dataset.v.toLowerCase())));
+}
+
+function prefillFromApp(a){
+  const d=a.details||{};
+  editingId=null;
+  $('#ed-title').textContent='New listing — '+(a.company||'');
+  $('#e-name').value=a.company||'';
+  $('#e-status').value='draft';
+  const abil=d.abilities||a.panel_types||[];
+  setChips('#e-abilities',abil);
+  setChips('#e-colors',d.colors||[]);
+  $('#e-morecolors').value=d.extra_colors||'';
+  const firstPlant=(a.plants||'').split('\n')[0]||'';
+  $('#e-address').value='';
+  $('#e-city').value=firstPlant.trim();
+  $('#e-area').value=((firstPlant+' '+(d.service_area||'')).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim());
+  $('#e-lat').value='';$('#e-lng').value='';
+  const hasCoil=abil.some(x=>/coil|flat sheet|copper/i.test(x));
+  const hasFab=abil.some(x=>/seam|strip|trim|batten|soffit|fastener|3d|roll forming|trapezoidal/i.test(x));
+  $('#e-bcoil').classList.toggle('sel',hasCoil);
+  $('#e-bfab').classList.toggle('sel',hasFab);
+  $('#e-coildesc').value='';$('#e-fabdesc').value='';
+  $('#e-website').value=safeUrl(a.website)||'';
+  $('#e-phone').value=a.phone||'';
+  $('#e-chart').value=safeUrl(a.colorchart_url,true)||'';
+  $('#e-save').dataset.appId=a.id;
+  $('#save-note').textContent='';
+  $('#editor').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+/* ── geocoding (city → lat/lng, one polite request) ────────────────────── */
+$('#e-geocode').onclick=async()=>{
+  const q=$('#e-city').value.trim();
+  const note=$('#geo-note');note.classList.remove('errline');
+  if(!q){note.textContent='Enter City, State first.';note.classList.add('errline');return}
+  note.textContent='Looking up…';
+  try{
+    const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q='+encodeURIComponent(q),{headers:{'Accept':'application/json'}});
+    const j=await r.json();
+    if(!j.length)throw new Error('no match');
+    $('#e-lat').value=(+j[0].lat).toFixed(4);
+    $('#e-lng').value=(+j[0].lon).toFixed(4);
+    note.textContent='✓ '+j[0].display_name.split(',').slice(0,3).join(',');
+  }catch(x){note.textContent='No match — type coordinates by hand (Google Maps → right-click → copy).';note.classList.add('errline')}
+};
+
+/* ── save / publish ────────────────────────────────────────────────────── */
+$('#e-save').onclick=async()=>{
+  const note=$('#save-note');note.classList.remove('errline');note.textContent='';
+  const name=$('#e-name').value.trim();
+  if(!name){note.textContent='Company name is required.';note.classList.add('errline');return}
+  const abilities=[...$$('#e-abilities .seg.sel')].map(b=>b.dataset.v);
+  if(!abilities.length){note.textContent='Pick at least one ability or nothing can find this listing.';note.classList.add('errline');return}
+  const colors=[...$$('#e-colors .seg.sel')].map(b=>b.dataset.v)
+    .concat($('#e-morecolors').value.split(',').map(s=>s.trim()).filter(Boolean));
+  const badges=[];
+  if($('#e-bcoil').classList.contains('sel'))badges.push('coil');
+  if($('#e-bfab').classList.contains('sel'))badges.push('fab');
+  // URLs are re-validated at publish time — a listing row must never carry a
+  // non-http(s) URL even if a bad one was typed or prefilled.
+  const site=$('#e-website').value.trim();
+  const websiteClean=site?safeUrl(site):'';
+  if(site&&!websiteClean){note.textContent='Website must be a normal http(s) address.';note.classList.add('errline');return}
+  const chart=$('#e-chart').value.trim();
+  const chartClean=chart?safeUrl(chart):'';
+  if(chart&&!chartClean){note.textContent='Color chart URL must be a normal http(s) address.';note.classList.add('errline');return}
+  const body={
+    name,status:$('#e-status').value,badges,abilities,colors,
+    address:$('#e-address').value.trim(),city:$('#e-city').value.trim(),
+    area_keywords:$('#e-area').value.trim(),
+    lat:parseFloat($('#e-lat').value)||null,lng:parseFloat($('#e-lng').value)||null,
+    coil_desc:$('#e-coildesc').value.trim(),fab_desc:$('#e-fabdesc').value.trim(),
+    website:websiteClean||'',phone:$('#e-phone').value.trim(),
+    colorchart_url:chartClean||'',
+    updated_at:new Date().toISOString(),
+  };
+  if(!editingId&&$('#e-save').dataset.appId)body.application_id=$('#e-save').dataset.appId;
+  try{
+    if(editingId)await api('/rest/v1/directory_listings?id=eq.'+editingId,{method:'PATCH',body:JSON.stringify(body)});
+    else{const ins=await api('/rest/v1/directory_listings',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(body)});editingId=ins[0].id}
+    note.textContent=body.status==='live'?'✓ Saved — it\'s live on the directory now.':'✓ Saved as '+body.status+'.';
+    loadListings();
+  }catch(x){note.textContent='Save failed: '+x.message;note.classList.add('errline')}
+};
+
+/* ── existing listings ─────────────────────────────────────────────────── */
+async function loadListings(){
+  const box=$('#listings');box.textContent='';
+  try{listings=await api('/rest/v1/directory_listings?select=*&order=name.asc')}
+  catch(x){box.textContent='Could not load listings.';return}
+  $('#l-count').textContent=listings.length;
+  if(!listings.length){const p=document.createElement('p');p.className='empty';p.textContent='No published listings yet — build one from an application.';box.appendChild(p);return}
+  listings.forEach(l=>{
+    const card=document.createElement('div');card.className='lcard';
+    const b=document.createElement('b');b.textContent=l.name;card.appendChild(b);
+    const st=document.createElement('span');st.className='stat '+l.status;st.textContent=l.status;st.style.marginLeft='8px';card.appendChild(st);
+    const meta=document.createElement('div');meta.className='meta';
+    meta.textContent=[l.city,(l.abilities||[]).length+' abilities',(l.colors||[]).length+' colors',(l.lat!=null?'geo ✓':'no coords')].filter(Boolean).join(' · ');
+    card.appendChild(meta);
+    const row=document.createElement('div');row.className='row';
+    const edit=document.createElement('button');edit.className='mini';edit.textContent='Edit';
+    edit.onclick=()=>{
+      editingId=l.id;
+      $('#ed-title').textContent='Editing — '+l.name;
+      $('#e-name').value=l.name;$('#e-status').value=l.status;
+      $('#e-bcoil').classList.toggle('sel',(l.badges||[]).includes('coil'));
+      $('#e-bfab').classList.toggle('sel',(l.badges||[]).includes('fab'));
+      $('#e-address').value=l.address||'';$('#e-city').value=l.city||'';$('#e-area').value=l.area_keywords||'';
+      $('#e-lat').value=l.lat==null?'':l.lat;$('#e-lng').value=l.lng==null?'':l.lng;
+      setChips('#e-abilities',l.abilities||[]);
+      setChips('#e-colors',l.colors||[]);
+      $('#e-morecolors').value=(l.colors||[]).filter(c=>!STOCK_COLORS.includes(c)).join(', ');
+      $('#e-coildesc').value=l.coil_desc||'';$('#e-fabdesc').value=l.fab_desc||'';
+      $('#e-website').value=l.website||'';$('#e-phone').value=l.phone||'';$('#e-chart').value=l.colorchart_url||'';
+      delete $('#e-save').dataset.appId;
+      $('#save-note').textContent='';
+      $('#editor').scrollIntoView({behavior:'smooth',block:'start'});
+    };
+    row.appendChild(edit);
+    const flip=document.createElement('button');flip.className='mini '+(l.status==='live'?'':'gold');
+    flip.textContent=l.status==='live'?'Take down':'Make live';
+    flip.onclick=async()=>{
+      try{await api('/rest/v1/directory_listings?id=eq.'+l.id,{method:'PATCH',body:JSON.stringify({status:l.status==='live'?'hidden':'live',updated_at:new Date().toISOString()})});loadListings()}
+      catch(x){alert('Update failed: '+x.message)}
+    };
+    row.appendChild(flip);card.appendChild(row);
+    box.appendChild(card);
+  });
+}
+</script>
+</body>
+</html>

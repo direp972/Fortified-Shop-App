@@ -3,13 +3,26 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Metal Roofing Supplier &amp; Fabricator Directory — Search by Ability, Color or Location | RoofCoil</title>
-<meta name="description" content="Search the RoofCoil directory of metal roofing suppliers and fabricators by capability, color, or location — see exactly what each shop can run (coil, standing seam panels, trim, 3D parts) and how far away it is before you call." />
+<title>Find a Metal Roofing Supplier or Fabricator Near You | RoofCoil</title>
+<meta name="description" content="Search metal roofing suppliers and fabricators by what they can run — snap-lock, mechanical seam, coil, trim, on-site roll forming — plus color and distance from the job." />
 <link rel="canonical" href="https://www.roofcoil.com/suppliers.html">
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="RoofCoil" />
+<meta property="og:url" content="https://www.roofcoil.com/suppliers.html" />
+<meta property="og:title" content="Find a Metal Roofing Supplier or Fabricator Near You" />
+<meta property="og:description" content="Filter by ability, color, and GPS distance — see what each shop can run before you call." />
+<meta property="og:image" content="https://www.roofcoil.com/og-card.png" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
+<meta property="og:image:alt" content="RoofCoil — metal roofing supplier and fabricator directory" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Find a Metal Roofing Supplier or Fabricator Near You" />
+<meta name="twitter:description" content="Filter by ability, color, and GPS distance — see what each shop can run before you call." />
+<meta name="twitter:image" content="https://www.roofcoil.com/og-card.png" />
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"ItemList","name":"RoofCoil Supplier & Fabricator Directory","itemListElement":[
- {"@type":"ListItem","position":1,"item":{"@type":"LocalBusiness","name":"Fortified Sheet Metal","address":{"@type":"PostalAddress","streetAddress":"605 E Mulberry St","addressLocality":"Sherman","addressRegion":"TX","addressCountry":"US"}}},
- {"@type":"ListItem","position":2,"item":{"@type":"LocalBusiness","name":"Adax Metals","address":{"@type":"PostalAddress","streetAddress":"1901 B Mineral Wells Hwy","addressLocality":"Weatherford","addressRegion":"TX","addressCountry":"US"}}}
+{"@context":"https://schema.org","@type":"ItemList","name":"RoofCoil Supplier & Fabricator Directory","numberOfItems":2,"itemListElement":[
+ {"@type":"ListItem","position":1,"item":{"@type":"LocalBusiness","@id":"https://www.roofcoil.com/suppliers.html#fortified-sheet-metal","url":"https://www.roofcoil.com/suppliers.html#fortified-sheet-metal","name":"Fortified Sheet Metal","telephone":"+1-972-944-7963","address":{"@type":"PostalAddress","streetAddress":"605 E Mulberry St","addressLocality":"Sherman","addressRegion":"TX","addressCountry":"US"},"geo":{"@type":"GeoCoordinates","latitude":33.6357,"longitude":-96.6089},"areaServed":"North Texas and the Dallas–Fort Worth metro"}},
+ {"@type":"ListItem","position":2,"item":{"@type":"LocalBusiness","@id":"https://www.roofcoil.com/suppliers.html#adax-metals","url":"https://adaxmetals.com","name":"Adax Metals","telephone":"+1-817-382-2094","address":{"@type":"PostalAddress","streetAddress":"1901 B Mineral Wells Hwy","addressLocality":"Weatherford","addressRegion":"TX","addressCountry":"US"},"geo":{"@type":"GeoCoordinates","latitude":32.7593,"longitude":-97.7973},"areaServed":"Fort Worth and North Texas"}}
 ]}
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -155,7 +168,7 @@
 
 <div id="dir">
 
-<div class="co" data-name="Fortified Sheet Metal"
+<div class="co" id="fortified-sheet-metal" data-name="Fortified Sheet Metal"
      data-city="Sherman, TX" data-area="sherman plano texas tx north texas dfw dallas fort worth grayson collin mckinney frisco denison"
      data-lat="33.6357" data-lng="-96.6089"
      data-abilities="Coil &amp; flat sheet|Painted coil — PVDF / Kynar|Painted coil — SMP|Bare — Galvalume · G90 · bonderized|Copper|Snap-lock standing seam|Mechanical seam|Nail strip|Trapezoidal / structural|Flush wall &amp; soffit|Board &amp; batten|Trim &amp; flashing|3D parts — boxes · scuppers · caps|On-site roll forming"
@@ -169,7 +182,7 @@
   <p><b>Fabrication:</b> standing seam snap-lock (1-1/2"–1-3/4"), mechanical seam (1"–2", incl. ARMCO), 2" convertible snap/mech, nail strip (1"–1-1/2"), 2-1/2" trapezoidal, flush wall &amp; soffit, board &amp; batten, custom trim &amp; flashing, and 3D parts (collector boxes, scuppers, chimney caps). Portable machines — job-site runs available.</p>
 </div>
 
-<div class="co" data-name="Adax Metals"
+<div class="co" id="adax-metals" data-name="Adax Metals"
      data-city="Weatherford, TX" data-area="weatherford texas tx fort worth dallas dfw north texas parker county mineral wells aledo"
      data-lat="32.7593" data-lng="-97.7973"
      data-abilities="Coil &amp; flat sheet|Painted coil — PVDF / Kynar|Bare — Galvalume · G90 · bonderized|Snap-on cap seam|Snap-lock standing seam|Mechanical seam|Nail strip|Exposed fastener|Flush wall &amp; soffit|On-site roll forming"
@@ -213,28 +226,45 @@
 
 <script>
 const COLOR_HEX={"Regal White":"#E3E1DC","Almond":"#D9C9AE","Ash Gray":"#9C9088","Slate Gray":"#706A66","Burnished Slate":"#565B5E","Charcoal":"#55504C","Medium Bronze":"#4A3E36","Dark Bronze":"#3A322C","Matte Black":"#26262A","Evergreen":"#1F3D2E","Copper Metallic":"#A0602E","Galvalume":"#D8D6D0","Texas Silver":"#B0B4B7","Bare Copper":"#B87333","Bonderized":"#7E837F"};
+const SUPA="https://znueitseoqijhkkvdomc.supabase.co";
+const KEY="sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
 
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
-const cards=[...$$('#dir .co[data-name]')];
+let cards=[...$$('#dir .co[data-name]')];
 const dir=$('#dir');
 const state={me:null,geoAsked:false};
 
-// Color dropdown only offers colors a listed shop actually carries.
-const colorUnion=[...new Set(cards.flatMap(c=>c.dataset.colors?c.dataset.colors.split('|'):[]))];
-$('#s-color').innerHTML='<option value="">Any color</option>'+colorUnion.map(c=>`<option value="${c}">${c}</option>`).join('');
-
-// Per-card ability chips + color dots, rendered from the same data the filters use.
-cards.forEach(c=>{
+// Per-card ability chips + color dots, rendered from the same data the filters
+// use. Built with textContent (not innerHTML) because dynamic listings carry
+// applicant-submitted text.
+function decorate(c){
   const ab=document.createElement('div');ab.className='ab-row';
-  ab.innerHTML=c.dataset.abilities.split('|').map(a=>`<span class="abchip">${a}</span>`).join('');
+  c.dataset.abilities.split('|').filter(Boolean).forEach(a=>{
+    const s=document.createElement('span');s.className='abchip';s.textContent=a;ab.appendChild(s);
+  });
   c.appendChild(ab);
-  const cols=c.dataset.colors?c.dataset.colors.split('|'):[];
+  const cols=c.dataset.colors?c.dataset.colors.split('|').filter(Boolean):[];
   if(cols.length){
     const sw=document.createElement('div');sw.className='sw-row';
-    sw.innerHTML='<span class="lbl">'+cols.length+' colors</span>'+cols.map(n=>`<span class="dot" title="${n}" style="background:${COLOR_HEX[n]||'#999'}"></span>`).join('');
+    const lbl=document.createElement('span');lbl.className='lbl';lbl.textContent=cols.length+' colors';sw.appendChild(lbl);
+    cols.forEach(n=>{
+      const d=document.createElement('span');d.className='dot';d.title=n;d.style.background=COLOR_HEX[n]||'#8A94A6';sw.appendChild(d);
+    });
     c.appendChild(sw);
   }
-});
+}
+cards.forEach(decorate);
+
+// Color dropdown only offers colors a listed shop actually carries.
+function rebuildColorOptions(){
+  const sel=$('#s-color');const cur=sel.value;
+  const union=[...new Set(cards.flatMap(c=>c.dataset.colors?c.dataset.colors.split('|').filter(Boolean):[]))];
+  sel.innerHTML='';
+  const any=document.createElement('option');any.value='';any.textContent='Any color';sel.appendChild(any);
+  union.forEach(u=>{const o=document.createElement('option');o.value=u;o.textContent=u;sel.appendChild(o)});
+  if(union.includes(cur))sel.value=cur;
+}
+rebuildColorOptions();
 
 function toRad(d){return d*Math.PI/180}
 function miles(a,b){
@@ -242,7 +272,12 @@ function miles(a,b){
   const h=Math.sin(dLat/2)**2+Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLng/2)**2;
   return 2*R*Math.asin(Math.sqrt(h));
 }
-const cardMiles=c=>miles(state.me,{lat:+c.dataset.lat,lng:+c.dataset.lng});
+// Listings without coordinates sort last and never match a radius filter.
+const cardMiles=c=>{
+  const la=parseFloat(c.dataset.lat),ln=parseFloat(c.dataset.lng);
+  if(isNaN(la)||isNaN(ln))return Infinity;
+  return miles(state.me,{lat:la,lng:ln});
+};
 
 function requestGeo(){
   if(state.me||state.geoAsked||!navigator.geolocation)return;
@@ -270,7 +305,8 @@ function apply(){
     if(ok&&locq){ok=(c.dataset.city+' '+c.dataset.area).toLowerCase().includes(locq)}
     if(ok&&radius&&state.me){ok=cardMiles(c)<=radius}
     c.style.display=ok?'':'none';if(ok)shown++;
-    c.querySelector('.dist').textContent=state.me?' · ~'+Math.round(cardMiles(c))+' mi':'';
+    const mi=state.me?cardMiles(c):null;
+    c.querySelector('.dist').textContent=(mi!==null&&isFinite(mi))?' · ~'+Math.round(mi)+' mi':'';
   });
   if(state.me)[...cards].sort((a,b)=>cardMiles(a)-cardMiles(b)).forEach(c=>dir.appendChild(c));
   const any=wants.length||color||locq||radius;
@@ -303,6 +339,81 @@ if(ab)for(const s of ['#s-panel','#s-coil','#s-trim','#s-onsite']){
 if(qp.get('color')){const o=[...$('#s-color').options].find(o=>o.value.toLowerCase()===qp.get('color').toLowerCase());if(o)$('#s-color').value=o.value}
 if(qp.get('loc'))$('#loc-q').value=qp.get('loc');
 apply();
+
+// ── Live listings ────────────────────────────────────────────────────────────
+// Shops approved through Get Listed are published to the directory_listings
+// table (public read, live rows only) and rendered here alongside the built-in
+// cards. Everything is applicant-originated text, so the card is built with
+// textContent only — never innerHTML.
+function buildCard(l){
+  const c=document.createElement('div');c.className='co';
+  c.dataset.name=l.name;
+  c.dataset.city=l.city||'';
+  c.dataset.area=((l.city||'')+' '+(l.area_keywords||'')).toLowerCase();
+  if(l.lat!=null)c.dataset.lat=l.lat;
+  if(l.lng!=null)c.dataset.lng=l.lng;
+  c.dataset.abilities=(l.abilities||[]).join('|');
+  c.dataset.colors=(l.colors||[]).join('|');
+  const head=document.createElement('div');head.className='co-head';
+  const h2=document.createElement('h2');h2.textContent=l.name;head.appendChild(h2);
+  const badges=l.badges||[];
+  if(badges.includes('coil')){const s=document.createElement('span');s.className='cobadge coil';s.textContent='Coil & Flats';head.appendChild(s)}
+  if(badges.includes('fab')){const s=document.createElement('span');s.className='cobadge fab';s.textContent='Fabrication';head.appendChild(s)}
+  const loc=document.createElement('span');loc.className='loc';
+  loc.textContent=[l.address,l.city].filter(Boolean).join(' · ');
+  const dist=document.createElement('span');dist.className='dist';loc.appendChild(dist);
+  head.appendChild(loc);c.appendChild(head);
+  const para=(label,txt)=>{
+    if(!txt)return;
+    const p=document.createElement('p');
+    const b=document.createElement('b');b.textContent=label+': ';
+    p.appendChild(b);p.appendChild(document.createTextNode(txt));c.appendChild(p);
+  };
+  para('Coil line',l.coil_desc);
+  para('Fabrication',l.fab_desc);
+  const contactBits=[];
+  if(l.website){
+    let raw=l.website.trim();
+    if(!/^https?:\/\//i.test(raw))raw='https://'+raw;
+    try{
+      const u=new URL(raw);
+      if(u.protocol==='https:'||u.protocol==='http:'){
+        const a=document.createElement('a');a.href=u.href;a.target='_blank';a.rel='noopener nofollow';
+        a.textContent=u.hostname.replace(/^www\./,'');
+        a.style.cssText='color:var(--copper);font-weight:600;text-decoration:none';
+        contactBits.push(a);
+      }
+    }catch(e){/* not a real URL — drop it */}
+  }
+  if(l.phone)contactBits.push(document.createTextNode(l.phone));
+  if(contactBits.length){
+    const p=document.createElement('p');
+    contactBits.forEach((n,i)=>{if(i)p.appendChild(document.createTextNode(' · '));p.appendChild(n)});
+    c.appendChild(p);
+  }
+  decorate(c);
+  return c;
+}
+(async()=>{
+  try{
+    const r=await fetch(SUPA+"/rest/v1/directory_listings?select=name,badges,address,city,area_keywords,lat,lng,abilities,colors,coil_desc,fab_desc,website,phone&status=eq.live&order=name.asc",{headers:{apikey:KEY}});
+    if(!r.ok)return;
+    const rows=await r.json();
+    const have=new Set(cards.map(c=>c.dataset.name.toLowerCase()));
+    let added=false;
+    for(const l of rows){
+      if(!l||!l.name||have.has(l.name.toLowerCase()))continue;
+      have.add(l.name.toLowerCase());
+      dir.appendChild(buildCard(l));
+      added=true;
+    }
+    if(added){
+      cards=[...$$('#dir .co[data-name]')];
+      rebuildColorOptions();
+      apply();
+    }
+  }catch(e){/* offline or table unreachable — the built-in listings still work */}
+})();
 </script>
 </body>
 </html>
