@@ -227,8 +227,8 @@
     <span class="cobadge coil">Supply Materials</span><span class="cobadge fab">Fabrication</span>
     <span class="loc">605 E Mulberry · Sherman, TX<span class="dist"></span></span>
   </div>
-  <p><b>Coil line:</b> Fortified Metal painted coil (PVDF &amp; 40-yr SMP) plus bare G90, Galvalume, Bonderized, and copper — slit coil and flat sheet cut to size. Also stocks and runs coil from the other listed brands.</p>
-  <p><b>Fabrication:</b> standing seam snap-lock (1-1/2"–1-3/4"), mechanical seam (1"–2", incl. ARMCO), 2" convertible snap/mech, nail strip (1"–1-1/2"), flush wall &amp; soffit, custom trim &amp; flashing, and 3D parts (collector boxes, scuppers, chimney caps). Portable machines — job-site runs available.</p>
+  <p><b>Coil line:</b> Fortified Metal's own painted line (PVDF &amp; 40-yr SMP) plus stocked brand coil — slit coil and flat sheet cut to size.</p>
+  <p><b>Fabrication:</b> full fab shop — panels, custom trim &amp; flashing, and 3D parts, with portable machines for job-site runs.</p>
   <p><a href="https://fortifiedmetals.com" target="_blank" rel="noopener" style="color:var(--copper);font-weight:600;text-decoration:none">fortifiedmetals.com</a> · 972-996-7221</p>
 </div>
 
@@ -243,8 +243,8 @@
     <span class="cobadge coil">Supply Materials</span><span class="cobadge fab">Fabrication</span>
     <span class="loc">1901 B Mineral Wells Hwy · Weatherford, TX<span class="dist"></span></span>
   </div>
-  <p><b>Coil line:</b> painted coil in Sherwin-Williams PVDF (Kynar-class) and SMP systems, PaintGrip, slit coil and flat sheet — 38+ published colors across both finishes.</p>
-  <p><b>Fabrication:</b> licensed Ultra Seam systems — snap-on cap seam (1", curvable), Lok-Seam snap-lock (1-1/2"–1-3/4"), mechanical seam (1-1/2"–2", curved &amp; clip-offset options), 2" seam with snap-on batten, nail strip (1"–1-1/2"), flush wall &amp; soffit, plus exposed fastener panels. On-site roll forming for extra-long runs.</p>
+  <p><b>Coil line:</b> Sherwin-Williams PVDF (Kynar-class) and SMP painted coil, PaintGrip, slit coil and flat sheet — 38+ published colors.</p>
+  <p><b>Fabrication:</b> licensed Ultra Seam systems with curved and clip-offset options — on-site roll forming for extra-long runs.</p>
   <p><a href="https://adaxmetals.com" target="_blank" rel="noopener nofollow" style="color:var(--copper);font-weight:600;text-decoration:none">adaxmetals.com</a> · 817-382-2094</p>
 </div>
 
@@ -451,7 +451,11 @@ function buildCard(l){
       }
     }catch(e){/* not a real URL — drop it */}
   }
-  if(l.phone)contactBits.push(document.createTextNode(l.phone));
+  if(l.phone){
+    // raw digit strings from the intake form display as 352-390-3454
+    const d=String(l.phone).replace(/\D/g,'');
+    contactBits.push(document.createTextNode(d.length===10?d.slice(0,3)+'-'+d.slice(3,6)+'-'+d.slice(6):String(l.phone)));
+  }
   if(contactBits.length){
     const p=document.createElement('p');
     contactBits.forEach((n,i)=>{if(i)p.appendChild(document.createTextNode(' · '));p.appendChild(n)});
