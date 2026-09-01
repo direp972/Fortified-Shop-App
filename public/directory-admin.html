@@ -102,7 +102,7 @@
 <script>
 const SUPA="https://znueitseoqijhkkvdomc.supabase.co";
 const KEY="sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
-const ABILITIES=["Coil & flat sheet","Painted coil — PVDF / Kynar","Painted coil — SMP","Bare — Galvalume · G90 · bonderized","Copper","Snap-lock standing seam","Mechanical seam","Nail strip","Snap-on cap seam","Trapezoidal / structural","Exposed fastener","Flush wall & soffit","Board & batten","Trim & flashing","3D parts — boxes · scuppers · caps","On-site roll forming"];
+const ABILITIES=["Coil & flat sheet","Painted coil — PVDF / Kynar","Painted coil — SMP","Bare — Galvalume · G90 · bonderized","Copper","1″ mechanical lock","1.5″ / 1.75″ snap-lock","1.5″ mechanical lock (single/double)","2″ mechanical lock","1″ / 1.5″ nail strip","T-panel (138T / 238T)","Batten seam","2.5″ trapezoidal","3″ trapezoidal structural","Exposed fastener","Flush wall & soffit","Board & batten","Trim & flashing","3D parts — boxes · scuppers · caps","On-site roll forming"];
 const STOCK_COLORS=["Regal White","Almond","Ash Gray","Slate Gray","Burnished Slate","Charcoal","Medium Bronze","Dark Bronze","Matte Black","Evergreen","Copper Metallic","Galvalume","Texas Silver","Bare Copper","Bonderized"];
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
 let token=null, editingId=null, apps=[], listings=[];
@@ -207,7 +207,7 @@ function prefillFromApp(a){
   $('#e-area').value=((firstPlant+' '+(d.service_area||'')).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim());
   $('#e-lat').value='';$('#e-lng').value='';
   const hasCoil=abil.some(x=>/coil|flat sheet|copper/i.test(x));
-  const hasFab=abil.some(x=>/seam|strip|trim|batten|soffit|fastener|3d|roll forming|trapezoidal/i.test(x));
+  const hasFab=abil.some(x=>/seam|lock|strip|panel|trim|batten|soffit|fastener|3d|roll forming|trapezoidal/i.test(x));
   $('#e-bcoil').classList.toggle('sel',hasCoil);
   $('#e-bfab').classList.toggle('sel',hasFab);
   $('#e-coildesc').value='';$('#e-fabdesc').value='';
