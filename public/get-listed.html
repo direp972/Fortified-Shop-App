@@ -101,13 +101,20 @@
       <div class="fld"><label>Other colors (comma separated)</label><input id="f-morecolors" placeholder="Slate Blue, Weathered Zinc…"></div>
     </div>
 
-    <div class="step"><h3><span class="sn">6</span>Your color chart</h3>
-      <div class="fld"><label>Upload your color chart (PDF or image, up to 10 MB)</label>
+    <div class="step"><h3><span class="sn">6</span>Color chart &amp; sales book</h3>
+      <div class="fld"><label>Do you have a color chart? Upload it (PDF or image, up to 10 MB)</label>
         <div class="filebox" id="f-filebox">
           <b id="f-filelabel">Tap to choose a file</b>
           <small id="f-filehint">PDF · PNG · JPG — your published color chart</small>
         </div>
         <input type="file" id="f-file" accept="application/pdf,image/png,image/jpeg,image/webp,image/gif" style="display:none">
+      </div>
+      <div class="fld"><label>Do you have a sales book / line card? Upload that too (PDF or image, up to 10 MB)</label>
+        <div class="filebox" id="f-bookbox">
+          <b id="f-booklabel">Tap to choose a file</b>
+          <small id="f-bookhint">PDF · PNG · JPG — your sales book or line card</small>
+        </div>
+        <input type="file" id="f-bookfile" accept="application/pdf,image/png,image/jpeg,image/webp,image/gif" style="display:none">
       </div>
       <div class="fld"><label>Anything else we should know?</label><textarea id="f-notes" rows="2" placeholder="Finishes, lead times, delivery radius, minimums…"></textarea></div>
     </div>
@@ -158,6 +165,7 @@ const ABILITIES=[
   "2.5″ trapezoidal","3″ trapezoidal structural",
   "Exposed fastener","Flush wall & soffit","Board & batten",
   "Trim & flashing","3D parts — boxes · scuppers · caps","On-site roll forming",
+  "On-site gutter roll forming",
 ];
 const GUTTER_PROFILES=["5″ K-style gutter","6″ K-style gutter","7″ K-style gutter","5″ half-round gutter","6″ half-round gutter","6″ box gutter","7″ box gutter","8″ box gutter","6″ euro box gutter","Fascia gutter","Straight-face / square gutter"];
 const GUTTER_MATERIALS=["Gutter — .027 aluminum","Gutter — .032 aluminum","Gutter — 26 ga painted steel","Gutter — 24 ga painted steel","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
@@ -183,18 +191,34 @@ document.addEventListener("rc:auth",e=>{
 });
 $$("#f-types .seg, #f-gutters .seg, #f-gutmats .seg, #f-gauges .seg, #f-colors .seg").forEach(b=>b.onclick=()=>b.classList.toggle("sel"));
 
-let file=null;
-$("#f-filebox").onclick=()=>$("#f-file").click();
-$("#f-file").onchange=e=>{
-  hideErr();
-  const f=e.target.files[0];
-  if(!f)return;
-  if(f.size>10485760){showErr("That file is over 10 MB — export a smaller PDF or image and try again.");e.target.value="";return}
-  file=f;
-  $("#f-filebox").classList.add("has");
-  $("#f-filelabel").textContent=f.name;
-  $("#f-filehint").textContent=(f.size/1048576).toFixed(1)+" MB — tap to change";
-};
+// Two independent uploads: a color chart and a sales book / line card.
+const uploads={chart:null,book:null};
+function wireUpload(kind,boxId,fileId,labelId,hintId){
+  $("#"+boxId).onclick=()=>$("#"+fileId).click();
+  $("#"+fileId).onchange=e=>{
+    hideErr();
+    const f=e.target.files[0];
+    if(!f)return;
+    if(f.size>10485760){showErr("That file is over 10 MB — export a smaller PDF or image and try again.");e.target.value="";return}
+    uploads[kind]=f;
+    $("#"+boxId).classList.add("has");
+    $("#"+labelId).textContent=f.name;
+    $("#"+hintId).textContent=(f.size/1048576).toFixed(1)+" MB — tap to change";
+  };
+}
+wireUpload("chart","f-filebox","f-file","f-filelabel","f-filehint");
+wireUpload("book","f-bookbox","f-bookfile","f-booklabel","f-bookhint");
+async function uploadToBucket(f,prefix,co){
+  const safe=co.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,40)||prefix;
+  const ext=(f.name.split(".").pop()||"pdf").toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,5);
+  const path=prefix+"-"+Date.now()+"-"+safe+"."+ext;
+  const up=await fetch(SUPA+"/storage/v1/object/mfr-colorcharts/"+path,{
+    method:"POST",
+    headers:{"apikey":KEY,"Authorization":"Bearer "+KEY,"Content-Type":f.type||"application/octet-stream"},
+    body:f});
+  if(!up.ok)throw new Error(prefix+" upload failed ("+up.status+")");
+  return SUPA+"/storage/v1/object/public/mfr-colorcharts/"+path;
+}
 function showErr(m){const e=$("#f-err");e.textContent=m;e.style.display="block";e.scrollIntoView({block:"center"})}
 function hideErr(){$("#f-err").style.display="none"}
 
@@ -217,25 +241,15 @@ $("#f-go").onclick=async()=>{
   if((gutters.length>0||extraGutters.length>0)&&gutmats.length===0){showErr("You picked gutter profiles — tap at least one gutter material so contractors can filter by it.");return}
   const btn=$("#f-go");btn.disabled=true;btn.textContent="Sending…";
   try{
-    let chartUrl="";
-    if(file){
-      const safe=co.toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,"").slice(0,40)||"chart";
-      const ext=(file.name.split(".").pop()||"pdf").toLowerCase().replace(/[^a-z0-9]/g,"").slice(0,5);
-      const path=Date.now()+"-"+safe+"."+ext;
-      const up=await fetch(SUPA+"/storage/v1/object/mfr-colorcharts/"+path,{
-        method:"POST",
-        headers:{"apikey":KEY,"Authorization":"Bearer "+KEY,"Content-Type":file.type||"application/octet-stream"},
-        body:file});
-      if(!up.ok)throw new Error("color chart upload failed ("+up.status+")");
-      chartUrl=SUPA+"/storage/v1/object/public/mfr-colorcharts/"+path;
-    }
+    const chartUrl=uploads.chart?await uploadToBucket(uploads.chart,"chart",co):"";
+    const bookUrl=uploads.book?await uploadToBucket(uploads.book,"salesbook",co):"";
     const ins=await fetch(SUPA+"/rest/v1/manufacturer_applications",{
       method:"POST",
       headers:{"Content-Type":"application/json","apikey":KEY,"Prefer":"return=minimal"},
       body:JSON.stringify({
         company:co,contact_name:name,phone:$("#f-ph").value.trim(),email:em,
         website:$("#f-web").value.trim(),plants:$("#f-plants").value.trim(),
-        panel_types:allAbilities,gauges:gauges,notes:$("#f-notes").value.trim(),colorchart_url:chartUrl,
+        panel_types:allAbilities,gauges:gauges,notes:$("#f-notes").value.trim(),colorchart_url:chartUrl,salesbook_url:bookUrl,
         // structured details drive the directory listing a staff member builds from this
         details:{
           abilities:allAbilities,

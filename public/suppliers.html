@@ -49,6 +49,9 @@
 .gpsbtn{flex:none;font-size:16px;padding:0 13px;border-radius:10px;border:1.5px solid rgba(255,255,255,.25);background:rgba(255,255,255,.07);color:#fff;cursor:pointer;transition:border-color .15s}
 .gpsbtn:hover{border-color:var(--gold)}
 .gpsbtn.set{background:linear-gradient(180deg,var(--gold-soft),var(--gold));border-color:var(--gold)}
+.gutask{font-size:12.5px;color:#C7D6E2;margin:14px 0 0;line-height:1.55}
+.gutask a{color:var(--gold);font-weight:600;text-decoration:none}
+.gutask a:hover{text-decoration:underline}
 .fstatus{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,.12)}
 .fstatus .rc{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--gold)}
 .fstatus .gnote{font-size:12px;color:#C7D6E2}
@@ -169,7 +172,8 @@
     <div class="fsel"><label>On-site roll forming</label>
       <select id="s-onsite">
         <option value="">Either way</option>
-        <option value="On-site roll forming">Required — roll at the job</option>
+        <option value="On-site roll forming">Panels — roll at the job</option>
+        <option value="On-site gutter roll forming">Gutters — roll at the job</option>
       </select>
     </div>
     <div class="fsel"><label>Color</label>
@@ -191,6 +195,7 @@
       </div>
     </div>
   </div>
+  <p class="gutask">Can't find an exotic gutter profile you need roll formed? Email <a href="mailto:orders@roofcoil.com">orders@roofcoil.com</a> — we'll track down a shop with the machine for it.</p>
   <div class="fstatus">
     <span class="rc" id="rcount"></span>
     <span class="gnote" id="gnote"></span>
