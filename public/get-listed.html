@@ -116,6 +116,13 @@
     </div>
 
     <div class="step"><h3><span class="sn">6</span>Color chart, sales book &amp; job photos</h3>
+      <div class="fld"><label>Your logo (PNG or JPG) — shown beside your name on the listing</label>
+        <div class="filebox" id="f-logobox">
+          <b id="f-logolabel">Tap to choose a file</b>
+          <small id="f-logohint">Square works best — instant brand recognition on your card</small>
+        </div>
+        <input type="file" id="f-logofile" accept="image/png,image/jpeg,image/webp" style="display:none">
+      </div>
       <div class="fld"><label>Do you have a color chart? Upload it (PDF or image, up to 10 MB)</label>
         <div class="filebox" id="f-filebox">
           <b id="f-filelabel">Tap to choose a file</b>
@@ -223,7 +230,7 @@ document.addEventListener("rc:auth",e=>{
 $$("#f-types .seg, #f-gutters .seg, #f-gutmats .seg, #f-gauges .seg, #f-colors .seg, #f-brands .seg").forEach(b=>b.onclick=()=>b.classList.toggle("sel"));
 
 // Two independent uploads: a color chart and a sales book / line card.
-const uploads={chart:null,book:null};
+const uploads={chart:null,book:null,logo:null};
 function wireUpload(kind,boxId,fileId,labelId,hintId){
   $("#"+boxId).onclick=()=>$("#"+fileId).click();
   $("#"+fileId).onchange=e=>{
@@ -239,6 +246,7 @@ function wireUpload(kind,boxId,fileId,labelId,hintId){
 }
 wireUpload("chart","f-filebox","f-file","f-filelabel","f-filehint");
 wireUpload("book","f-bookbox","f-bookfile","f-booklabel","f-bookhint");
+wireUpload("logo","f-logobox","f-logofile","f-logolabel","f-logohint");
 // job photos: multi-select, up to 6, each photo goes to the listing after review
 let jobPhotos=[];
 $("#f-photobox").onclick=()=>$("#f-photos").click();
@@ -295,6 +303,7 @@ $("#f-go").onclick=async()=>{
     const bookUrl=uploads.book?await uploadToBucket(uploads.book,"salesbook",co):"";
     const photoUrls=[];
     for(const f of jobPhotos){photoUrls.push(await uploadToBucket(f,"jobphoto",co))}
+    const logoUrl=uploads.logo?await uploadToBucket(uploads.logo,"logo",co):"";
     const ins=await fetch(SUPA+"/rest/v1/manufacturer_applications",{
       method:"POST",
       headers:{"Content-Type":"application/json","apikey":KEY,"Prefer":"return=minimal"},
@@ -312,6 +321,7 @@ $("#f-go").onclick=async()=>{
           brands:stockBrandsOn?[...$$("#f-brands .seg.sel")].map(b=>b.dataset.v):[],
           extra_brands:stockBrandsOn?$("#f-morebrands").value.trim():"",
           job_photos:photoUrls,
+          logo_url:logoUrl,
           service_area:$("#f-area").value.trim(),
         },
       })});

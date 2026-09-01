@@ -95,6 +95,12 @@
         <div class="fld"><label>Website</label><input id="e-website" placeholder="https://"></div>
         <div class="fld"><label>Phone (public)</label><input id="e-phone"></div>
       </div>
+      <div class="fld"><label>Logo URL — shown beside the name on the listing</label><input id="e-logo"></div>
+      <div class="row" style="display:flex;gap:8px;margin:-4px 0 12px;flex-wrap:wrap">
+        <button class="mini gold" id="e-scrape">Scrape their website — prefill abilities, logo &amp; description</button>
+        <button class="mini" id="e-findlogo">Just grab the site icon</button>
+        <span class="okline" id="scrape-note" style="margin:0;align-self:center"></span>
+      </div>
       <div class="fld"><label>Color chart URL</label><input id="e-chart"></div>
       <div class="fld"><label>Job photos — applicant uploads land here for approval; every URL you leave in this box shows on the live listing (one per line)</label><textarea id="e-photos" rows="2"></textarea></div>
       <button class="btn" style="width:100%" id="e-save">Save listing</button>
@@ -251,10 +257,84 @@ function prefillFromApp(a){
   $('#e-phone').value=a.phone||'';
   $('#e-chart').value=safeUrl(a.colorchart_url,true)||'';
   $('#e-photos').value=(d.job_photos||[]).map(u=>safeUrl(u,true)).filter(Boolean).join('\n');
+  $('#e-logo').value=safeUrl(d.logo_url,true)||'';
+  $('#scrape-note').textContent='';
   $('#e-save').dataset.appId=a.id;
   $('#save-note').textContent='';
   $('#editor').scrollIntoView({behavior:'smooth',block:'start'});
 }
+
+/* ── website scraping (staff-only edge function) ───────────────────────── */
+// Keyword-match scraped site text against the directory taxonomy. Chips are
+// only ever toggled ON — staff prune what doesn't belong before publishing.
+function extractAbilities(t){
+  const has=re=>re.test(t);
+  const out=[];
+  if(has(/slit coil|flat sheet|coil.{0,30}sheet/i))out.push("Coil & flat sheet");
+  if(has(/pvdf|kynar/i))out.push("Painted coil — PVDF / Kynar");
+  if(has(/\bsmp\b|silicon(ized)? polyester/i))out.push("Painted coil — SMP");
+  if(has(/galvalume|g-?90|bonderized|paint[- ]?grip/i))out.push("Bare — Galvalume · G90 · bonderized");
+  if(has(/\bcopper\b/i))out.push("Copper");
+  if(has(/snap[- ]?lock/i)){out.push("1.5″ snap-lock");if(has(/1[.-]?3\/4|1\.75/))out.push("1.75″ snap-lock")}
+  if(has(/mechanical[- ]?(seam|lock)|double[- ]?lock/i)){out.push("1.5″ mechanical lock (double)");if(has(/2["″ ]|2[- ]?inch/i))out.push("2″ mechanical lock")}
+  if(has(/nail[- ]?strip|fastener flange/i))out.push("1″ nail strip");
+  if(has(/138t/i))out.push("T-panel (138T)");
+  if(has(/238t/i))out.push("T-panel (238T)");
+  if(has(/batten seam|cap seam|snap[- ]?on (cap|batten)/i))out.push("Batten seam");
+  if(has(/trapezoidal/i))out.push("2.5″ trapezoidal");
+  if(has(/exposed fastener|r[- ]?panel|\bpbr\b|ag[- ]?panel|corrugated|tuff[- ]?rib|screw[- ]?down/i))out.push("Exposed fastener");
+  if(has(/flush wall|soffit/i))out.push("Flush wall & soffit");
+  if(has(/board (and|&) batten/i))out.push("Board & batten");
+  if(has(/\btrim\b|flashing/i))out.push("Trim & flashing");
+  if(has(/collector box|scupper|chimney cap/i))out.push("3D parts — boxes · scuppers · caps");
+  if(has(/roll[- ]?form/i)&&has(/on[- ]?site|job[- ]?site|portable/i))out.push("On-site roll forming");
+  if(/gutter/i.test(t)){
+    if(has(/5["″ ]?(inch)?[- ]?k[- ]?style/i))out.push("5″ K-style gutter");
+    if(has(/6["″ ]?(inch)?[- ]?k[- ]?style|seamless gutter/i))out.push("6″ K-style gutter");
+    if(has(/7["″ ]?(inch)?[- ]?k[- ]?style/i))out.push("7″ K-style gutter");
+    if(has(/half[- ]?round/i))out.push("6″ half-round gutter");
+    if(has(/box gutter/i))out.push("6″ box gutter");
+    if(has(/fascia gutter/i))out.push("Fascia gutter");
+    if(has(/roll[- ]?form/i)&&has(/on[- ]?site|job[- ]?site|portable/i))out.push("On-site gutter roll forming");
+  }
+  return out;
+}
+$('#e-findlogo').onclick=()=>{
+  const note=$('#scrape-note');note.classList.remove('errline');
+  const site=safeUrl($('#e-website').value.trim());
+  if(!site){note.textContent='Enter their website first.';note.classList.add('errline');return}
+  $('#e-logo').value='https://www.google.com/s2/favicons?domain='+new URL(site).hostname+'&sz=128';
+  note.textContent='✓ Site icon set as the logo — replace it if they upload a better one.';
+};
+$('#e-scrape').onclick=async()=>{
+  const note=$('#scrape-note');note.classList.remove('errline');
+  const site=safeUrl($('#e-website').value.trim());
+  if(!site){note.textContent='Enter their website first.';note.classList.add('errline');return}
+  note.textContent='Reading their site…';
+  try{
+    const r=await fetch(SUPA+'/functions/v1/scrape-site',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','apikey':KEY,'Authorization':'Bearer '+token},
+      body:JSON.stringify({url:site})});
+    const j=await r.json();
+    if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
+    const found=extractAbilities(j.text+' '+j.title+' '+j.description);
+    let toggled=0;
+    found.forEach(v=>{
+      const b=[...$$('#e-abilities .seg, #e-gutters .seg, #e-gutmats .seg')].find(x=>x.dataset.v===v);
+      if(b&&!b.classList.contains('sel')){b.classList.add('sel');toggled++}
+    });
+    const foundColors=STOCK_COLORS.filter(c=>j.text.toLowerCase().includes(c.toLowerCase()));
+    let colorsOn=0;
+    foundColors.forEach(v=>{
+      const b=[...$$('#e-colors .seg')].find(x=>x.dataset.v===v);
+      if(b&&!b.classList.contains('sel')){b.classList.add('sel');colorsOn++}
+    });
+    if(!$('#e-logo').value&&j.icons&&j.icons.length){const iu=safeUrl(j.icons[0]);if(iu)$('#e-logo').value=iu}
+    if(!$('#e-coildesc').value&&j.description)$('#e-coildesc').value=j.description.slice(0,220);
+    note.textContent='✓ Scraped — turned on '+toggled+' abilities and '+colorsOn+' colors'+(j.icons&&j.icons.length?', found a logo':'')+'. Review every chip before publishing.';
+  }catch(x){note.textContent='Scrape failed: '+x.message;note.classList.add('errline')}
+};
 
 /* ── geocoding (city → lat/lng, one polite request) ────────────────────── */
 $('#e-geocode').onclick=async()=>{
@@ -303,6 +383,9 @@ $('#e-save').onclick=async()=>{
   const chart=$('#e-chart').value.trim();
   const chartClean=chart?safeUrl(chart):'';
   if(chart&&!chartClean){note.textContent='Color chart URL must be a normal http(s) address.';note.classList.add('errline');return}
+  const logoRaw=$('#e-logo').value.trim();
+  const logoClean=logoRaw?safeUrl(logoRaw):'';
+  if(logoRaw&&!logoClean){note.textContent='Logo URL must be a normal http(s) address.';note.classList.add('errline');return}
   const photoLines=$('#e-photos').value.split('\n').map(s=>s.trim()).filter(Boolean);
   const photosClean=photoLines.map(u=>safeUrl(u)).filter(Boolean);
   if(photosClean.length!==photoLines.length){note.textContent='One of the photo URLs isn\'t a normal http(s) address — fix or remove it.';note.classList.add('errline');return}
@@ -315,6 +398,7 @@ $('#e-save').onclick=async()=>{
     website:websiteClean||'',phone:$('#e-phone').value.trim(),
     colorchart_url:chartClean||'',
     photos:photosClean,
+    logo_url:logoClean||'',
     updated_at:new Date().toISOString(),
   };
   if(!editingId&&$('#e-save').dataset.appId)body.application_id=$('#e-save').dataset.appId;
@@ -359,6 +443,8 @@ async function loadListings(){
       $('#e-coildesc').value=l.coil_desc||'';$('#e-fabdesc').value=l.fab_desc||'';
       $('#e-website').value=l.website||'';$('#e-phone').value=l.phone||'';$('#e-chart').value=l.colorchart_url||'';
       $('#e-photos').value=(l.photos||[]).join('\n');
+      $('#e-logo').value=l.logo_url||'';
+      $('#scrape-note').textContent='';
       delete $('#e-save').dataset.appId;
       $('#save-note').textContent='';
       $('#editor').scrollIntoView({behavior:'smooth',block:'start'});
