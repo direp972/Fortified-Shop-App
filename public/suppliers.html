@@ -421,6 +421,24 @@ function buildCard(l){
       }
     }catch(e){/* not a real URL — drop it */}
   }
+  if(l.gmaps_url){
+    // "Directions" only ever points at a real Google Maps host — anything else
+    // that slipped into the row is dropped rather than rendered
+    try{
+      const u=new URL(l.gmaps_url);const h=u.hostname.toLowerCase();
+      const isMaps=h==='maps.app.goo.gl'||h==='g.page'
+        ||(h==='maps.google.com'&&(u.pathname==='/'||u.pathname.startsWith('/maps')))
+        ||((h==='google.com'||h==='www.google.com')&&u.pathname.startsWith('/maps'))
+        ||(h==='goo.gl'&&u.pathname.startsWith('/maps'))
+        ||(h==='g.co'&&u.pathname.startsWith('/kgs'));
+      if((u.protocol==='https:'||u.protocol==='http:')&&isMaps){
+        const a=document.createElement('a');a.href=u.href;a.target='_blank';a.rel='noopener nofollow';
+        a.textContent='Directions';
+        a.style.cssText='color:var(--copper);font-weight:600;text-decoration:none';
+        contactBits.push(a);
+      }
+    }catch(e){/* not a real URL — skip directions */}
+  }
   if(l.phone){
     // raw digit strings from the intake form display as 352-390-3454
     const d=String(l.phone).replace(/\D/g,'');
@@ -449,7 +467,7 @@ function buildCard(l){
 }
 (async()=>{
   try{
-    const r=await fetch(SUPA+"/rest/v1/directory_listings?select=name,badges,address,city,area_keywords,lat,lng,abilities,colors,coil_desc,fab_desc,website,phone,photos,logo_url,logo_bg,licensed_states,featured&status=eq.live&order=featured.desc,name.asc",{headers:{apikey:KEY}});
+    const r=await fetch(SUPA+"/rest/v1/directory_listings?select=name,badges,address,city,area_keywords,lat,lng,abilities,colors,coil_desc,fab_desc,website,phone,photos,logo_url,logo_bg,licensed_states,featured,gmaps_url&status=eq.live&order=featured.desc,name.asc",{headers:{apikey:KEY}});
     if(!r.ok)return;
     const rows=await r.json();
     const have=new Set(cards.map(c=>c.dataset.name.toLowerCase()));

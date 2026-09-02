@@ -72,6 +72,7 @@
     <div class="step"><h3><span class="sn">2</span>Plant locations &amp; service area</h3>
       <div class="fld"><label>One per line — City, State</label><textarea id="f-plants" rows="3" placeholder="Sherman, TX&#10;Tulsa, OK"></textarea></div>
       <div class="fld"><label>Service area — how far you sell or deliver</label><input id="f-area" placeholder="DFW metro · 150 mile radius · statewide…"></div>
+      <div class="fld"><label>Your Google Maps / Business Profile link — helps us verify your shop and publish you faster</label><input id="f-gmaps" inputmode="url" placeholder="https://maps.app.goo.gl/…"></div>
     </div>
 
     <div class="step"><h3><span class="sn">3</span>What can you run?</h3>
@@ -329,6 +330,7 @@ $("#f-go").onclick=async()=>{
           job_photos:photoUrls,
           logo_url:logoUrl,
           service_area:$("#f-area").value.trim(),
+          gmaps_url:$("#f-gmaps").value.trim(),
           licensed_states:$("#f-lic").value.trim(),
         },
       })});

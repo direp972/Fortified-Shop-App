@@ -82,11 +82,12 @@
         <div class="fld"><label>City, State (shown + searched)</label><input id="e-city" placeholder="Sherman, TX"></div>
       </div>
       <div class="fld"><label>Area keywords — every word location search can match</label><input id="e-area" placeholder="sherman texas tx north texas dfw dallas…"></div>
+      <div class="fld"><label>Google Maps link — their Business Profile; verifies the shop and gives contractors a Directions link</label><input id="e-gmaps" placeholder="https://maps.app.goo.gl/…"></div>
       <div class="frow">
         <div class="fld"><label>Latitude</label><input id="e-lat" inputmode="decimal"></div>
         <div class="fld"><label>Longitude</label><input id="e-lng" inputmode="decimal"></div>
       </div>
-      <div class="row" style="display:flex;gap:8px;margin:-4px 0 12px"><button class="mini" id="e-geocode">Geocode from City, State</button><span class="okline" id="geo-note" style="margin:0;align-self:center"></span></div>
+      <div class="row" style="display:flex;gap:8px;margin:-4px 0 12px;flex-wrap:wrap"><button class="mini gold" id="e-pin">Pull pin from Maps link</button><button class="mini" id="e-geocode">Geocode from City, State</button><span class="okline" id="geo-note" style="margin:0;align-self:center"></span></div>
       <div class="fld"><label>Abilities — the search facets *</label><div class="chipgrid" id="e-abilities"></div></div>
       <div class="fld"><label>Gutter profiles they roll</label><div class="chipgrid" id="e-gutters"></div></div>
       <div class="fld"><label>Gutter materials</label><div class="chipgrid" id="e-gutmats"></div></div>
@@ -137,6 +138,23 @@ function safeUrl(raw,requireBucket){
     if(u.protocol!=='https:'&&u.protocol!=='http:')return null;
     if(requireBucket&&!u.href.startsWith(SUPA+'/storage/v1/object/public/mfr-colorcharts/'))return null;
     return u.href;
+  }catch(e){return null}
+}
+
+// Google Maps links get a tighter gate: only real Maps hosts become clickable,
+// so an applicant can't dress an arbitrary site up as their "Maps listing".
+function mapsUrl(raw){
+  const s=safeUrl(raw);if(!s)return null;
+  try{
+    const u=new URL(s);const h=u.hostname.toLowerCase();
+    if(h==='maps.app.goo.gl'||h==='g.page')return u.href;
+    // path-restricted even on maps.google.com — that host also serves Google's
+    // /url open redirector, which would launder any site through this gate
+    if(h==='maps.google.com'&&(u.pathname==='/'||u.pathname.startsWith('/maps')))return u.href;
+    if((h==='google.com'||h==='www.google.com')&&u.pathname.startsWith('/maps'))return u.href;
+    if(h==='goo.gl'&&u.pathname.startsWith('/maps'))return u.href;
+    if(h==='g.co'&&u.pathname.startsWith('/kgs'))return u.href;
+    return null;
   }catch(e){return null}
 }
 
@@ -210,6 +228,16 @@ async function loadApps(){
       const warn2=document.createElement('div');warn2.className='meta';
       warn2.textContent='⚠ sales book link rejected (not an application upload): '+a.salesbook_url;card.appendChild(warn2);
     }
+    const gm=mapsUrl(d.gmaps_url);
+    if(gm){
+      const mlink=document.createElement('a');mlink.href=gm;mlink.target='_blank';mlink.rel='noopener';
+      mlink.textContent='Google Maps listing ↗ — cross-check name · address · phone';
+      mlink.style.cssText='display:inline-block;font-size:12px;color:var(--copper);font-weight:600;margin:6px 12px 0 0';
+      card.appendChild(mlink);
+    }else if(d.gmaps_url){
+      const warn3=document.createElement('div');warn3.className='meta';
+      warn3.textContent='⚠ Maps link rejected (not a Google Maps address): '+d.gmaps_url;card.appendChild(warn3);
+    }
     const photos=(d.job_photos||[]).map(u=>safeUrl(u,true)).filter(Boolean);
     if(photos.length){
       const strip=document.createElement('div');
@@ -258,6 +286,7 @@ function prefillFromApp(a){
   $('#e-city').value=firstPlant.trim();
   $('#e-area').value=((firstPlant+' '+(d.service_area||'')).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim());
   $('#e-lat').value='';$('#e-lng').value='';
+  $('#e-gmaps').value=mapsUrl(d.gmaps_url)||'';
   const hasCoil=abil.some(x=>/coil|flat sheet|copper/i.test(x));
   const hasFab=abil.some(x=>/seam|lock|strip|panel|gutter|trim|batten|soffit|fastener|3d|roll forming|trapezoidal/i.test(x));
   $('#e-bcoil').classList.toggle('sel',hasCoil);
@@ -268,7 +297,7 @@ function prefillFromApp(a){
   $('#e-chart').value=safeUrl(a.colorchart_url,true)||'';
   $('#e-photos').value=(d.job_photos||[]).map(u=>safeUrl(u,true)).filter(Boolean).join('\n');
   $('#e-logo').value=safeUrl(d.logo_url,true)||'';
-  $('#scrape-note').textContent='';
+  $('#scrape-note').textContent='';$('#geo-note').textContent='';
   $('#e-save').dataset.appId=a.id;
   $('#save-note').textContent='';
   $('#editor').scrollIntoView({behavior:'smooth',block:'start'});
@@ -347,6 +376,51 @@ $('#e-scrape').onclick=async()=>{
   }catch(x){note.textContent='Scrape failed: '+x.message;note.classList.add('errline')}
 };
 
+/* ── exact pin from a Google Maps link ─────────────────────────────────── */
+// A shared place link carries its pin: !3d<lat>!4d<lng> is the place itself,
+// @lat,lng is the viewport center (close enough as a fallback). Short links
+// (maps.app.goo.gl) only reveal it after the redirect, which the staff-only
+// scraper follows server-side and reports back as finalUrl.
+function coordsFromMapsUrl(u){
+  if(!u)return null;
+  // a directions URL can carry several coordinate pairs — the last !3d/!4d is
+  // the destination, so prefer it over any earlier waypoint
+  const pins=[...u.matchAll(/!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)/g)];
+  if(pins.length){const p=pins[pins.length-1];return{lat:+p[1],lng:+p[2]}}
+  const at=u.match(/@(-?\d{1,2}\.\d+),(-?\d{1,3}\.\d+)/);
+  if(at)return{lat:+at[1],lng:+at[2]};
+  const q=u.match(/[?&](?:q|ll|query|center|destination)=(-?\d{1,2}\.\d+)(?:,|%2C)(-?\d{1,3}\.\d+)/i);
+  if(q)return{lat:+q[1],lng:+q[2]};
+  return null;
+}
+$('#e-pin').onclick=async()=>{
+  const note=$('#geo-note');note.classList.remove('errline');
+  const link=mapsUrl($('#e-gmaps').value.trim());
+  if(!link){note.textContent='Paste their Google Maps link in the field above first.';note.classList.add('errline');return}
+  // a /maps/dir/ link centers on the route, not the shop — the @ fallback
+  // would pin the wrong spot with full confidence
+  if(/\/maps\/dir\//i.test(link)){note.textContent='That\'s a directions link — open the place in Maps, hit Share on the listing itself, and paste that.';note.classList.add('errline');return}
+  let c=coordsFromMapsUrl(link);
+  if(!c){
+    note.textContent='Following the short link…';
+    try{
+      const r=await fetch(SUPA+'/functions/v1/scrape-site',{
+        method:'POST',
+        headers:{'Content-Type':'application/json','apikey':KEY,'Authorization':'Bearer '+token},
+        body:JSON.stringify({url:link})});
+      const j=await r.json();
+      if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
+      const fin=j.finalUrl||'';
+      let dec=fin;try{dec=decodeURIComponent(fin)}catch(e){}
+      c=coordsFromMapsUrl(fin)||coordsFromMapsUrl(dec);
+    }catch(x){note.textContent='Could not follow the link: '+x.message;note.classList.add('errline');return}
+  }
+  if(!c||!isFinite(c.lat)||!isFinite(c.lng)||Math.abs(c.lat)>90||Math.abs(c.lng)>180){
+    note.textContent='No pin in that link — open it in Maps, hit Share on the place, and paste that link instead.';note.classList.add('errline');return}
+  $('#e-lat').value=c.lat.toFixed(5);$('#e-lng').value=c.lng.toFixed(5);
+  note.textContent='✓ Pin set from their Maps listing — exact, better than city geocoding.';
+};
+
 /* ── geocoding (city → lat/lng, one polite request) ────────────────────── */
 $('#e-geocode').onclick=async()=>{
   const q=$('#e-city').value.trim();
@@ -400,6 +474,9 @@ $('#e-save').onclick=async()=>{
   if(logoRaw&&!logoClean){note.textContent='Logo URL must be a normal http(s) address.';note.classList.add('errline');return}
   const logoBg=$('#e-logobg').value.trim();
   if(logoBg&&!/^#[0-9a-fA-F]{3,8}$/.test(logoBg)){note.textContent='Logo background must be a hex color like #0B1E2C.';note.classList.add('errline');return}
+  const gmRaw=$('#e-gmaps').value.trim();
+  const gmClean=gmRaw?mapsUrl(gmRaw):'';
+  if(gmRaw&&!gmClean){note.textContent='Maps link must be a Google Maps / Business Profile address (maps.app.goo.gl, google.com/maps…).';note.classList.add('errline');return}
   const photoLines=$('#e-photos').value.split('\n').map(s=>s.trim()).filter(Boolean);
   const photosClean=photoLines.map(u=>safeUrl(u)).filter(Boolean);
   if(photosClean.length!==photoLines.length){note.textContent='One of the photo URLs isn\'t a normal http(s) address — fix or remove it.';note.classList.add('errline');return}
@@ -415,6 +492,7 @@ $('#e-save').onclick=async()=>{
     photos:photosClean,
     logo_url:logoClean||'',
     logo_bg:logoBg||null,
+    gmaps_url:gmClean||'',
     featured:$('#e-featured').classList.contains('sel'),
     updated_at:new Date().toISOString(),
   };
@@ -465,6 +543,7 @@ async function loadListings(){
       $('#e-logobg').value=l.logo_bg||'';
       $('#e-address').value=l.address||'';$('#e-city').value=l.city||'';$('#e-area').value=l.area_keywords||'';
       $('#e-lat').value=l.lat==null?'':l.lat;$('#e-lng').value=l.lng==null?'':l.lng;
+      $('#e-gmaps').value=l.gmaps_url||'';
       setChips('#e-abilities',l.abilities||[]);
       setChips('#e-gutters',l.abilities||[]);
       setChips('#e-gutmats',l.abilities||[]);
@@ -475,7 +554,7 @@ async function loadListings(){
       $('#e-website').value=l.website||'';$('#e-phone').value=l.phone||'';$('#e-chart').value=l.colorchart_url||'';
       $('#e-photos').value=(l.photos||[]).join('\n');
       $('#e-logo').value=l.logo_url||'';
-      $('#scrape-note').textContent='';
+      $('#scrape-note').textContent='';$('#geo-note').textContent='';
       delete $('#e-save').dataset.appId;
       $('#save-note').textContent='';
       $('#editor').scrollIntoView({behavior:'smooth',block:'start'});
