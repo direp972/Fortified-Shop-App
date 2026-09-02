@@ -531,7 +531,6 @@ const TRIM_PRESETS = {
   // Sidewall flashing: small kickout, roof leg, wall leg, hemmed top edge
   "Sidewall Flashing": [[-0.375, 0.25], [0, 0], [4, 0], [4, -4], [4.5, -4.1]],
   "F-Channel": [[0, 0], [0, 10.5], [7, 10.5], [7, 4], [10, 4], [10, 0]],
-  "Z-Bar": [[0, 0], [0, 7.5], [6, 1.5], [6, 9]],
   "Custom": [[0, 0], [0, 6]],
 };
 
@@ -3320,7 +3319,7 @@ export default function ShopOrderApp() {
         points: TRIM_PRESETS["F-Channel"], quantity: 10, lengthPerPiece: 10,
         brand: "Adax Metals", ...trimColor("Adax Metals", "Matte Black"), status: "Ready for Pickup", createdAt: daysAgo(5) }),
       mkTrim({ jobId: jobMarcus, partName: "Z-Bar — Wainscot Transition", customerName: "Marcus Webb", phone: "(469) 555-0177",
-        points: TRIM_PRESETS["Z-Bar"], quantity: 14, lengthPerPiece: 10,
+        points: [[0, 0], [0, 7.5], [6, 1.5], [6, 9]], quantity: 14, lengthPerPiece: 10,
         brand: "Adax Metals", ...trimColor("Adax Metals", "Matte Black"), status: "Ready for Pickup", createdAt: daysAgo(5) }),
       mkPanel({ jobId: jobMarcus, customerName: "Marcus Webb", phone: "(469) 555-0177", profile: "BB750 – Board and Batten",
         width: 12, height: 144, quantity: 30, runLocation: "Job Site",
