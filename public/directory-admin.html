@@ -335,6 +335,7 @@ $('#e-scrape').onclick=async()=>{
       const b=[...$$('#e-abilities .seg, #e-gutters .seg, #e-gutmats .seg')].find(x=>x.dataset.v===v);
       if(b&&!b.classList.contains('sel')){b.classList.add('sel');toggled++}
     });
+    syncOpenAdmSubsets();
     const foundColors=STOCK_COLORS.filter(c=>j.text.toLowerCase().includes(c.toLowerCase()));
     let colorsOn=0;
     foundColors.forEach(v=>{
@@ -363,7 +364,7 @@ function admLocChips(row,selected){
   const keep=new Set(selected||[...box.querySelectorAll('.seg.sel')].map(b=>b.dataset.v));
   box.textContent='';
   const abil=editorAbilities();
-  if(!abil.length){const s=document.createElement('small');s.className='empty';s.textContent='Pick the company abilities above first.';box.appendChild(s);return}
+  if(!abil.length){const s=document.createElement('small');s.className='empty';s.textContent='Pick the company abilities below — they appear here as you tap them.';box.appendChild(s);return}
   abil.forEach(v=>{const b=segChip(v);if(keep.has(v))b.classList.add('sel');box.appendChild(b)});
 }
 function addAdmLoc(pref){
@@ -398,17 +399,28 @@ function addAdmLoc(pref){
       note.textContent='✓ '+hit.name.split(',').slice(0,3).join(',');
     }catch(x){note.textContent='No match — type coordinates by hand (Google Maps → right-click → copy).';note.classList.add('errline')}
   };
-  row.querySelector('.al-sub').onclick=()=>{
-    const wrap=row.querySelector('.al-abilwrap');
-    const show=wrap.style.display==='none';
-    wrap.style.display=show?'':'none';
-    if(show)admLocChips(row);
+  // the button IS the subset state: on = this location runs only what's
+  // tapped in the panel; off = it inherits everything. Turning it off
+  // discards the subset, and the label says so.
+  const subBtn=row.querySelector('.al-sub');
+  const setSub=on=>{
+    subBtn.classList.toggle('sel',on);subBtn.classList.toggle('gold',on);
+    subBtn.textContent=on?'Subset on — tap to inherit everything':'Ability subset';
+    row.querySelector('.al-abilwrap').style.display=on?'':'none';
+    if(on)admLocChips(row);
   };
-  row.querySelector('.al-x').onclick=()=>{if(elocs.children.length>1)row.remove()};
-  elocs.appendChild(row);
-  if(pref.abilities&&pref.abilities.length){row.querySelector('.al-abilwrap').style.display='';admLocChips(row,pref.abilities)}
+  subBtn.onclick=()=>setSub(!subBtn.classList.contains('sel'));
+  row.querySelector('.al-x').onclick=()=>{row.remove();syncAdmLocRows()};
+  elocs.appendChild(row);syncAdmLocRows();
+  if(pref.abilities&&pref.abilities.length){setSub(true);admLocChips(row,pref.abilities)}
   return row;
 }
+// the last remaining row can't be removed, so don't offer to
+function syncAdmLocRows(){const rows=[...elocs.children];rows.forEach(r=>{r.querySelector('.al-x').style.display=rows.length>1?'':'none'})}
+// company chips tapped after a subset panel is open (by hand or by the
+// scraper) flow into every open panel
+function syncOpenAdmSubsets(){[...elocs.children].forEach(row=>{if(row.querySelector('.al-sub').classList.contains('sel'))admLocChips(row)})}
+['#e-abilities','#e-gutters','#e-gutmats'].forEach(s=>$(s).addEventListener('click',syncOpenAdmSubsets));
 function setAdmLocs(list){
   elocs.textContent='';
   ((list&&list.length)?list:[{}]).forEach(addAdmLoc);
@@ -417,7 +429,7 @@ function readAdmLocs(){
   return [...elocs.children].map(row=>{
     const address=row.querySelector('.al-addr').value.trim(),city=row.querySelector('.al-city').value.trim();
     const lat=parseFloat(row.querySelector('.al-lat').value),lng=parseFloat(row.querySelector('.al-lng').value);
-    const open=row.querySelector('.al-abilwrap').style.display!=='none';
+    const open=row.querySelector('.al-sub').classList.contains('sel');
     const sub=open?[...row.querySelectorAll('.al-abil .seg.sel')].map(b=>b.dataset.v):[];
     return {address,city,lat:isFinite(lat)?lat:null,lng:isFinite(lng)?lng:null,abilities:sub.length?sub:null};
   }).filter(L=>L.address||L.city);

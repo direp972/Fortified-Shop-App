@@ -264,7 +264,7 @@ function syncLocChips(row){
   if(!abil.length){
     const s=document.createElement("small");
     s.style.cssText="font-family:var(--mono);font-size:10.5px;color:var(--steel)";
-    s.textContent="Tap your abilities in step 3 first — then mark which of them this location runs.";
+    s.textContent="Tap your abilities in steps 3–4 — they show up here as you pick them; then mark which ones this location runs.";
     box.appendChild(s);return;
   }
   abil.forEach(v=>{
@@ -274,6 +274,9 @@ function syncLocChips(row){
     box.appendChild(b);
   });
 }
+// abilities tapped later in steps 3–4 flow into every subset panel that's open
+const syncOpenLocChips=()=>$$("#f-locs .locrow").forEach(r=>{if(r.querySelector(".l-sub").classList.contains("sel"))syncLocChips(r)});
+$$("#f-types .seg, #f-gutters .seg, #f-gutmats .seg").forEach(b=>b.addEventListener("click",syncOpenLocChips));
 function addLocRow(){
   const row=document.createElement("div");row.className="locrow";
   row.innerHTML='<div class="frow">'

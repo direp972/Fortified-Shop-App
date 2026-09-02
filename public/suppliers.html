@@ -348,10 +348,11 @@ function apply(){
     if(ok&&locq){ok=(c.dataset.city+' '+c.dataset.area).toLowerCase().includes(locq)}
     if(ok&&radius&&state.me){ok=cardMiles(c,wants)<=radius}
     c.style.display=ok?'':'none';if(ok)shown++;
-    const mi=state.me?cardMiles(c):null;
+    // shown and sorted by the nearest branch that can run what was asked for
+    const mi=state.me?cardMiles(c,wants):null;
     c.querySelector('.dist').textContent=(mi!==null&&isFinite(mi))?' · ~'+Math.round(mi)+' mi':'';
   });
-  if(state.me)[...cards].sort((a,b)=>cardMiles(a)-cardMiles(b)).forEach(c=>dir.appendChild(c));
+  if(state.me)[...cards].sort((a,b)=>cardMiles(a,wants)-cardMiles(b,wants)).forEach(c=>dir.appendChild(c));
   const any=wants.length||color||locq||radius;
   $('#rcount').textContent=cards.length?shown+' of '+cards.length+' listed shops'+(any?' match':''):'Loading listed shops…';
   $('#noresults').style.display=(shown||!cards.length)?'none':'block';
