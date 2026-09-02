@@ -78,7 +78,10 @@ team who needs staff access.
 1. Push this folder to a GitHub repo (or use Vercel's drag-and-drop deploy).
 2. Go to [vercel.com](https://vercel.com), sign up, click **Add New Project**, import your repo.
 3. Add your two environment variables under **Settings > Environment Variables**.
-4. Click **Deploy**.
+4. Optional: add `ANTHROPIC_API_KEY` there too. It powers **Scan a Sketch** in the trim
+   drawing tool (the `api/scan-sketch.js` function reads it server-side — the key never
+   reaches the browser). Without it, the button explains that scanning isn't set up yet.
+5. Click **Deploy**.
 
 **Option B — Netlify:**
 1. Run `npm run build` — creates a `dist` folder.
