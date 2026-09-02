@@ -73,12 +73,24 @@ export function AuthProvider({ children }) {
     return { data, error };
   };
 
+  const signInWithGoogle = async () => {
+    // Come back to the exact page that started the sign-in: the app lives at / on
+    // shop.roofcoil.com and at /app behind fortifiedmetals.com's proxy. Both origins
+    // are on the Supabase redirect allow-list.
+    const redirectTo = window.location.origin + window.location.pathname;
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: { redirectTo, queryParams: { prompt: "select_account" } },
+    });
+    return { data, error };
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
   };
 
   const refreshCustomer = () => loadCustomer(user);
 
-  const value = { user, customer, isStaff, loading, signUp, signIn, signOut, refreshCustomer };
+  const value = { user, customer, isStaff, loading, signUp, signIn, signInWithGoogle, signOut, refreshCustomer };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
