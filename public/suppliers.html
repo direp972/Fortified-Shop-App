@@ -295,11 +295,31 @@ function miles(a,b){
   const h=Math.sin(dLat/2)**2+Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLng/2)**2;
   return 2*R*Math.asin(Math.sqrt(h));
 }
+// A shop can operate from several locations; distance is measured to the
+// nearest one. A location may carry its own ability subset — the radius
+// filter only counts a location that can actually run what was asked for.
 // Listings without coordinates sort last and never match a radius filter.
-const cardMiles=c=>{
-  const la=parseFloat(c.dataset.lat),ln=parseFloat(c.dataset.lng);
-  if(isNaN(la)||isNaN(ln))return Infinity;
-  return miles(state.me,{lat:la,lng:ln});
+function cardLocs(c){
+  if(c._locs)return c._locs;
+  let raw=[];
+  try{raw=JSON.parse(c.dataset.locs||'[]')}catch(e){}
+  const out=(Array.isArray(raw)?raw:[]).map(l=>({
+    lat:parseFloat(l&&l.lat),lng:parseFloat(l&&l.lng),
+    abilities:(l&&Array.isArray(l.abilities)&&l.abilities.length)?l.abilities:null,
+  })).filter(l=>isFinite(l.lat)&&isFinite(l.lng));
+  if(!out.length){
+    const la=parseFloat(c.dataset.lat),ln=parseFloat(c.dataset.lng);
+    if(isFinite(la)&&isFinite(ln))out.push({lat:la,lng:ln,abilities:null});
+  }
+  c._locs=out;return out;
+}
+const cardMiles=(c,wants)=>{
+  let m=Infinity;
+  for(const l of cardLocs(c)){
+    if(wants&&wants.length&&l.abilities&&!wants.every(a=>l.abilities.includes(a)))continue;
+    const d=miles(state.me,l);if(d<m)m=d;
+  }
+  return m;
 };
 
 function requestGeo(){
@@ -326,12 +346,13 @@ function apply(){
     let ok=wants.every(a=>have.includes(a));
     if(ok&&color){const cols=c.dataset.colors?c.dataset.colors.split('|'):[];ok=cols.includes(color)}
     if(ok&&locq){ok=(c.dataset.city+' '+c.dataset.area).toLowerCase().includes(locq)}
-    if(ok&&radius&&state.me){ok=cardMiles(c)<=radius}
+    if(ok&&radius&&state.me){ok=cardMiles(c,wants)<=radius}
     c.style.display=ok?'':'none';if(ok)shown++;
-    const mi=state.me?cardMiles(c):null;
+    // shown and sorted by the nearest branch that can run what was asked for
+    const mi=state.me?cardMiles(c,wants):null;
     c.querySelector('.dist').textContent=(mi!==null&&isFinite(mi))?' · ~'+Math.round(mi)+' mi':'';
   });
-  if(state.me)[...cards].sort((a,b)=>cardMiles(a)-cardMiles(b)).forEach(c=>dir.appendChild(c));
+  if(state.me)[...cards].sort((a,b)=>cardMiles(a,wants)-cardMiles(b,wants)).forEach(c=>dir.appendChild(c));
   const any=wants.length||color||locq||radius;
   $('#rcount').textContent=cards.length?shown+' of '+cards.length+' listed shops'+(any?' match':''):'Loading listed shops…';
   $('#noresults').style.display=(shown||!cards.length)?'none':'block';
@@ -370,11 +391,13 @@ apply();
 // textContent only — never innerHTML.
 function buildCard(l){
   const c=document.createElement('div');c.className='co';
+  const locs=(Array.isArray(l.locations)?l.locations:[]).filter(x=>x&&(x.city||x.address));
   c.dataset.name=l.name;
   c.dataset.city=l.city||'';
-  c.dataset.area=((l.city||'')+' '+(l.area_keywords||'')).toLowerCase();
+  c.dataset.area=((l.city||'')+' '+(l.area_keywords||'')+' '+locs.map(x=>x.city||'').join(' ')).toLowerCase();
   if(l.lat!=null)c.dataset.lat=l.lat;
   if(l.lng!=null)c.dataset.lng=l.lng;
+  if(locs.length)c.dataset.locs=JSON.stringify(locs);
   c.dataset.abilities=(l.abilities||[]).join('|');
   c.dataset.colors=(l.colors||[]).join('|');
   const head=document.createElement('div');head.className='co-head';
@@ -404,6 +427,19 @@ function buildCard(l){
     const b=document.createElement('b');b.textContent=label+': ';
     p.appendChild(b);p.appendChild(document.createTextNode(txt));c.appendChild(p);
   };
+  // Multi-location shops list every branch; one that runs only part of the
+  // company's line-up says so right on the card.
+  if(locs.length>1){
+    const p=document.createElement('p');
+    const b=document.createElement('b');b.textContent='Locations: ';p.appendChild(b);
+    locs.forEach((x,i)=>{
+      if(i)p.appendChild(document.createTextNode(' · '));
+      let t=x.city||x.address||'';
+      if(Array.isArray(x.abilities)&&x.abilities.length)t+=' ('+x.abilities.join(', ')+')';
+      p.appendChild(document.createTextNode(t));
+    });
+    c.appendChild(p);
+  }
   para('Coil line',l.coil_desc);
   para('Fabrication',l.fab_desc);
   para('Licensed in',l.licensed_states);
@@ -467,7 +503,7 @@ function buildCard(l){
 }
 (async()=>{
   try{
-    const r=await fetch(SUPA+"/rest/v1/directory_listings?select=name,badges,address,city,area_keywords,lat,lng,abilities,colors,coil_desc,fab_desc,website,phone,photos,logo_url,logo_bg,licensed_states,featured,gmaps_url&status=eq.live&order=featured.desc,name.asc",{headers:{apikey:KEY}});
+    const r=await fetch(SUPA+"/rest/v1/directory_listings?select=name,badges,address,city,area_keywords,lat,lng,locations,abilities,colors,coil_desc,fab_desc,website,phone,photos,logo_url,logo_bg,licensed_states,featured,gmaps_url&status=eq.live&order=featured.desc,name.asc",{headers:{apikey:KEY}});
     if(!r.ok)return;
     const rows=await r.json();
     const have=new Set(cards.map(c=>c.dataset.name.toLowerCase()));

@@ -33,6 +33,9 @@
 .errline{color:#B3261E}
 #editor .chipgrid{display:flex;flex-wrap:wrap;gap:7px}
 .empty{color:var(--steel);font-size:13px}
+.elocrow{border:1px solid rgba(15,61,92,.15);border-radius:var(--r-sm);padding:11px 13px 9px;margin-bottom:8px;background:var(--paper)}
+.elocrow .frow{margin-bottom:0}
+.elocrow .lbtns{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-top:6px}
 </style>
 </head>
 <body data-auth-required>
@@ -77,17 +80,13 @@
         <div class="chipgrid"><button type="button" class="seg" id="e-featured" data-v="featured">★ Featured — pin to the top of the directory</button></div>
       </div>
       <div class="fld"><label>Licensed states — shown on the card for turnkey shops (comma separated)</label><input id="e-lic" placeholder="TX, OK, LA"></div>
-      <div class="frow">
-        <div class="fld"><label>Street address (optional — shown on card)</label><input id="e-address" placeholder="123 Commerce St"></div>
-        <div class="fld"><label>City, State (shown + searched)</label><input id="e-city" placeholder="Sherman, TX"></div>
+      <div class="fld"><label>Locations — the first one is the primary address shown on the card; each can be geocoded and can run its own ability subset</label>
+        <div id="e-locs"></div>
+        <div class="row" style="display:flex;gap:8px;margin:2px 0 4px"><button class="mini" id="e-addloc">+ Add location</button><span class="okline" id="geo-note" style="margin:0;align-self:center"></span></div>
       </div>
       <div class="fld"><label>Area keywords — every word location search can match</label><input id="e-area" placeholder="sherman texas tx north texas dfw dallas…"></div>
-      <div class="fld"><label>Google Maps link — their Business Profile; verifies the shop and gives contractors a Directions link</label><input id="e-gmaps" placeholder="https://maps.app.goo.gl/…"></div>
-      <div class="frow">
-        <div class="fld"><label>Latitude</label><input id="e-lat" inputmode="decimal"></div>
-        <div class="fld"><label>Longitude</label><input id="e-lng" inputmode="decimal"></div>
-      </div>
-      <div class="row" style="display:flex;gap:8px;margin:-4px 0 12px;flex-wrap:wrap"><button class="mini gold" id="e-pin">Pull pin from Maps link</button><button class="mini" id="e-geocode">Geocode from City, State</button><span class="okline" id="geo-note" style="margin:0;align-self:center"></span></div>
+      <div class="fld"><label>Google Maps link — their Business Profile; verifies the shop, pins the primary location, and gives contractors a Directions link</label><input id="e-gmaps" placeholder="https://maps.app.goo.gl/…"></div>
+      <div class="row" style="display:flex;gap:8px;margin:-4px 0 12px;flex-wrap:wrap"><button class="mini gold" id="e-pin">Pull pin from Maps link</button><span class="okline" id="pin-note" style="margin:0;align-self:center"></span></div>
       <div class="fld"><label>Abilities — the search facets *</label><div class="chipgrid" id="e-abilities"></div></div>
       <div class="fld"><label>Gutter profiles they roll</label><div class="chipgrid" id="e-gutters"></div></div>
       <div class="fld"><label>Gutter materials</label><div class="chipgrid" id="e-gutmats"></div></div>
@@ -281,11 +280,13 @@ function prefillFromApp(a){
   $('#e-moreabilities').value=[...(d.extra_profiles||[]),...(d.extra_gutters||[])].join(', ');
   setChips('#e-colors',d.colors||[]);
   $('#e-morecolors').value=d.extra_colors||'';
-  const firstPlant=(a.plants||'').split('\n')[0]||'';
-  $('#e-address').value='';
-  $('#e-city').value=firstPlant.trim();
-  $('#e-area').value=((firstPlant+' '+(d.service_area||'')).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim());
-  $('#e-lat').value='';$('#e-lng').value='';
+  // structured locations from the new form arrive pre-geocoded; older
+  // applications only have the plants text, one City, ST per line
+  const appLocs=(d.locations||[]).filter(L=>L&&(L.address||L.city));
+  if(appLocs.length)setAdmLocs(appLocs);
+  else setAdmLocs((a.plants||'').split('\n').map(s=>s.trim()).filter(Boolean).map(city=>({city})));
+  const cities=[...elocs.children].map(r=>r.querySelector('.al-city').value).join(' ');
+  $('#e-area').value=((cities+' '+(d.service_area||'')).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim());
   $('#e-gmaps').value=mapsUrl(d.gmaps_url)||'';
   const hasCoil=abil.some(x=>/coil|flat sheet|copper/i.test(x));
   const hasFab=abil.some(x=>/seam|lock|strip|panel|gutter|trim|batten|soffit|fastener|3d|roll forming|trapezoidal/i.test(x));
@@ -297,7 +298,7 @@ function prefillFromApp(a){
   $('#e-chart').value=safeUrl(a.colorchart_url,true)||'';
   $('#e-photos').value=(d.job_photos||[]).map(u=>safeUrl(u,true)).filter(Boolean).join('\n');
   $('#e-logo').value=safeUrl(d.logo_url,true)||'';
-  $('#scrape-note').textContent='';$('#geo-note').textContent='';
+  $('#scrape-note').textContent='';$('#geo-note').textContent='';$('#pin-note').textContent='';
   $('#e-save').dataset.appId=a.id;
   $('#save-note').textContent='';
   $('#editor').scrollIntoView({behavior:'smooth',block:'start'});
@@ -364,6 +365,7 @@ $('#e-scrape').onclick=async()=>{
       const b=[...$$('#e-abilities .seg, #e-gutters .seg, #e-gutmats .seg')].find(x=>x.dataset.v===v);
       if(b&&!b.classList.contains('sel')){b.classList.add('sel');toggled++}
     });
+    syncOpenAdmSubsets();
     const foundColors=STOCK_COLORS.filter(c=>j.text.toLowerCase().includes(c.toLowerCase()));
     let colorsOn=0;
     foundColors.forEach(v=>{
@@ -375,6 +377,95 @@ $('#e-scrape').onclick=async()=>{
     note.textContent='✓ Scraped — turned on '+toggled+' abilities and '+colorsOn+' colors'+(j.icons&&j.icons.length?', found a logo':'')+'. Review every chip before publishing.';
   }catch(x){note.textContent='Scrape failed: '+x.message;note.classList.add('errline')}
 };
+
+/* ── locations (address + coords per site, optional ability subset) ─────
+   The first row is the primary — it mirrors into the legacy address/city/
+   lat/lng columns on save. A subset left empty means the location inherits
+   everything the company runs.                                            */
+const elocs=$('#e-locs');
+const editorAbilities=()=>[...$$('#e-abilities .seg.sel, #e-gutters .seg.sel, #e-gutmats .seg.sel')].map(b=>b.dataset.v);
+async function nomGeocode(q){
+  const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q='+encodeURIComponent(q),{headers:{'Accept':'application/json'}});
+  const j=await r.json();
+  return j.length?{lat:(+j[0].lat).toFixed(4),lng:(+j[0].lon).toFixed(4),name:j[0].display_name}:null;
+}
+function admLocChips(row,selected){
+  const box=row.querySelector('.al-abil');
+  const keep=new Set(selected||[...box.querySelectorAll('.seg.sel')].map(b=>b.dataset.v));
+  box.textContent='';
+  const abil=editorAbilities();
+  if(!abil.length){const s=document.createElement('small');s.className='empty';s.textContent='Pick the company abilities below — they appear here as you tap them.';box.appendChild(s);return}
+  abil.forEach(v=>{const b=segChip(v);if(keep.has(v))b.classList.add('sel');box.appendChild(b)});
+}
+function addAdmLoc(pref){
+  pref=pref||{};
+  const row=document.createElement('div');row.className='elocrow';
+  row.innerHTML='<div class="frow">'
+    +'<div class="fld"><label>Street address</label><input class="al-addr" placeholder="123 Commerce St"></div>'
+    +'<div class="fld"><label>City, State *</label><input class="al-city" placeholder="Sherman, TX"></div>'
+    +'</div><div class="frow">'
+    +'<div class="fld"><label>Latitude</label><input class="al-lat" inputmode="decimal"></div>'
+    +'<div class="fld"><label>Longitude</label><input class="al-lng" inputmode="decimal"></div>'
+    +'</div><div class="lbtns">'
+    +'<button type="button" class="mini al-geo">Geocode</button>'
+    +'<button type="button" class="mini al-sub">Ability subset</button>'
+    +'<button type="button" class="mini red al-x">Remove</button>'
+    +'</div>'
+    +'<div class="fld al-abilwrap" style="display:none;margin:8px 0 0"><label>This location runs only these — no selection means it inherits everything</label><div class="chipgrid al-abil"></div></div>';
+  row.querySelector('.al-addr').value=pref.address||'';
+  row.querySelector('.al-city').value=pref.city||'';
+  row.querySelector('.al-lat').value=pref.lat==null?'':pref.lat;
+  row.querySelector('.al-lng').value=pref.lng==null?'':pref.lng;
+  row.querySelector('.al-geo').onclick=async()=>{
+    const note=$('#geo-note');note.classList.remove('errline');
+    const addr=row.querySelector('.al-addr').value.trim(),city=row.querySelector('.al-city').value.trim();
+    if(!addr&&!city){note.textContent='Enter an address or City, State first.';note.classList.add('errline');return}
+    note.textContent='Looking up…';
+    try{
+      let hit=addr?await nomGeocode(addr+(city?', '+city:'')):null;
+      if(!hit&&city)hit=await nomGeocode(city);
+      if(!hit)throw new Error('no match');
+      row.querySelector('.al-lat').value=hit.lat;row.querySelector('.al-lng').value=hit.lng;
+      note.textContent='✓ '+hit.name.split(',').slice(0,3).join(',');
+    }catch(x){note.textContent='No match — type coordinates by hand (Google Maps → right-click → copy).';note.classList.add('errline')}
+  };
+  // the button IS the subset state: on = this location runs only what's
+  // tapped in the panel; off = it inherits everything. Turning it off
+  // discards the subset, and the label says so.
+  const subBtn=row.querySelector('.al-sub');
+  const setSub=on=>{
+    subBtn.classList.toggle('sel',on);subBtn.classList.toggle('gold',on);
+    subBtn.textContent=on?'Subset on — tap to inherit everything':'Ability subset';
+    row.querySelector('.al-abilwrap').style.display=on?'':'none';
+    if(on)admLocChips(row);
+  };
+  subBtn.onclick=()=>setSub(!subBtn.classList.contains('sel'));
+  row.querySelector('.al-x').onclick=()=>{row.remove();syncAdmLocRows()};
+  elocs.appendChild(row);syncAdmLocRows();
+  if(pref.abilities&&pref.abilities.length){setSub(true);admLocChips(row,pref.abilities)}
+  return row;
+}
+// the last remaining row can't be removed, so don't offer to
+function syncAdmLocRows(){const rows=[...elocs.children];rows.forEach(r=>{r.querySelector('.al-x').style.display=rows.length>1?'':'none'})}
+// company chips tapped after a subset panel is open (by hand or by the
+// scraper) flow into every open panel
+function syncOpenAdmSubsets(){[...elocs.children].forEach(row=>{if(row.querySelector('.al-sub').classList.contains('sel'))admLocChips(row)})}
+['#e-abilities','#e-gutters','#e-gutmats'].forEach(s=>$(s).addEventListener('click',syncOpenAdmSubsets));
+function setAdmLocs(list){
+  elocs.textContent='';
+  ((list&&list.length)?list:[{}]).forEach(addAdmLoc);
+}
+function readAdmLocs(){
+  return [...elocs.children].map(row=>{
+    const address=row.querySelector('.al-addr').value.trim(),city=row.querySelector('.al-city').value.trim();
+    const lat=parseFloat(row.querySelector('.al-lat').value),lng=parseFloat(row.querySelector('.al-lng').value);
+    const open=row.querySelector('.al-sub').classList.contains('sel');
+    const sub=open?[...row.querySelectorAll('.al-abil .seg.sel')].map(b=>b.dataset.v):[];
+    return {address,city,lat:isFinite(lat)?lat:null,lng:isFinite(lng)?lng:null,abilities:sub.length?sub:null};
+  }).filter(L=>L.address||L.city);
+}
+$('#e-addloc').onclick=()=>addAdmLoc();
+setAdmLocs([]);
 
 /* ── exact pin from a Google Maps link ─────────────────────────────────── */
 // A shared place link carries its pin: !3d<lat>!4d<lng> is the place itself,
@@ -394,7 +485,7 @@ function coordsFromMapsUrl(u){
   return null;
 }
 $('#e-pin').onclick=async()=>{
-  const note=$('#geo-note');note.classList.remove('errline');
+  const note=$('#pin-note');note.classList.remove('errline');
   const link=mapsUrl($('#e-gmaps').value.trim());
   if(!link){note.textContent='Paste their Google Maps link in the field above first.';note.classList.add('errline');return}
   // a /maps/dir/ link centers on the route, not the shop — the @ fallback
@@ -417,24 +508,12 @@ $('#e-pin').onclick=async()=>{
   }
   if(!c||!isFinite(c.lat)||!isFinite(c.lng)||Math.abs(c.lat)>90||Math.abs(c.lng)>180){
     note.textContent='No pin in that link — open it in Maps, hit Share on the place, and paste that link instead.';note.classList.add('errline');return}
-  $('#e-lat').value=c.lat.toFixed(5);$('#e-lng').value=c.lng.toFixed(5);
-  note.textContent='✓ Pin set from their Maps listing — exact, better than city geocoding.';
-};
-
-/* ── geocoding (city → lat/lng, one polite request) ────────────────────── */
-$('#e-geocode').onclick=async()=>{
-  const q=$('#e-city').value.trim();
-  const note=$('#geo-note');note.classList.remove('errline');
-  if(!q){note.textContent='Enter City, State first.';note.classList.add('errline');return}
-  note.textContent='Looking up…';
-  try{
-    const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q='+encodeURIComponent(q),{headers:{'Accept':'application/json'}});
-    const j=await r.json();
-    if(!j.length)throw new Error('no match');
-    $('#e-lat').value=(+j[0].lat).toFixed(4);
-    $('#e-lng').value=(+j[0].lon).toFixed(4);
-    note.textContent='✓ '+j[0].display_name.split(',').slice(0,3).join(',');
-  }catch(x){note.textContent='No match — type coordinates by hand (Google Maps → right-click → copy).';note.classList.add('errline')}
+  // the pin belongs to the PRIMARY location — the first row is the one the
+  // Maps listing describes and the one mirrored into the card's address
+  const row0=elocs.children[0]||addAdmLoc();
+  row0.querySelector('.al-lat').value=c.lat.toFixed(5);
+  row0.querySelector('.al-lng').value=c.lng.toFixed(5);
+  note.textContent='✓ Primary location pinned from their Maps listing — exact, better than city geocoding.';
 };
 
 /* ── save / publish ────────────────────────────────────────────────────── */
@@ -450,6 +529,12 @@ $('#e-save').onclick=async()=>{
     if(!abilities.some(x=>x.toLowerCase()===canon.toLowerCase()))abilities.push(canon);
   });
   if(!abilities.length){note.textContent='Pick at least one ability or nothing can find this listing.';note.classList.add('errline');return}
+  const locations=readAdmLocs();
+  if(!locations.length||!locations[0].city){note.textContent='Add at least one location with City, State.';note.classList.add('errline');return}
+  // a location subset may only narrow the company's abilities, never add to them
+  locations.forEach(L=>{
+    if(L.abilities){L.abilities=L.abilities.filter(a=>abilities.some(x=>x.toLowerCase()===a.toLowerCase()));if(!L.abilities.length)L.abilities=null}
+  });
   // free-typed colors are canonicalized against stock spellings so the public
   // color filter (case-sensitive) never fragments into 'Charcoal'/'charcoal'
   const colors=[...$$('#e-colors .seg.sel')].map(b=>b.dataset.v);
@@ -483,9 +568,11 @@ $('#e-save').onclick=async()=>{
   const body={
     name,status:$('#e-status').value,badges,abilities,colors,
     licensed_states:$('#e-lic').value.trim()||null,
-    address:$('#e-address').value.trim(),city:$('#e-city').value.trim(),
+    locations,
+    // the primary location mirrors into the legacy columns older pages read
+    address:locations[0].address||'',city:locations[0].city||'',
     area_keywords:$('#e-area').value.trim(),
-    lat:parseFloat($('#e-lat').value)||null,lng:parseFloat($('#e-lng').value)||null,
+    lat:locations[0].lat,lng:locations[0].lng,
     coil_desc:$('#e-coildesc').value.trim(),fab_desc:$('#e-fabdesc').value.trim(),
     website:websiteClean||'',phone:$('#e-phone').value.trim(),
     colorchart_url:chartClean||'',
@@ -527,7 +614,11 @@ async function loadListings(){
     const b=document.createElement('b');b.textContent=l.name;card.appendChild(b);
     const st=document.createElement('span');st.className='stat '+l.status;st.textContent=l.status;st.style.marginLeft='8px';card.appendChild(st);
     const meta=document.createElement('div');meta.className='meta';
-    meta.textContent=[l.featured?'★ featured':null,l.city,(l.abilities||[]).length+' abilities',(l.colors||[]).length+' colors',(l.lat!=null?'geo ✓':'no coords')].filter(Boolean).join(' · ');
+    const lls=(Array.isArray(l.locations)&&l.locations.length)?l.locations:[{lat:l.lat,lng:l.lng}];
+    const nogeo=lls.filter(x=>!x||x.lat==null||x.lng==null).length;
+    meta.textContent=[l.featured?'★ featured':null,l.city,lls.length>1?lls.length+' locations':null,
+      (l.abilities||[]).length+' abilities',(l.colors||[]).length+' colors',
+      nogeo?(lls.length>1?'no coords on '+nogeo+' of '+lls.length:'no coords'):'geo ✓'].filter(Boolean).join(' · ');
     card.appendChild(meta);
     const row=document.createElement('div');row.className='row';
     const edit=document.createElement('button');edit.className='mini';edit.textContent='Edit';
@@ -541,12 +632,14 @@ async function loadListings(){
       $('#e-lic').value=l.licensed_states||'';
       $('#e-featured').classList.toggle('sel',!!l.featured);
       $('#e-logobg').value=l.logo_bg||'';
-      $('#e-address').value=l.address||'';$('#e-city').value=l.city||'';$('#e-area').value=l.area_keywords||'';
-      $('#e-lat').value=l.lat==null?'':l.lat;$('#e-lng').value=l.lng==null?'':l.lng;
+      $('#e-area').value=l.area_keywords||'';
       $('#e-gmaps').value=l.gmaps_url||'';
       setChips('#e-abilities',l.abilities||[]);
       setChips('#e-gutters',l.abilities||[]);
       setChips('#e-gutmats',l.abilities||[]);
+      // subsets render from the company chips, so set locations after them
+      setAdmLocs((Array.isArray(l.locations)&&l.locations.length)?l.locations
+        :[{address:l.address||'',city:l.city||'',lat:l.lat,lng:l.lng}]);
       $('#e-moreabilities').value=(l.abilities||[]).filter(a=>!ALL_CANON.includes(a)).join(', ');
       setChips('#e-colors',l.colors||[]);
       $('#e-morecolors').value=(l.colors||[]).filter(c=>!STOCK_COLORS.includes(c)).join(', ');
@@ -554,7 +647,7 @@ async function loadListings(){
       $('#e-website').value=l.website||'';$('#e-phone').value=l.phone||'';$('#e-chart').value=l.colorchart_url||'';
       $('#e-photos').value=(l.photos||[]).join('\n');
       $('#e-logo').value=l.logo_url||'';
-      $('#scrape-note').textContent='';$('#geo-note').textContent='';
+      $('#scrape-note').textContent='';$('#geo-note').textContent='';$('#pin-note').textContent='';
       delete $('#e-save').dataset.appId;
       $('#save-note').textContent='';
       $('#editor').scrollIntoView({behavior:'smooth',block:'start'});

@@ -31,6 +31,9 @@
 .filebox b{display:block;font-size:14px;color:var(--ink-deep);margin-bottom:3px}
 .filebox small{font-family:var(--mono);font-size:10.5px;color:var(--steel);letter-spacing:.05em}
 .err{color:#B3261E;background:#FDECEA;border-radius:8px;padding:10px 14px;font-size:13px;display:none;margin-bottom:12px}
+.locrow{border:1px solid rgba(15,61,92,.15);border-radius:var(--r-sm);padding:12px 14px 10px;margin-bottom:10px;background:var(--paper)}
+.locrow .lbtns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.locrow .seg{font-size:12px}
 </style>
 </head>
 <body>
@@ -69,8 +72,11 @@
       <div class="fld"><label>Email *</label><input id="f-em" type="email" placeholder="you@company.com"></div>
     </div>
 
-    <div class="step"><h3><span class="sn">2</span>Plant locations &amp; service area</h3>
-      <div class="fld"><label>One per line — City, State</label><textarea id="f-plants" rows="3" placeholder="Sherman, TX&#10;Tulsa, OK"></textarea></div>
+    <div class="step"><h3><span class="sn">2</span>Locations &amp; service area</h3>
+      <div class="fld"><label>Your locations — the street address is what puts you on distance search *</label>
+        <div id="f-locs"></div>
+        <button type="button" class="seg" id="f-addloc">+ Add another location</button>
+      </div>
       <div class="fld"><label>Service area — how far you sell or deliver</label><input id="f-area" placeholder="DFW metro · 150 mile radius · statewide…"></div>
       <div class="fld"><label>Your Google Maps / Business Profile link — helps us verify your shop and publish you faster</label><input id="f-gmaps" inputmode="url" placeholder="https://maps.app.goo.gl/…"></div>
     </div>
@@ -236,6 +242,76 @@ const TURNKEY_LABEL="Turnkey — supply · fabrication · labor";
 function syncLic(){const on=[...$$("#f-types .seg.sel")].some(b=>b.dataset.v===TURNKEY_LABEL);$("#f-licrow").style.display=on?"":"none"}
 $$("#f-types .seg").forEach(b=>b.addEventListener("click",syncLic));
 
+/* ── locations: one required street address, more welcome ─────────────────
+   Each extra location can mark "runs only some of our abilities" so a
+   branch that only rolls gutters never has its whole company re-entered:
+   everything inherits from the company unless a subset is tapped.        */
+const locsBox=$("#f-locs");
+const currentAbilities=()=>[...$$("#f-types .seg.sel, #f-gutters .seg.sel, #f-gutmats .seg.sel")].map(b=>b.dataset.v);
+function syncLocLabels(){
+  const rows=[...locsBox.children];
+  rows.forEach((r,i)=>{
+    r.querySelector(".l-alabel").textContent=i?"Street address":"Street address (main location) *";
+    r.querySelector(".l-x").style.display=rows.length>1?"":"none";
+  });
+}
+function syncLocChips(row){
+  // rebuild this location's ability chips from what's tapped in step 3,
+  // keeping anything already selected here
+  const box=row.querySelector(".l-abil");
+  const keep=new Set([...box.querySelectorAll(".seg.sel")].map(b=>b.dataset.v));
+  const abil=currentAbilities();
+  box.textContent="";
+  if(!abil.length){
+    const s=document.createElement("small");
+    s.style.cssText="font-family:var(--mono);font-size:10.5px;color:var(--steel)";
+    s.textContent="Tap your abilities in steps 3–4 — they show up here as you pick them; then mark which ones this location runs.";
+    box.appendChild(s);return;
+  }
+  abil.forEach(v=>{
+    const b=document.createElement("button");b.type="button";b.className="seg";b.dataset.v=v;b.textContent=v;
+    if(keep.has(v))b.classList.add("sel");
+    b.onclick=()=>b.classList.toggle("sel");
+    box.appendChild(b);
+  });
+}
+// abilities tapped later in steps 3–4 flow into every subset panel that's open
+const syncOpenLocChips=()=>$$("#f-locs .locrow").forEach(r=>{if(r.querySelector(".l-sub").classList.contains("sel"))syncLocChips(r)});
+$$("#f-types .seg, #f-gutters .seg, #f-gutmats .seg").forEach(b=>b.addEventListener("click",syncOpenLocChips));
+function addLocRow(){
+  const row=document.createElement("div");row.className="locrow";
+  row.innerHTML='<div class="frow">'
+    +'<div class="fld"><label class="l-alabel">Street address *</label><input class="l-addr" placeholder="123 Commerce St"></div>'
+    +'<div class="fld"><label>City, State *</label><input class="l-city" placeholder="Sherman, TX"></div>'
+    +'</div><div class="lbtns">'
+    +'<button type="button" class="seg l-sub">Runs only some of our abilities</button>'
+    +'<button type="button" class="seg l-x">Remove</button>'
+    +'</div>'
+    +'<div class="fld l-abilwrap" style="display:none;margin:10px 0 0"><label>Tap what this location runs — everything not tapped stays company-wide</label><div class="chipgrid l-abil"></div></div>';
+  row.querySelector(".l-sub").onclick=()=>{
+    const on=row.querySelector(".l-sub").classList.toggle("sel");
+    row.querySelector(".l-abilwrap").style.display=on?"":"none";
+    if(on)syncLocChips(row);
+  };
+  row.querySelector(".l-x").onclick=()=>{row.remove();syncLocLabels()};
+  locsBox.appendChild(row);syncLocLabels();
+  return row;
+}
+addLocRow();
+$("#f-addloc").onclick=()=>addLocRow();
+
+// Address check: the browser asks OpenStreetMap's geocoder directly, so a
+// typo'd address gets caught before the application is sent. If the street
+// doesn't match we fall back to the city pin and warn once — a stubborn
+// second Submit still goes through rather than losing the application.
+async function geocode(q){
+  const r=await fetch("https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q="+encodeURIComponent(q),{headers:{Accept:"application/json"}});
+  if(!r.ok)throw new Error("geocoder "+r.status);
+  const j=await r.json();
+  return j.length?{lat:+(+j[0].lat).toFixed(4),lng:+(+j[0].lon).toFixed(4)}:null;
+}
+let lastGeoWarn=null;
+
 // Two independent uploads: a color chart and a sales book / line card.
 const uploads={chart:null,book:null,logo:null};
 function wireUpload(kind,boxId,fileId,labelId,hintId){
@@ -304,7 +380,39 @@ $("#f-go").onclick=async()=>{
   const ownColorsOn=$("#f-mode-own").classList.contains("sel");
   const stockBrandsOn=$("#f-mode-brand").classList.contains("sel");
   if(stockBrandsOn&&$$("#f-brands .seg.sel").length===0&&!$("#f-morebrands").value.trim()){showErr("You said you stock a brand's coil — tap the brands you carry, or type them in.");return}
-  const btn=$("#f-go");btn.disabled=true;btn.textContent="Sending…";
+  // locations: main one needs a full street address; extras need at least City, ST
+  const locs=[];
+  for(const row of $$("#f-locs .locrow")){
+    const address=row.querySelector(".l-addr").value.trim(),city=row.querySelector(".l-city").value.trim();
+    if(!address&&!city)continue;
+    let sub=null;
+    if(row.querySelector(".l-sub").classList.contains("sel")){
+      const sel=[...row.querySelectorAll(".l-abil .seg.sel")].map(b=>b.dataset.v).filter(v=>allAbilities.includes(v));
+      if(sel.length&&sel.length<allAbilities.length)sub=sel;
+    }
+    locs.push({address,city,lat:null,lng:null,verified:false,abilities:sub});
+  }
+  if(!locs.length||!locs[0].address||!locs[0].city){showErr("Your main location needs a street address and City, State — that's what puts you on distance search.");return}
+  for(let i=1;i<locs.length;i++){if(!locs[i].city){showErr("Location "+(i+1)+" needs at least City, State.");return}}
+  const btn=$("#f-go");btn.disabled=true;btn.textContent="Checking your address…";
+  try{
+    for(let i=0;i<locs.length;i++){
+      if(i)await new Promise(res=>setTimeout(res,1100)); // one polite geocoder request at a time
+      const L=locs[i];
+      let hit=L.address?await geocode(L.address+", "+L.city):null;
+      if(hit){L.lat=hit.lat;L.lng=hit.lng;L.verified=true;continue}
+      hit=await geocode(L.city);
+      if(hit){L.lat=hit.lat;L.lng=hit.lng}
+    }
+  }catch(x){/* geocoder unreachable — never lose an application over it */}
+  const unverified=locs.filter(L=>!L.verified&&L.address).map(L=>L.address+", "+L.city);
+  const geoFp=JSON.stringify(locs.map(L=>[L.address,L.city]));
+  if(unverified.length&&geoFp!==lastGeoWarn){
+    lastGeoWarn=geoFp;
+    showErr("We couldn't find "+unverified.join(" — ")+" on the map. Double-check the street and City, ST. If it's right as typed, tap Submit again and it goes through anyway.");
+    btn.disabled=false;btn.textContent="Submit — get listed";return;
+  }
+  btn.textContent="Sending…";
   try{
     const chartUrl=uploads.chart?await uploadToBucket(uploads.chart,"chart",co):"";
     const bookUrl=uploads.book?await uploadToBucket(uploads.book,"salesbook",co):"";
@@ -316,7 +424,8 @@ $("#f-go").onclick=async()=>{
       headers:{"Content-Type":"application/json","apikey":KEY,"Prefer":"return=minimal"},
       body:JSON.stringify({
         company:co,contact_name:name,phone:$("#f-ph").value.trim(),email:em,
-        website:$("#f-web").value.trim(),plants:$("#f-plants").value.trim(),
+        website:$("#f-web").value.trim(),
+        plants:locs.map(L=>[L.address,L.city].filter(Boolean).join(", ")).join("\n"),
         panel_types:allAbilities,gauges:gauges,notes:$("#f-notes").value.trim(),colorchart_url:chartUrl,salesbook_url:bookUrl,
         // structured details drive the directory listing a staff member builds from this
         details:{
@@ -329,6 +438,7 @@ $("#f-go").onclick=async()=>{
           extra_brands:stockBrandsOn?$("#f-morebrands").value.trim():"",
           job_photos:photoUrls,
           logo_url:logoUrl,
+          locations:locs,
           service_area:$("#f-area").value.trim(),
           gmaps_url:$("#f-gmaps").value.trim(),
           licensed_states:$("#f-lic").value.trim(),
