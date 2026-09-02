@@ -73,6 +73,9 @@
       <div class="fld"><label>Badges</label>
         <div class="chipgrid"><button type="button" class="seg" id="e-bcoil" data-v="coil">Supply Materials</button><button type="button" class="seg" id="e-bfab" data-v="fab">Fabrication</button><button type="button" class="seg" id="e-bturnkey" data-v="turnkey">Turnkey — supply · fab · labor</button></div>
       </div>
+      <div class="fld"><label>Placement</label>
+        <div class="chipgrid"><button type="button" class="seg" id="e-featured" data-v="featured">★ Featured — pin to the top of the directory</button></div>
+      </div>
       <div class="fld"><label>Licensed states — shown on the card for turnkey shops (comma separated)</label><input id="e-lic" placeholder="TX, OK, LA"></div>
       <div class="frow">
         <div class="fld"><label>Street address (optional — shown on card)</label><input id="e-address" placeholder="123 Commerce St"></div>
@@ -97,6 +100,7 @@
         <div class="fld"><label>Phone (public)</label><input id="e-phone"></div>
       </div>
       <div class="fld"><label>Logo URL — shown beside the name on the listing</label><input id="e-logo"></div>
+      <div class="fld"><label>Logo background — hex color for logos that vanish on white (leave blank for most)</label><input id="e-logobg" placeholder="#0B1E2C"></div>
       <div class="row" style="display:flex;gap:8px;margin:-4px 0 12px;flex-wrap:wrap">
         <button class="mini gold" id="e-scrape">Scrape their website — prefill abilities, logo &amp; description</button>
         <button class="mini" id="e-findlogo">Just grab the site icon</button>
@@ -144,6 +148,8 @@ GUTTER_PROFILES.forEach(a=>$('#e-gutters').appendChild(segChip(a,gutLabel(a))));
 GUTTER_MATERIALS.forEach(a=>$('#e-gutmats').appendChild(segChip(a,gutLabel(a))));
 STOCK_COLORS.forEach(c=>$('#e-colors').appendChild(segChip(c)));
 $('#e-bcoil').onclick=()=>$('#e-bcoil').classList.toggle('sel');
+$('#e-bturnkey').onclick=()=>$('#e-bturnkey').classList.toggle('sel');
+$('#e-featured').onclick=()=>$('#e-featured').classList.toggle('sel');
 $('#e-bfab').onclick=()=>$('#e-bfab').classList.toggle('sel');
 
 async function api(path,opts){
@@ -239,6 +245,7 @@ function prefillFromApp(a){
   $('#e-name').value=a.company||'';
   $('#e-status').value='draft';
   $('#e-lic').value=(a.details&&a.details.licensed_states)||'';
+  $('#e-featured').classList.remove('sel');$('#e-logobg').value='';
   const abil=d.abilities||a.panel_types||[];
   setChips('#e-abilities',abil);
   setChips('#e-gutters',abil);
@@ -391,6 +398,8 @@ $('#e-save').onclick=async()=>{
   const logoRaw=$('#e-logo').value.trim();
   const logoClean=logoRaw?safeUrl(logoRaw):'';
   if(logoRaw&&!logoClean){note.textContent='Logo URL must be a normal http(s) address.';note.classList.add('errline');return}
+  const logoBg=$('#e-logobg').value.trim();
+  if(logoBg&&!/^#[0-9a-fA-F]{3,8}$/.test(logoBg)){note.textContent='Logo background must be a hex color like #0B1E2C.';note.classList.add('errline');return}
   const photoLines=$('#e-photos').value.split('\n').map(s=>s.trim()).filter(Boolean);
   const photosClean=photoLines.map(u=>safeUrl(u)).filter(Boolean);
   if(photosClean.length!==photoLines.length){note.textContent='One of the photo URLs isn\'t a normal http(s) address — fix or remove it.';note.classList.add('errline');return}
@@ -405,6 +414,8 @@ $('#e-save').onclick=async()=>{
     colorchart_url:chartClean||'',
     photos:photosClean,
     logo_url:logoClean||'',
+    logo_bg:logoBg||null,
+    featured:$('#e-featured').classList.contains('sel'),
     updated_at:new Date().toISOString(),
   };
   if(!editingId&&$('#e-save').dataset.appId)body.application_id=$('#e-save').dataset.appId;
@@ -412,14 +423,24 @@ $('#e-save').onclick=async()=>{
     if(editingId)await api('/rest/v1/directory_listings?id=eq.'+editingId,{method:'PATCH',body:JSON.stringify(body)});
     else{const ins=await api('/rest/v1/directory_listings',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(body)});editingId=ins[0].id}
     note.textContent=body.status==='live'?'✓ Saved — it\'s live on the directory now.':'✓ Saved as '+body.status+'.';
+    // Once a listing is live its application has been "moved" — retire it from the queue.
+    if(body.status==='live'){
+      const appId=body.application_id||((listings.find(x=>x.id===editingId)||{}).application_id);
+      if(appId)await retireApplication(appId);
+    }
     loadListings();
   }catch(x){note.textContent='Save failed: '+x.message;note.classList.add('errline')}
 };
 
+async function retireApplication(id){
+  try{await api('/rest/v1/manufacturer_applications?id=eq.'+id,{method:'DELETE'});delete $('#e-save').dataset.appId;loadApps()}
+  catch(x){console.warn('could not retire application',x)}
+}
+
 /* ── existing listings ─────────────────────────────────────────────────── */
 async function loadListings(){
   const box=$('#listings');box.textContent='';
-  try{listings=await api('/rest/v1/directory_listings?select=*&order=name.asc')}
+  try{listings=await api('/rest/v1/directory_listings?select=*&order=featured.desc,name.asc')}
   catch(x){box.textContent='Could not load listings.';return}
   $('#l-count').textContent=listings.length;
   if(!listings.length){const p=document.createElement('p');p.className='empty';p.textContent='No published listings yet — build one from an application.';box.appendChild(p);return}
@@ -428,7 +449,7 @@ async function loadListings(){
     const b=document.createElement('b');b.textContent=l.name;card.appendChild(b);
     const st=document.createElement('span');st.className='stat '+l.status;st.textContent=l.status;st.style.marginLeft='8px';card.appendChild(st);
     const meta=document.createElement('div');meta.className='meta';
-    meta.textContent=[l.city,(l.abilities||[]).length+' abilities',(l.colors||[]).length+' colors',(l.lat!=null?'geo ✓':'no coords')].filter(Boolean).join(' · ');
+    meta.textContent=[l.featured?'★ featured':null,l.city,(l.abilities||[]).length+' abilities',(l.colors||[]).length+' colors',(l.lat!=null?'geo ✓':'no coords')].filter(Boolean).join(' · ');
     card.appendChild(meta);
     const row=document.createElement('div');row.className='row';
     const edit=document.createElement('button');edit.className='mini';edit.textContent='Edit';
@@ -440,6 +461,8 @@ async function loadListings(){
       $('#e-bfab').classList.toggle('sel',(l.badges||[]).includes('fab'));
       $('#e-bturnkey').classList.toggle('sel',(l.badges||[]).includes('turnkey'));
       $('#e-lic').value=l.licensed_states||'';
+      $('#e-featured').classList.toggle('sel',!!l.featured);
+      $('#e-logobg').value=l.logo_bg||'';
       $('#e-address').value=l.address||'';$('#e-city').value=l.city||'';$('#e-area').value=l.area_keywords||'';
       $('#e-lat').value=l.lat==null?'':l.lat;$('#e-lng').value=l.lng==null?'':l.lng;
       setChips('#e-abilities',l.abilities||[]);
@@ -461,7 +484,12 @@ async function loadListings(){
     const flip=document.createElement('button');flip.className='mini '+(l.status==='live'?'':'gold');
     flip.textContent=l.status==='live'?'Take down':'Make live';
     flip.onclick=async()=>{
-      try{await api('/rest/v1/directory_listings?id=eq.'+l.id,{method:'PATCH',body:JSON.stringify({status:l.status==='live'?'hidden':'live',updated_at:new Date().toISOString()})});loadListings()}
+      try{
+        const goingLive=l.status!=='live';
+        await api('/rest/v1/directory_listings?id=eq.'+l.id,{method:'PATCH',body:JSON.stringify({status:goingLive?'live':'hidden',updated_at:new Date().toISOString()})});
+        if(goingLive&&l.application_id)await retireApplication(l.application_id);
+        loadListings();
+      }
       catch(x){alert('Update failed: '+x.message)}
     };
     row.appendChild(flip);card.appendChild(row);

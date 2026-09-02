@@ -216,38 +216,6 @@
 
 <div id="dir">
 
-<div class="co" id="fortified-sheet-metal" data-name="Fortified Sheet Metal"
-     data-city="Sherman, TX" data-area="sherman plano texas tx north texas dfw dallas fort worth grayson collin mckinney frisco denison"
-     data-lat="33.6357" data-lng="-96.6089"
-     data-abilities="Coil &amp; flat sheet|Painted coil — PVDF / Kynar|Painted coil — SMP|Bare — Galvalume · G90 · bonderized|Copper|1″ mechanical lock|1.5″ snap-lock|1.75″ snap-lock|1.5″ mechanical lock (single)|1.5″ mechanical lock (double)|2″ mechanical lock|1″ nail strip|1.5″ nail strip|Flush wall &amp; soffit|Trim &amp; flashing|3D parts — boxes · scuppers · caps|On-site roll forming"
-     data-colors="Regal White|Almond|Ash Gray|Slate Gray|Burnished Slate|Charcoal|Medium Bronze|Dark Bronze|Matte Black|Evergreen|Copper Metallic|Galvalume|Texas Silver|Bare Copper|Bonderized">
-  <div class="co-head">
-    <img class="co-logo" src="https://fortifiedmetals.com/assets/logo.webp" alt="" loading="lazy" style="background:#0B1E2C;padding:4px;border-radius:8px;object-fit:contain">
-    <h2>Fortified Sheet Metal</h2>
-    <span class="cobadge coil">Supply Materials</span><span class="cobadge fab">Fabrication</span>
-    <span class="loc">605 E Mulberry · Sherman, TX<span class="dist"></span></span>
-  </div>
-  <p><b>Coil line:</b> Fortified Metal's own painted line (PVDF &amp; 40-yr SMP) plus stocked brand coil — slit coil and flat sheet cut to size.</p>
-  <p><b>Fabrication:</b> full fab shop — panels, custom trim &amp; flashing, and 3D parts, with portable machines for job-site runs.</p>
-  <p><a href="https://fortifiedmetals.com" target="_blank" rel="noopener" style="color:var(--copper);font-weight:600;text-decoration:none">fortifiedmetals.com</a> · 972-996-7221</p>
-</div>
-
-<div class="co" id="adax-metals" data-name="Adax Metals"
-     data-city="Weatherford, TX" data-area="weatherford texas tx fort worth dallas dfw north texas parker county mineral wells aledo"
-     data-lat="32.7593" data-lng="-97.7973"
-     data-abilities="Coil &amp; flat sheet|Painted coil — PVDF / Kynar|Bare — Galvalume · G90 · bonderized|1.5″ snap-lock|1.75″ snap-lock|1.5″ mechanical lock (single)|1.5″ mechanical lock (double)|2″ mechanical lock|1″ nail strip|1.5″ nail strip|Batten seam|Exposed fastener|Flush wall &amp; soffit|On-site roll forming"
-     data-colors="Snow White|Polar White|Artic White|Regal White|Bone White|Ivory|Light Stone|Almond|Sandstone|Desert Sand|Champagne|Buckskin|Surrey Beige|Saddle Tan|Taupe|Silver|Ash Gray|Old Town Gray|Slate Gray|Charcoal Blue Gray|Burnished Slate|Burnished Slate Crinkle|Charcoal Gray II|Charcoal Gray|Charcoal Gray Crinkle|Brownstone|Aged Bronze|Medium Bronze|Koko Crinkle|Mansard Brown|Dark Bronze|Black Crinkle|Matte Black|Terracotta|Regal Red|Berry|Crimson Red|Rural Red|Brandy Wine|Colonial Red|Rustic Red|Rustic Red Crinkle|Dark Red|Patina Green|Hemlock Green|Tundra|Fern Green|Ivy Green|Colony Green|Evergreen Crinkle|Forest Green|Evergreen|Hartford Green|Hawaiian Blue|Roman Blue|Gallery Blue|Regal Blue|Copper Metallic|Acrylic Coated Galvalume|Acrylic Galvalume|Preweather Galvalume">
-  <div class="co-head">
-    <img class="co-logo" src="https://www.google.com/s2/favicons?domain=adaxmetals.com&amp;sz=128" alt="" loading="lazy">
-    <h2>Adax Metals</h2>
-    <span class="cobadge coil">Supply Materials</span><span class="cobadge fab">Fabrication</span>
-    <span class="loc">1901 B Mineral Wells Hwy · Weatherford, TX<span class="dist"></span></span>
-  </div>
-  <p><b>Coil line:</b> Sherwin-Williams PVDF (Kynar-class) and SMP painted coil, PaintGrip, slit coil and flat sheet — 38+ published colors.</p>
-  <p><b>Fabrication:</b> licensed Ultra Seam systems with curved and clip-offset options — on-site roll forming for extra-long runs.</p>
-  <p><a href="https://adaxmetals.com" target="_blank" rel="noopener nofollow" style="color:var(--copper);font-weight:600;text-decoration:none">adaxmetals.com</a> · 817-382-2094</p>
-</div>
-
 </div>
 
 <div id="noresults">No listed shop matches that combination yet. Loosen a filter — or if <b>you're</b> the shop that can run it, <a href="/get-listed.html" style="color:var(--copper);font-weight:600">get listed</a> and this search finds you next time.</div>
@@ -365,8 +333,8 @@ function apply(){
   });
   if(state.me)[...cards].sort((a,b)=>cardMiles(a)-cardMiles(b)).forEach(c=>dir.appendChild(c));
   const any=wants.length||color||locq||radius;
-  $('#rcount').textContent=shown+' of '+cards.length+' listed shops'+(any?' match':'');
-  $('#noresults').style.display=shown?'none':'block';
+  $('#rcount').textContent=cards.length?shown+' of '+cards.length+' listed shops'+(any?' match':''):'Loading listed shops…';
+  $('#noresults').style.display=(shown||!cards.length)?'none':'block';
   $('#fclear').style.display=(any||state.me)?'inline':'none';
   $$('.fsel select').forEach(s=>s.classList.toggle('set',!!s.value));
   $('#loc-q').classList.toggle('set',!!locq);
@@ -415,6 +383,8 @@ function buildCard(l){
       const u=new URL(l.logo_url);
       if(u.protocol==='https:'||u.protocol==='http:'){
         const lg=document.createElement('img');lg.className='co-logo';lg.src=u.href;lg.alt='';lg.loading='lazy';
+        // some logos (gold on transparent) vanish on the light card — staff can set a backdrop
+        if(l.logo_bg&&/^#[0-9a-fA-F]{3,8}$/.test(l.logo_bg)){lg.style.background=l.logo_bg;lg.style.padding='4px';lg.style.borderRadius='8px';lg.style.objectFit='contain'}
         head.appendChild(lg);
       }
     }catch(e){/* not a real URL — skip the logo */}
@@ -479,7 +449,7 @@ function buildCard(l){
 }
 (async()=>{
   try{
-    const r=await fetch(SUPA+"/rest/v1/directory_listings?select=name,badges,address,city,area_keywords,lat,lng,abilities,colors,coil_desc,fab_desc,website,phone,photos,logo_url,licensed_states&status=eq.live&order=name.asc",{headers:{apikey:KEY}});
+    const r=await fetch(SUPA+"/rest/v1/directory_listings?select=name,badges,address,city,area_keywords,lat,lng,abilities,colors,coil_desc,fab_desc,website,phone,photos,logo_url,logo_bg,licensed_states,featured&status=eq.live&order=featured.desc,name.asc",{headers:{apikey:KEY}});
     if(!r.ok)return;
     const rows=await r.json();
     const have=new Set(cards.map(c=>c.dataset.name.toLowerCase()));
