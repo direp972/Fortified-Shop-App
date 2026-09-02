@@ -462,7 +462,7 @@ function buildCard(l){
     // that slipped into the row is dropped rather than rendered
     try{
       const u=new URL(l.gmaps_url);const h=u.hostname.toLowerCase();
-      const isMaps=h==='maps.app.goo.gl'||h==='g.page'
+      const isMaps=h==='maps.app.goo.gl'||h==='g.page'||h==='share.google'
         ||(h==='maps.google.com'&&(u.pathname==='/'||u.pathname.startsWith('/maps')))
         ||((h==='google.com'||h==='www.google.com')&&u.pathname.startsWith('/maps'))
         ||(h==='goo.gl'&&u.pathname.startsWith('/maps'))

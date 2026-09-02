@@ -146,7 +146,7 @@ function mapsUrl(raw){
   const s=safeUrl(raw);if(!s)return null;
   try{
     const u=new URL(s);const h=u.hostname.toLowerCase();
-    if(h==='maps.app.goo.gl'||h==='g.page')return u.href;
+    if(h==='maps.app.goo.gl'||h==='g.page'||h==='share.google')return u.href;
     // path-restricted even on maps.google.com — that host also serves Google's
     // /url open redirector, which would launder any site through this gate
     if(h==='maps.google.com'&&(u.pathname==='/'||u.pathname.startsWith('/maps')))return u.href;
