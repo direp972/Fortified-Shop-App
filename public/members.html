@@ -43,8 +43,8 @@
     <div class="wrap hero-in">
       <div>
         <p class="eyebrow" style="color:#8FA9BC">RoofCoil.com · Member tools</p>
-        <h1>Availability and selection.<em>All in one source.</em></h1>
-        <p class="lede">Panel lines from listed manufacturers — lineups, data sheets and colors in one place. Try any color on the panel below, then build the order in the Panel &amp; Trim app and it goes straight to the shop.</p>
+        <h1>Specialized tools for sheet metal.<em>One free account.</em></h1>
+        <p class="lede">Panel lines from listed manufacturers — lineups, data sheets and colors in one place. Try any color on the panel below, then build the order in the Panel &amp; Trim app and it goes straight to the listed shop that will run it.</p>
         <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:28px">
           <a class="btn" data-nav="apps" data-app="papp" style="cursor:pointer">Start an order</a>
           <a class="btn ghost" href="#brands">See lines &amp; locations</a>
@@ -174,8 +174,27 @@ const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
 const hexOf=n=>{const c=COLORS.concat(FORT_EXTRA).find(c=>c[0]===n);return c?c[1]:"#26262A"};
 function hav(a,b,c,d){const R=3959,r=x=>x*Math.PI/180,dl=r(c-a),dg=r(d-b);const s=Math.sin(dl/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dg/2)**2;return Math.round(2*R*Math.asin(Math.sqrt(s)))}
 // Served same-origin via a rewrite so the app shares this site's sign-in session.
-const APPS={draw:"/app",papp:"/app"};
-function loadApp(k){const f=$("#app-frame");if(f.dataset.k!==k){f.src=APPS[k];f.dataset.k=k}$("#app-full").href=APPS[k];
+// Each tool has its own deep link so the app opens straight to it (?view=trim /
+// ?view=panel — handled in App.jsx). Once the frame is up, switching tabs posts the
+// new view into it instead of reloading, so a half-drawn profile survives a tab change.
+const APPS={draw:"/app?view=trim",papp:"/app?view=panel"};
+const APP_VIEW={draw:"trim",papp:"panel"};
+let appReady=false,appView=null,bootView=null;
+window.addEventListener("message",e=>{
+  if(e.origin!==location.origin||!e.data)return;
+  if(e.data.type==="rc:signed-out"){location.reload();return} // auth.js then shows the sign-in gate
+  if(e.data.type!=="rc:app-ready")return;
+  appReady=true;
+  // The app always comes up on the view in its URL (also after it remounts, e.g. a
+  // sign-out and back in) — re-send only if a different tab is selected by now.
+  if(appView&&appView!==bootView)sendView(appView);
+});
+function sendView(v){const f=$("#app-frame");appView=v;
+  if(appReady&&f.contentWindow)f.contentWindow.postMessage({type:"rc:view",view:v},location.origin)}
+function loadApp(k){const f=$("#app-frame");const v=APP_VIEW[k];
+  if(!f.dataset.k){appReady=false;appView=bootView=v;f.src=APPS[k]}
+  else if(f.dataset.k!==k)sendView(v);
+  f.dataset.k=k;$("#app-full").href=APPS[k];
   $("#tab-draw").classList.toggle("sel",k==="draw");$("#tab-papp").classList.toggle("sel",k==="papp")}
 function buildLab(){
   $("#lab-chips").innerHTML=COLORS.map(c=>`<button style="background:${c[1]}" data-c="${c[0]}" aria-label="${c[0]}" title="${c[0]}"></button>`).join("");
