@@ -18,6 +18,19 @@ const GREEN = "#2FA84F";      // brighter green
 // Served on fortifiedmetals.com via that site's /app proxy — show its attribution footer there.
 const ON_FORTIFIED = typeof window !== "undefined" && window.location.hostname.includes("fortifiedmetals");
 
+// "Scan a Sketch" goes through api/scan-sketch.js, a Vercel function that deploys with
+// this app and holds the Anthropic key server-side. It lives on the app's own host:
+// roofcoil.com and fortifiedmetals.com proxy the app's pages and assets to that host
+// but not /api, so from those sites the call goes to the app host directly (the
+// function allows CORS for them).
+const APP_HOST = "https://shop.roofcoil.com";
+const SCAN_SKETCH_URL = (() => {
+  if (typeof window === "undefined") return `${APP_HOST}/api/scan-sketch`;
+  const h = window.location.hostname;
+  const onAppHost = h === "shop.roofcoil.com" || h === "localhost" || h === "127.0.0.1" || h.endsWith(".vercel.app");
+  return `${onAppHost ? "" : APP_HOST}/api/scan-sketch`;
+})();
+
 // Densities in lb/in³ — used by the coil weight calculator (standard material physics
 // constants, not specific to any particular calculator app).
 const MATERIAL_DENSITIES = {
@@ -570,6 +583,17 @@ const mileageCharge = (miles) => Math.max(0, (+miles || 0) - MILEAGE_FREE) * MIL
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const snap = (v, step = 0.05) => Math.round(v / step) * step;
+// Reads a typed length the way a contractor writes it: "6", "6.5", ".5", "6 1/2",
+// "6-1/2", "1/2", '6"', "6 in". The number is taken in the prompt's own unit; anything
+// else (feet, "mm" in inch mode, words) comes back NaN rather than a wrong size.
+function parseLength(input) {
+  const str = String(input ?? "").trim().toLowerCase().replace(/(inches|inch|in|"|\u201d)/g, "").trim();
+  const m = str.match(/^(\d*\.?\d+|\d+\.)?(?:[\s-]*(\d+)\s*\/\s*(\d+))?$/);
+  if (!m || (m[1] === undefined && m[2] === undefined)) return NaN;
+  const whole = m[1] !== undefined ? parseFloat(m[1]) : 0;
+  const frac = m[2] !== undefined ? (+m[3] > 0 ? +m[2] / +m[3] : NaN) : 0;
+  return whole + frac;
+}
 const dist = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
 const money = (n) => `$${n.toFixed(2)}`;
 
@@ -1053,14 +1077,77 @@ function hemGlyph(p, dir, side, isOpen, unit) {
 function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, viewResetKey }) {
   const svgRef = useRef(null);
   const [dragIdx, setDragIdx] = useState(null);
-  const [zoom, setZoom] = useState(0.35); // 4 zoom-in clicks (0.2 each) from the standard 1.0, clamped at the 0.35 floor
-  const [zoomCenter, setZoomCenter] = useState(null); // [x,y] override when zoomed into a specific leg
+  const [zoom, setZoom] = useState(1); // 1 = the auto-fit view; smaller zooms in, larger zooms out
   const [mode, setMode] = useState("draw"); // "draw" | "select"
   const [selectedIdx, setSelectedIdx] = useState(null);
   const [gridSpacing, setGridSpacing] = useState(3); // inches between dots
   const [angleVisibility, setAngleVisibility] = useState("all"); // "all" | "hide90" | "hideAll"
   const [showSettings, setShowSettings] = useState(false);
   const [unitSystem, setUnitSystem] = useState("imperial"); // "imperial" | "metric" — display only, data always stays in inches
+
+  // ---- Rotate the whole profile: a ruler under the canvas you drag sideways ----
+  // A rigid turn about the drawing's centre, applied to the points themselves so the
+  // order, thumbnails and print-out all show the profile the way it will be installed;
+  // leg lengths and bend angles don't change. `rotation` is the total since the profile
+  // was loaded (the readout); the ruler's ticks slide under a fixed marker as you drag.
+  const [rotation, setRotation] = useState(0);
+  const [rotating, setRotating] = useState(false);
+  const rotRef = useRef(null);     // { startX, startRotation, origin, basePoints } while the ruler is held
+  const rotViewRef = useRef(null); // square view frozen for the drag so the profile doesn't jump underneath
+  const ROT_PX_PER_DEG = 2.5;      // 0.4° per pixel of drag — fine enough for a roof pitch, quick enough for a quarter turn
+  const ROT_SNAP = 15, ROT_SNAP_WINDOW = 1; // settle on 0/15/30/45/… when within a degree of it
+
+  const bboxCenter = (pts) => {
+    const xs = pts.map((pt) => pt[0]), ys = pts.map((pt) => pt[1]);
+    return [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2];
+  };
+  const rotatePoints = (pts, origin, deg) => {
+    const r = (deg * Math.PI) / 180, c = Math.cos(r), sn = Math.sin(r);
+    return pts.map(([x, y]) => {
+      const dx = x - origin[0], dy = y - origin[1];
+      return [origin[0] + dx * c - dy * sn, origin[1] + dx * sn + dy * c]; // positive = clockwise on screen
+    });
+  };
+  const normDeg = (d) => { let r = d % 360; if (r > 180) r -= 360; if (r <= -180) r += 360; return r; };
+  // Turn `base` (which sits at rotation `from`) so the drawing ends up at `deg` in total.
+  const applyRotation = (deg, base = points, origin = bboxCenter(base), from = rotation) => {
+    if (base.length < 2) return;
+    const target = normDeg(deg);
+    setPoints(rotatePoints(base, origin, target - from));
+    setRotation(target);
+  };
+  const rotDown = (e) => {
+    if (points.length < 2) return;
+    e.preventDefault(); e.stopPropagation();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const origin = bboxCenter(points);
+    // Freeze a square view that fits the profile at any angle for the whole drag.
+    const R = Math.max(1, ...points.map((pt) => Math.hypot(pt[0] - origin[0], pt[1] - origin[1])));
+    const pad = Math.max(0.6, R * 0.35);
+    rotViewRef.current = { vbX: origin[0] - R - pad, vbY: origin[1] - R - pad, vbW: 2 * (R + pad), vbH: 2 * (R + pad) };
+    rotRef.current = { startX: e.clientX, startRotation: rotation, origin, basePoints: points };
+    setRotating(true);
+  };
+  const rotMove = (e) => {
+    const st = rotRef.current;
+    if (!st) return;
+    e.preventDefault();
+    let deg = st.startRotation + (e.clientX - st.startX) / ROT_PX_PER_DEG;
+    const nearest = Math.round(deg / ROT_SNAP) * ROT_SNAP;
+    if (Math.abs(deg - nearest) <= ROT_SNAP_WINDOW) deg = nearest;
+    applyRotation(deg, st.basePoints, st.origin, st.startRotation);
+  };
+  const rotEnd = () => { if (!rotRef.current) return; rotRef.current = null; rotViewRef.current = null; setRotating(false); };
+  const rotPrompt = () => {
+    if (points.length < 2) return;
+    const input = window.prompt("Rotate the drawing to (degrees clockwise, 0 = as drawn):", String(Math.round(rotation * 10) / 10));
+    if (input === null) return;
+    const deg = parseFloat(input);
+    if (!isFinite(deg)) return;
+    applyRotation(deg);
+  };
+  const fmtDeg = (d) => { const r = Math.round(d * 10) / 10; return `${Number.isInteger(r) ? r : r.toFixed(1)}°`; };
+  useEffect(() => { if (points.length < 2) setRotation(0); }, [points.length]); // nothing left to be rotated
 
   // Formats a length in inches for display, switching to mm when metric is selected.
   const formatLen = (inches) => (unitSystem === "metric" ? `${Math.round(inches * 25.4)}mm` : `${inches.toFixed(2)}"`);
@@ -1070,7 +1157,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   // — small or large — fills the frame consistently without needing a guessed zoom value.
   useEffect(() => {
     setZoom(1);
-    setZoomCenter(null);
+    setRotation(0);
   }, [viewResetKey]);
 
   const toUser = useCallback((clientX, clientY) => {
@@ -1104,15 +1191,17 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     const current = dist(points[i - 1], points[i]);
     const unitLabel = unitSystem === "metric" ? "mm" : "inches";
     const promptDefault = unitSystem === "metric" ? Math.round(current * 25.4).toString() : current.toFixed(2);
-    const input = window.prompt(`Exact length for this segment (${unitLabel}):`, promptDefault);
+    const input = window.prompt(`Exact length for this segment (${unitLabel}${unitSystem === "metric" ? "" : " — e.g. 6.5 or 6 1/2"}):`, promptDefault);
     if (input === null) return;
-    const raw = parseFloat(input);
+    const raw = parseLength(input);
     if (!isFinite(raw) || raw <= 0) return;
     const val = unitSystem === "metric" ? raw / 25.4 : raw; // always store in inches internally
     const dir = unitVec(points[i - 1], points[i]);
-    setPoints((pts) => pts.map((pt, idx) => (idx === i
-      ? [pts[i - 1][0] + dir[0] * val, pts[i - 1][1] + dir[1] * val]
-      : pt)));
+    const target = [points[i - 1][0] + dir[0] * val, points[i - 1][1] + dir[1] * val];
+    // Shift everything downstream by the same amount so only this leg changes length —
+    // the legs after it keep their lengths and bend angles instead of getting skewed.
+    const dx = target[0] - points[i][0], dy = target[1] - points[i][1];
+    setPoints((pts) => pts.map((pt, idx) => (idx >= i ? [pt[0] + dx, pt[1] + dy] : pt)));
   };
 
   const editAngle = (i) => {
@@ -1131,12 +1220,15 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     const sign = signedCurrent === 0 ? 1 : Math.sign(signedCurrent);
     const desiredBetween = (180 - desired) * (Math.PI / 180); // unsigned angle between v1 and v2'
     const theta = sign * desiredBetween;
-    const cosT = Math.cos(theta), sinT = Math.sin(theta);
-    const v2x = v1[0] * cosT - v1[1] * sinT;
-    const v2y = v1[0] * sinT + v1[1] * cosT;
-    const L = dist(cur, next);
-    const newNext = [cur[0] + v2x * L, cur[1] + v2y * L];
-    setPoints((pts) => pts.map((pt, idx) => (idx === i + 1 ? newNext : pt)));
+    // Rotate every point after the bend about it by the change in angle, so the legs
+    // downstream keep their own lengths and bends — only this bend opens or closes.
+    const delta = theta - signedCurrent;
+    const cosD = Math.cos(delta), sinD = Math.sin(delta);
+    setPoints((pts) => pts.map((pt, idx) => {
+      if (idx <= i) return pt;
+      const rx = pt[0] - cur[0], ry = pt[1] - cur[1];
+      return [cur[0] + rx * cosD - ry * sinD, cur[1] + rx * sinD + ry * cosD];
+    }));
   };
 
   const dragStartRef = useRef(null); // { pointerX, pointerY, origPoint } — used to dampen drag sensitivity
@@ -1152,6 +1244,8 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     const [ux, uy] = toUser(e.clientX, e.clientY);
     dragStartRef.current = { startUx: ux, startUy: uy, origPoint: [...points[i]] };
   };
+
+  const endDrag = () => { setDragIdx(null); dragStartRef.current = null; dragViewRef.current = null; };
 
   const DRAG_DAMPING = 0.51; // lower = slower/finer point movement relative to actual finger/mouse motion
   const handleMove = (e) => {
@@ -1186,9 +1280,9 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   // canvas never re-centers or resizes under the finger — it re-fits (zooms out to
   // show everything) the moment the drag ends.
   lastViewRef.current = { vbX, vbY, vbW, vbH };
-  const fv = dragIdx !== null && dragViewRef.current ? dragViewRef.current : { vbX, vbY, vbW, vbH };
-  // Manual zoom scales the view around its own center (or a clicked leg's midpoint), on top of the auto-fit box.
-  const cx = zoomCenter ? zoomCenter[0] : fv.vbX + fv.vbW / 2, cy = zoomCenter ? zoomCenter[1] : fv.vbY + fv.vbH / 2;
+  const fv = dragIdx !== null && dragViewRef.current ? dragViewRef.current : rotViewRef.current || { vbX, vbY, vbW, vbH };
+  // Manual zoom scales the view around its own center, on top of the auto-fit box.
+  const cx = fv.vbX + fv.vbW / 2, cy = fv.vbY + fv.vbH / 2;
   const zVbW = fv.vbW * zoom, zVbH = fv.vbH * zoom;
   const zVbX = cx - zVbW / 2, zVbY = cy - zVbH / 2;
   const unit = zVbW / 100; // scales strokes/points/text relative to current zoom
@@ -1219,7 +1313,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
       </div>
       <div style={{ position: "absolute", top: 6, right: 6, zIndex: 2, display: "flex", gap: 3 }}>
         <div style={{ display: "flex", borderRadius: 5, overflow: "hidden", border: "1px solid rgba(255,255,255,0.4)" }}>
-          <button type="button" onClick={() => { setMode("draw"); setSelectedIdx(null); setZoomCenter(null); setZoom(0.35); }}
+          <button type="button" onClick={() => { setMode("draw"); setSelectedIdx(null); setZoom(1); }}
             style={{ padding: "4px 8px", fontSize: 10, fontWeight: 700, border: "none", cursor: "pointer",
               background: mode === "draw" ? SAFETY : "rgba(10,43,65,0.85)", color: "#fff" }}>
             Draw
@@ -1288,7 +1382,8 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
         viewBox={`${zVbX} ${zVbY} ${zVbW} ${zVbH}`}
         onPointerDown={handleBgDown}
         onPointerMove={handleMove}
-        onPointerUp={() => { setDragIdx(null); dragStartRef.current = null; dragViewRef.current = null; }}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
         style={{
           width: "100%", height: "auto", aspectRatio: "416 / 220", background: INK, borderRadius: 4,
           touchAction: "none", cursor: mode === "select" ? "default" : "crosshair", display: "block",
@@ -1296,18 +1391,22 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
         }}
       >
       {gridDots}
+      {rotating && rotRef.current && rotRef.current.basePoints.length > 1 && (
+        <path d={rotRef.current.basePoints.map((pt, i) => `${i === 0 ? "M" : "L"} ${pt[0]} ${pt[1]}`).join(" ")}
+          fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth={1.2 * unit} strokeDasharray={`${2 * unit} ${1.5 * unit}`}
+          strokeLinejoin="round" strokeLinecap="round" />
+      )}
       {points.length > 1 && (
         <path d={pathD} fill="none" stroke="#fff" strokeWidth={1.75 * unit} strokeLinejoin="round" strokeLinecap="round" />
       )}
       {points.length > 1 && points.slice(1).map((p, idx) => {
         const i = idx + 1;
         const prevPt = points[idx];
-        const mid = [(prevPt[0] + p[0]) / 2, (prevPt[1] + p[1]) / 2];
         return (
           <line key={`hit${i}`} x1={prevPt[0]} y1={prevPt[1]} x2={p[0]} y2={p[1]}
             stroke="transparent" strokeWidth={6 * unit}
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => { setZoomCenter(mid); setZoom(0.5); editSegmentLength(i); }}
+            onClick={() => editSegmentLength(i)}
             style={{ cursor: "pointer" }} />
         );
       })}
@@ -1321,7 +1420,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
         const my = prev[1] + dir[1] * Math.min(dist(prev, p) / 2, 3 * unit) + perp[1] * 4 * unit;
         const r = 2.6 * unit;
         return (
-          <g>
+          <g onPointerDown={(e) => e.stopPropagation()}>
             <circle cx={mx} cy={my} r={r} fill={colorHex} stroke="#fff" strokeWidth={0.5 * unit} />
             <text x={mx} y={my} fill="#fff" fontSize={2.4 * unit} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
               textAnchor="middle" dominantBaseline="central">P</text>
@@ -1418,7 +1517,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
         );
       })}
       {points.length === 0 && (
-        <text x={zVbX + zVbW / 2} y={zVbY + zVbH / 2} fill="rgba(255,255,255,0.5)" fontSize={6 * unit} textAnchor="middle" fontFamily="Inter, sans-serif">
+        <text x={zVbX + zVbW / 2} y={zVbY + zVbH / 2} fill="rgba(255,255,255,0.5)" fontSize={3.4 * unit} textAnchor="middle" fontFamily="Inter, sans-serif">
           Tap to place the first point of your profile
         </text>
       )}
@@ -1426,9 +1525,12 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
         const h = parseHem(hemStart);
         const dir = unitVec(points[1], points[0]); // continues the line back past the start
         const closed = h.type === "closed";
-        const g = hemGlyph(points[0], dir, h.dir, !closed, unit);
+        // dir runs backward here, which mirrors hemGlyph's idea of "left" — pass the opposite
+        // side so "faces Left" lands on the same side of the profile as the end hem's "Left"
+        // and the painted-side tag (all relative to start→end travel along the profile).
+        const g = hemGlyph(points[0], dir, h.dir === "left" ? "right" : "left", !closed, unit);
         return (
-          <g>
+          <g onPointerDown={(e) => e.stopPropagation()}>
             <path d={g.d} fill={closed ? SAFETY : "none"} stroke={SAFETY}
               strokeWidth={(closed ? 1.8 : 0.9) * unit} strokeLinecap="round" strokeLinejoin="round" />
             <text x={g.labelPos[0]} y={g.labelPos[1]} fill={SAFETY} fontSize={3 * unit} fontWeight="700"
@@ -1445,7 +1547,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
         const closed = h.type === "closed";
         const g = hemGlyph(points[last], dir, h.dir, !closed, unit);
         return (
-          <g>
+          <g onPointerDown={(e) => e.stopPropagation()}>
             <path d={g.d} fill={closed ? SAFETY : "none"} stroke={SAFETY}
               strokeWidth={(closed ? 1.8 : 0.9) * unit} strokeLinecap="round" strokeLinejoin="round" />
             <text x={g.labelPos[0]} y={g.labelPos[1]} fill={SAFETY} fontSize={3 * unit} fontWeight="700"
@@ -1456,6 +1558,38 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
         );
       })()}
     </svg>
+      {/* Rotate the whole profile: drag the ruler sideways (0.4° per pixel, settles on every
+          15°), tap the degrees to type an exact angle, +90° for a quarter turn, ⟲ back to as drawn. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+        <div onPointerDown={rotDown} onPointerMove={rotMove} onPointerUp={rotEnd} onPointerCancel={rotEnd}
+          title="Drag sideways to rotate the drawing"
+          style={{
+            position: "relative", flex: 1, minWidth: 0, height: 34, borderRadius: 8, background: INK, border: "1px solid rgba(255,255,255,0.15)",
+            touchAction: "none", cursor: "ew-resize", overflow: "hidden", opacity: points.length < 2 ? 0.45 : 1,
+          }}>
+          <div style={{
+            position: "absolute", inset: 0, backgroundRepeat: "repeat-x",
+            backgroundImage: "repeating-linear-gradient(90deg, rgba(255,255,255,0.75) 0 1px, transparent 1px 37.5px), repeating-linear-gradient(90deg, rgba(255,255,255,0.35) 0 1px, transparent 1px 12.5px)",
+            backgroundSize: "37.5px 20px, 12.5px 10px",
+            // a major tick sits under the marker at 0°; the ruler follows the finger 1:1
+            backgroundPosition: `calc(50% + ${18.75 + rotation * ROT_PX_PER_DEG}px) center, calc(50% + ${6.25 + rotation * ROT_PX_PER_DEG}px) center`,
+          }} />
+          <div style={{ position: "absolute", left: "50%", top: 4, width: 4, height: 26, borderRadius: 2, background: SAFETY, transform: "translateX(-50%)", boxShadow: "0 0 0 1px rgba(0,0,0,0.35)" }} />
+          <span className="mono" style={{ position: "absolute", left: 6, top: 9, padding: "2px 6px", borderRadius: 4, background: INK, fontSize: 9, lineHeight: "12px", letterSpacing: "0.12em", color: "#8FB4C9", pointerEvents: "none" }}>ROTATE</span>
+        </div>
+        <button type="button" onClick={rotPrompt} className="mono" title="Type an exact rotation (degrees clockwise)" disabled={points.length < 2}
+          style={{ height: 34, minWidth: 54, padding: "0 8px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: INK, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: points.length < 2 ? 0.45 : 1 }}>
+          {fmtDeg(rotation)}
+        </button>
+        <button type="button" onClick={() => applyRotation(rotation + 90)} title="Quarter turn clockwise" disabled={points.length < 2}
+          style={{ height: 34, padding: "0 9px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: INK, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", opacity: points.length < 2 ? 0.45 : 1 }}>
+          +90°
+        </button>
+        <button type="button" onClick={() => applyRotation(0)} title="Back to the way it was drawn" disabled={rotation === 0}
+          style={{ height: 34, padding: "0 9px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: INK, color: "#fff", fontSize: 14, cursor: rotation === 0 ? "default" : "pointer", opacity: rotation === 0 ? 0.45 : 1 }}>
+          ⟲
+        </button>
+      </div>
     </div>
   );
 }
@@ -2279,6 +2413,13 @@ export default function ShopOrderApp() {
   const [coilWidthScaleLoaded, setCoilWidthScaleLoaded] = useState(false);
   const [priceDrafts, setPriceDrafts] = useState({}); // holds in-progress typed text for price/cost/margin fields so it isn't clobbered mid-keystroke
 
+  // Signing out inside the roofcoil.com iframe has to sign the site out too — the host
+  // page owns the header chip, so it reloads and shows its own sign-in gate.
+  const signOutEverywhere = async () => {
+    await signOut();
+    if (window.parent !== window) window.parent.postMessage({ type: "rc:signed-out" }, window.location.origin);
+  };
+
   const theme = darkMode ? {
     pageBg: "#14181C",
     card: "#1E252B",
@@ -2396,20 +2537,41 @@ export default function ShopOrderApp() {
   const [vaultExpanded, setVaultExpanded] = useState({});
   const [savingVault, setSavingVault] = useState(false);
 
-  // Remember which section you were last on (personal, not shared — everyone gets their own).
-  // ?view=color deep link (the site's Color Lab button) opens straight to Pick Your
-  // Finish — and wins over the saved last-tab restore below.
-  const deepLinkColor = new URLSearchParams(window.location.search).get("view") === "color";
+  // Deep links from the site — these win over the saved last-tab restore below:
+  //   ?view=color  the Color Lab button opens straight to Pick Your Finish
+  //   ?view=trim   "Trim drawing" on roofcoil.com/members.html opens the drawing tool
+  //   ?view=panel  "Panel orders" opens the panel calculator
+  // members.html embeds this app in an iframe with one of these, then switches tools
+  // with a same-origin postMessage ({type:"rc:view"}) so a half-drawn profile isn't
+  // lost to a reload when the member flips tabs.
+  const openTool = useCallback((view) => {
+    if (view === "color") { setTab("order"); setOrderStep("color"); }
+    else if (view === "trim" || view === "panel") { setTab("order"); setShapeType(view); setOrderStep("details"); }
+  }, []);
+  const deepLinkView = new URLSearchParams(window.location.search).get("view");
+  const deepLinked = ["color", "trim", "panel"].includes(deepLinkView);
   useEffect(() => {
-    if (deepLinkColor) { setTab("order"); setOrderStep("color"); }
+    if (deepLinked) openTool(deepLinkView);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  useEffect(() => {
+    if (window.parent === window) return; // not embedded — nobody to talk to
+    const onMessage = (e) => {
+      if (e.origin !== window.location.origin || !e.data || e.data.type !== "rc:view") return;
+      openTool(e.data.view);
+    };
+    window.addEventListener("message", onMessage);
+    // Tell the host page we're up, so a tab it switched while we were loading isn't lost.
+    window.parent.postMessage({ type: "rc:app-ready" }, window.location.origin);
+    return () => window.removeEventListener("message", onMessage);
+  }, [openTool]);
 
+  // Remember which section you were last on (personal, not shared — everyone gets their own).
   useEffect(() => {
     (async () => {
       try {
         const res = await storage.get("last-tab", false);
-        if (res?.value && !deepLinkColor) setTab(res.value);
+        if (res?.value && !deepLinked) setTab(res.value);
       } catch (e) { /* first time opening, no saved tab yet */ }
       setTabLoaded(true);
     })();
@@ -2450,9 +2612,13 @@ export default function ShopOrderApp() {
     const { error } = await supabase.from("orders").insert(rows);
     if (error) {
       console.error("orders insert error", error);
+      const failed = new Set(newOrders.map((o) => o.id));
+      setOrders((prev) => prev.filter((o) => !failed.has(o.id))); // undo the optimistic add
       setToast("⚠️ Order didn't save — check your connection and try again.");
       setTimeout(() => setToast(""), 4000);
+      return false;
     }
+    return true;
   };
 
   const updateOrderRows = async (patched) => {
@@ -2988,11 +3154,13 @@ export default function ShopOrderApp() {
     reader.readAsDataURL(file);
   };
 
-  // Sends a photo of a hand-drawn sketch to Claude's vision API and asks it to read
-  // off the shape (and any handwritten dimensions) as a straight-line point path,
-  // which becomes the starting drawing — this is a best-effort AI reading of a messy
-  // hand sketch, not precise tracing, so the result should always be checked and
-  // adjusted afterward rather than trusted blindly.
+  // Sends a photo of a hand-drawn sketch to api/scan-sketch.js, which asks Claude to
+  // read off the shape (and any handwritten dimensions) as a straight-line point path
+  // that becomes the starting drawing — a best-effort AI reading of a messy hand
+  // sketch, not precise tracing, so the result should always be checked and adjusted
+  // afterward rather than trusted blindly. The model call is server-side: the browser
+  // never holds an API key (calling api.anthropic.com from here only ever worked inside
+  // the Claude.ai artifact sandbox).
   const scanSketchToPoints = (file) => {
     if (!file) return;
     setScanningSketch(true);
@@ -3016,39 +3184,36 @@ export default function ShopOrderApp() {
         });
         const base64 = dataUrl.split(",")[1];
 
-        const response = await fetch("https://api.anthropic.com/v1/messages", {
+        // The signed-in member's token rides along so only members can spend the shop's credits.
+        const { data: { session } = {} } = await supabase.auth.getSession();
+        const response = await fetch(SCAN_SKETCH_URL, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "claude-sonnet-4-6",
-            max_tokens: 1000,
-            messages: [{
-              role: "user",
-              content: [
-                { type: "image", source: { type: "base64", media_type: "image/jpeg", data: base64 } },
-                {
-                  type: "text",
-                  text: "This is a photo of a hand-drawn sketch of a sheet metal trim/flashing cross-section profile — a shape made of connected straight line segments. Read any handwritten dimensions (lengths in inches or feet, angles in degrees) if present, and use them to size each segment accurately. If a segment isn't labeled, estimate its length proportionally relative to the labeled ones. Trace the profile as a connected path of straight segments only (no curves), starting from one end. Respond with ONLY a JSON array of [x, y] coordinate pairs in inches, like [[0,0],[4,0],[4,-2]] — no markdown code fences, no explanation, nothing else.",
-                },
-              ],
-            }],
-          }),
+          headers: { "Content-Type": "application/json", ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+          body: JSON.stringify({ image: base64, mediaType: "image/jpeg" }),
         });
-        const data = await response.json();
-        const textBlock = (data.content || []).find((b) => b.type === "text");
-        if (!textBlock) throw new Error("No response from the model");
-        const cleaned = textBlock.text.replace(/```json|```/g, "").trim();
-        const parsed = JSON.parse(cleaned);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          // the function explains itself (not set up yet, signed out, model refused) — show
+          // that; a bare platform error (timed out, gateway) gets a "try again" instead
+          const err = new Error(data?.error || (response.status >= 500
+            ? "The sketch reader didn't answer — try again in a moment."
+            : `Sketch scan failed (${response.status}) — try again.`));
+          err.userFacing = true;
+          throw err;
+        }
+        const parsed = data?.points;
         if (!Array.isArray(parsed) || parsed.length < 2 || !parsed.every((p) => Array.isArray(p) && p.length === 2 && isFinite(p[0]) && isFinite(p[1]))) {
           throw new Error("Couldn't make sense of that sketch");
         }
-        setPoints(parsed);
+        setPoints(parsed.map((p) => [+p[0], +p[1]]));
         setViewResetKey((k) => k + 1);
         setToast("Sketch scanned — check the shape and adjust any points/lengths before using it.");
         setTimeout(() => setToast(""), 5000);
       } catch (err) {
         console.error("scanSketchToPoints error", err);
-        setToast("Couldn't read that sketch — try a clearer photo, or draw it by hand instead.");
+        setToast(err?.userFacing ? err.message
+          : err instanceof TypeError ? "Couldn't reach the sketch reader — check your connection and try again."
+          : "Couldn't read that sketch — try a clearer photo, or draw it by hand instead.");
         setTimeout(() => setToast(""), 4000);
       } finally {
         setScanningSketch(false);
@@ -3174,7 +3339,8 @@ export default function ShopOrderApp() {
     ];
     const poByJob = { [jobDave]: "PO-1001", [jobPriya]: "PO-1002", [jobMarcus]: "PO-1003", [jobTammy]: "PO-1004" };
     samples.forEach((o) => { o.poNumber = poByJob[o.jobId]; });
-    await insertOrders(samples);
+    const saved = await insertOrders(samples);
+    if (!saved) return; // insertOrders already said so and rolled the rows back
     setToast(`Added ${samples.length} sample orders across 4 jobs to the Shop Floor.`);
     setTimeout(() => setToast(""), 4000);
   };
@@ -3236,9 +3402,12 @@ export default function ShopOrderApp() {
     : { type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, brand, colorName };
   const estimate = computePrice(draft, priceList, coilWidthScale);
   const girth = points.reduce((s, p, i) => s + (i > 0 ? dist(points[i - 1], p) : 0), 0);
-  const partsPerSheet = girth > 0 ? Math.floor(sheetWidth / girth) : 0;
-  const sheetsNeeded = partsPerSheet > 0 ? Math.ceil(quantity / partsPerSheet) : 0;
-  const dropWidth = partsPerSheet > 0 ? Math.max(0, sheetWidth - partsPerSheet * girth) : sheetWidth;
+  // Qty / sheet width are "" while a field is cleared for retyping — treat that as 0 so
+  // this stays numeric (dropWidth.toFixed on "" used to white-screen the whole app).
+  const sheetWidthNum = +sheetWidth || 0, quantityNum = +quantity || 0;
+  const partsPerSheet = girth > 0 ? Math.floor(sheetWidthNum / girth) : 0;
+  const sheetsNeeded = partsPerSheet > 0 ? Math.ceil(quantityNum / partsPerSheet) : 0;
+  const dropWidth = partsPerSheet > 0 ? Math.max(0, sheetWidthNum - partsPerSheet * girth) : sheetWidthNum;
 
   const resetForm = () => {
     setOrderStep("type");
@@ -3361,6 +3530,12 @@ export default function ShopOrderApp() {
           phone: phone.trim(),
           points: it.points,
           lengthPerPiece: it.lengthPerPiece,
+          // Materials Needed and Reorder read these off the order — same fields the vault
+          // payload and the sample orders carry.
+          sheetWidth: it.sheetWidth,
+          girth: it.girth,
+          partsPerSheet: it.partsPerSheet,
+          sheetsNeeded: it.sheetsNeeded,
           hemStart: it.hemStart,
           hemEnd: it.hemEnd,
           paintSide: it.paintSide,
@@ -3378,8 +3553,9 @@ export default function ShopOrderApp() {
         order.price = computePrice(order, priceList, coilWidthScale);
         return order;
       });
-      await insertOrders(newOrders);
+      const saved = await insertOrders(newOrders);
       setSubmitting(false);
+      if (!saved) return; // insertOrders already said so — keep the parts so they can retry
       const totalPrice = newOrders.reduce((s, o) => s + o.price, 0);
       setToast(`Order sent — ${newOrders.length} part${newOrders.length === 1 ? "" : "s"}, estimate ${money(totalPrice)}. The shop will confirm final pricing.`);
       setBasket([]);
@@ -3442,8 +3618,9 @@ export default function ShopOrderApp() {
       createdAt: new Date().toISOString(),
     };
     order.price = computePrice(order, priceList, coilWidthScale);
-    await insertOrders([order]);
+    const saved = await insertOrders([order]);
     setSubmitting(false);
+    if (!saved) return; // insertOrders already said so — keep the form so they can retry
     setToast(`Order sent — estimate ${money(order.price)}. The shop will confirm final pricing.`);
     resetForm();
     setTimeout(() => setToast(""), 5000);
@@ -3594,6 +3771,7 @@ export default function ShopOrderApp() {
     setAccessories(Array.isArray(p.accessories) ? p.accessories : []);
     if (kind === "trim") {
       setPoints(Array.isArray(p.points) ? p.points : []);
+      setViewResetKey((k) => k + 1); // fresh zoom + rotation baseline for the loaded profile
       setHemStart(p.hemStart || "none"); setHemEnd(p.hemEnd || "none");
       setPaintSide(p.paintSide || "left");
       setPartName(p.partName || "");
@@ -3758,7 +3936,7 @@ export default function ShopOrderApp() {
               {isStaff ? "Staff" : `Tier: ${customer?.tier === "tier1" ? "Tier 1" : customer?.tier === "greenleaf" ? "Greenleaf" : "Tier 2"}`}
             </div>
           </div>
-          <button onClick={signOut}
+          <button onClick={signOutEverywhere}
             style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
             Sign Out
           </button>
@@ -4918,11 +5096,13 @@ export default function ShopOrderApp() {
                     Drop: {dropWidth.toFixed(2)}"
                   </span>
                 </div>
-                <div style={{ display: "flex", flexWrap: "nowrap", gap: 5, marginTop: 10 }}>
-                  <label style={{ flex: 1, minWidth: 0, fontSize: 9, color: theme.textSecondary }}>
+                {/* Hems + painted side. Wraps to two columns on a phone so the option text
+                    ("Closed, faces Right") stays readable instead of being clipped. */}
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
+                  <label style={{ flex: "1 1 130px", minWidth: 0, fontSize: 9, color: theme.textSecondary }}>
                     Start Hem
                     <select value={hemStart} onChange={(e) => setHemStart(e.target.value)}
-                      style={{ width: "100%", padding: "6px 2px", marginTop: 3, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 10, background: theme.inputBg }}>
+                      style={{ width: "100%", padding: "6px 4px", marginTop: 3, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 11, background: theme.inputBg }}>
                       <option value="none">None</option>
                       <option value="open-left">Open, faces Left</option>
                       <option value="open-right">Open, faces Right</option>
@@ -4930,10 +5110,10 @@ export default function ShopOrderApp() {
                       <option value="closed-right">Closed, faces Right</option>
                     </select>
                   </label>
-                  <label style={{ flex: 1, minWidth: 0, fontSize: 9, color: theme.textSecondary }}>
+                  <label style={{ flex: "1 1 130px", minWidth: 0, fontSize: 9, color: theme.textSecondary }}>
                     End Hem
                     <select value={hemEnd} onChange={(e) => setHemEnd(e.target.value)}
-                      style={{ width: "100%", padding: "6px 2px", marginTop: 3, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 10, background: theme.inputBg }}>
+                      style={{ width: "100%", padding: "6px 4px", marginTop: 3, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 11, background: theme.inputBg }}>
                       <option value="none">None</option>
                       <option value="open-left">Open, faces Left</option>
                       <option value="open-right">Open, faces Right</option>
@@ -4941,24 +5121,22 @@ export default function ShopOrderApp() {
                       <option value="closed-right">Closed, faces Right</option>
                     </select>
                   </label>
-                  <button onClick={() => setPaintSide("left")}
-                    style={{
-                      flex: 1, minWidth: 0, padding: "6px 2px", marginTop: 15, borderRadius: 6, fontSize: 9.5, cursor: "pointer",
-                      border: `1px solid ${paintSide === "left" ? SAFETY : "#D9D5C7"}`,
-                      background: paintSide === "left" ? SAFETY : "#fff", color: paintSide === "left" ? "#fff" : INK_DEEP, fontWeight: 600,
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    }}>
-                    Paint: Left
-                  </button>
-                  <button onClick={() => setPaintSide("right")}
-                    style={{
-                      flex: 1, minWidth: 0, padding: "6px 2px", marginTop: 15, borderRadius: 6, fontSize: 9.5, cursor: "pointer",
-                      border: `1px solid ${paintSide === "right" ? SAFETY : "#D9D5C7"}`,
-                      background: paintSide === "right" ? SAFETY : "#fff", color: paintSide === "right" ? "#fff" : INK_DEEP, fontWeight: 600,
-                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                    }}>
-                    Paint: Right
-                  </button>
+                  <div style={{ flex: "1 1 130px", minWidth: 0, fontSize: 9, color: theme.textSecondary }}>
+                    Painted Side
+                    <div style={{ display: "flex", gap: 5, marginTop: 3 }}>
+                      {["left", "right"].map((side) => (
+                        <button key={side} type="button" onClick={() => setPaintSide(side)}
+                          style={{
+                            flex: 1, minWidth: 0, padding: "6px 2px", borderRadius: 6, fontSize: 10.5, cursor: "pointer",
+                            border: `1px solid ${paintSide === side ? SAFETY : "#D9D5C7"}`,
+                            background: paintSide === side ? SAFETY : "#fff", color: paintSide === side ? "#fff" : INK_DEEP, fontWeight: 600,
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          }}>
+                          {side === "left" ? "Left" : "Right"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
 
                 <label style={{ display: "block", fontSize: 10.5, color: theme.textSecondary, marginTop: 10 }}>
