@@ -61,6 +61,7 @@
 
   <div class="cols">
     <div>
+      <div class="panel"><h2>Supplier edits <span class="cnt" id="se-count">…</span></h2><div id="sedits"><p class="empty">Loading…</p></div></div>
       <div class="panel"><h2>Applications <span class="cnt" id="app-count">…</span></h2><div id="apps"><p class="empty">Loading…</p></div></div>
       <div class="panel"><h2>Listings <span class="cnt" id="l-count">…</span></h2><div id="listings"><p class="empty">Loading…</p></div></div>
     </div>
@@ -99,6 +100,8 @@
         <div class="fld"><label>Website</label><input id="e-website" placeholder="https://"></div>
         <div class="fld"><label>Phone (public)</label><input id="e-phone"></div>
       </div>
+      <div class="fld"><label>Owner account — the supplier email allowed to propose edits from /manage-listing.html</label><input id="e-owner" placeholder="owner@company.com"></div>
+      <div class="row" style="display:flex;gap:8px;margin:-4px 0 12px;flex-wrap:wrap"><button class="mini" id="e-setowner">Link owner account</button><span class="okline" id="owner-note" style="margin:0;align-self:center"></span></div>
       <div class="fld"><label>Logo URL — shown beside the name on the listing</label><input id="e-logo"></div>
       <div class="fld"><label>Logo background — hex color for logos that vanish on white (leave blank for most)</label><input id="e-logobg" placeholder="#0B1E2C"></div>
       <div class="row" style="display:flex;gap:8px;margin:-4px 0 12px;flex-wrap:wrap">
@@ -123,7 +126,7 @@ const GUTTER_MATERIALS=["Gutter — .027 aluminum","Gutter — .032 aluminum","G
 const ALL_CANON=[...ABILITIES,...GUTTER_PROFILES,...GUTTER_MATERIALS];
 const STOCK_COLORS=["Regal White","Almond","Ash Gray","Slate Gray","Burnished Slate","Charcoal","Medium Bronze","Dark Bronze","Matte Black","Evergreen","Copper Metallic","Galvalume","Texas Silver","Bare Copper","Bonderized"];
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
-let token=null, editingId=null, apps=[], listings=[];
+let token=null, editingId=null, apps=[], listings=[], me=null, ownerEmails={};
 
 // Applications are UNREVIEWED, attacker-reachable input (open anon insert).
 // Any URL from an application must pass this gate before it can become an
@@ -169,9 +172,14 @@ $('#e-bturnkey').onclick=()=>$('#e-bturnkey').classList.toggle('sel');
 $('#e-featured').onclick=()=>$('#e-featured').classList.toggle('sel');
 $('#e-bfab').onclick=()=>$('#e-bfab').classList.toggle('sel');
 
+// refresh the access token before every call so a staff tab left open past
+// token expiry (~1 hour) keeps working instead of failing with JWT errors
+async function fresh(){try{const s=await window.rcAuth.getSession();if(s)token=s.access_token}catch(e){}return token}
 async function api(path,opts){
+  await fresh();
   opts=opts||{};opts.headers=Object.assign({apikey:KEY,Authorization:'Bearer '+token,'Content-Type':'application/json'},opts.headers||{});
   const r=await fetch(SUPA+path,opts);
+  if(r.status===401)throw new Error('Your sign-in expired — reload this page and sign in again.');
   if(!r.ok)throw new Error((await r.text()).slice(0,300)||('HTTP '+r.status));
   const t=await r.text();return t?JSON.parse(t):null;
 }
@@ -183,8 +191,10 @@ document.addEventListener('rc:auth',async e=>{
   let staff=[];
   try{staff=await api('/rest/v1/staff?select=id&id=eq.'+s.user.id)}catch(x){}
   if(!staff.length){$('#locked').style.display='block';return}
+  me=s.user.id;
   $('#admin').style.display='block';
-  loadApps();loadListings();
+  loadApps();
+  loadOwners().then(loadListings).then(loadEdits);
 });
 
 /* ── applications ──────────────────────────────────────────────────────── */
@@ -292,6 +302,7 @@ function prefillFromApp(a){
   const hasFab=abil.some(x=>/seam|lock|strip|panel|gutter|trim|batten|soffit|fastener|3d|roll forming|trapezoidal/i.test(x));
   $('#e-bcoil').classList.toggle('sel',hasCoil);
   $('#e-bfab').classList.toggle('sel',hasFab);
+  $('#e-bturnkey').classList.toggle('sel',abil.some(x=>/turn[- ]?key/i.test(String(x))));
   $('#e-coildesc').value='';$('#e-fabdesc').value='';
   $('#e-website').value=safeUrl(a.website)||'';
   $('#e-phone').value=a.phone||'';
@@ -299,6 +310,7 @@ function prefillFromApp(a){
   $('#e-photos').value=(d.job_photos||[]).map(u=>safeUrl(u,true)).filter(Boolean).join('\n');
   $('#e-logo').value=safeUrl(d.logo_url,true)||'';
   $('#scrape-note').textContent='';$('#geo-note').textContent='';$('#pin-note').textContent='';
+  $('#e-owner').value='';$('#owner-note').textContent='';
   $('#e-save').dataset.appId=a.id;
   $('#save-note').textContent='';
   $('#editor').scrollIntoView({behavior:'smooth',block:'start'});
@@ -355,7 +367,7 @@ $('#e-scrape').onclick=async()=>{
   try{
     const r=await fetch(SUPA+'/functions/v1/scrape-site',{
       method:'POST',
-      headers:{'Content-Type':'application/json','apikey':KEY,'Authorization':'Bearer '+token},
+      headers:{'Content-Type':'application/json','apikey':KEY,'Authorization':'Bearer '+await fresh()},
       body:JSON.stringify({url:site})});
     const j=await r.json();
     if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
@@ -497,7 +509,7 @@ $('#e-pin').onclick=async()=>{
     try{
       const r=await fetch(SUPA+'/functions/v1/scrape-site',{
         method:'POST',
-        headers:{'Content-Type':'application/json','apikey':KEY,'Authorization':'Bearer '+token},
+        headers:{'Content-Type':'application/json','apikey':KEY,'Authorization':'Bearer '+await fresh()},
         body:JSON.stringify({url:link})});
       const j=await r.json();
       if(!r.ok)throw new Error(j.error||('HTTP '+r.status));
@@ -524,7 +536,7 @@ $('#e-save').onclick=async()=>{
   const abilities=[...$$('#e-abilities .seg.sel, #e-gutters .seg.sel, #e-gutmats .seg.sel')].map(b=>b.dataset.v);
   // approved custom profiles: whatever staff leave in the box joins the listing;
   // anything matching a standard chip is canonicalized instead of duplicated
-  $('#e-moreabilities').value.split(',').map(s=>s.trim()).filter(Boolean).forEach(c=>{
+  $('#e-moreabilities').value.split(',').map(s=>s.replace(/\|/g,' ').replace(/\s+/g,' ').trim()).filter(Boolean).forEach(c=>{
     const canon=ALL_CANON.find(s=>s.toLowerCase()===c.toLowerCase())||c;
     if(!abilities.some(x=>x.toLowerCase()===canon.toLowerCase()))abilities.push(canon);
   });
@@ -538,7 +550,7 @@ $('#e-save').onclick=async()=>{
   // free-typed colors are canonicalized against stock spellings so the public
   // color filter (case-sensitive) never fragments into 'Charcoal'/'charcoal'
   const colors=[...$$('#e-colors .seg.sel')].map(b=>b.dataset.v);
-  $('#e-morecolors').value.split(',').map(s=>s.trim()).filter(Boolean).forEach(c=>{
+  $('#e-morecolors').value.split(',').map(s=>s.replace(/\|/g,' ').replace(/\s+/g,' ').trim()).filter(Boolean).forEach(c=>{
     const canon=STOCK_COLORS.find(s=>s.toLowerCase()===c.toLowerCase())||c;
     if(!colors.some(x=>x.toLowerCase()===canon.toLowerCase()))colors.push(canon);
   });
@@ -618,40 +630,12 @@ async function loadListings(){
     const nogeo=lls.filter(x=>!x||x.lat==null||x.lng==null).length;
     meta.textContent=[l.featured?'★ featured':null,l.city,lls.length>1?lls.length+' locations':null,
       (l.abilities||[]).length+' abilities',(l.colors||[]).length+' colors',
-      nogeo?(lls.length>1?'no coords on '+nogeo+' of '+lls.length:'no coords'):'geo ✓'].filter(Boolean).join(' · ');
+      nogeo?(lls.length>1?'no coords on '+nogeo+' of '+lls.length:'no coords'):'geo ✓',
+      ownerEmails[l.id]?'owner: '+ownerEmails[l.id]:null].filter(Boolean).join(' · ');
     card.appendChild(meta);
     const row=document.createElement('div');row.className='row';
     const edit=document.createElement('button');edit.className='mini';edit.textContent='Edit';
-    edit.onclick=()=>{
-      editingId=l.id;
-      $('#ed-title').textContent='Editing — '+l.name;
-      $('#e-name').value=l.name;$('#e-status').value=l.status;
-      $('#e-bcoil').classList.toggle('sel',(l.badges||[]).includes('coil'));
-      $('#e-bfab').classList.toggle('sel',(l.badges||[]).includes('fab'));
-      $('#e-bturnkey').classList.toggle('sel',(l.badges||[]).includes('turnkey'));
-      $('#e-lic').value=l.licensed_states||'';
-      $('#e-featured').classList.toggle('sel',!!l.featured);
-      $('#e-logobg').value=l.logo_bg||'';
-      $('#e-area').value=l.area_keywords||'';
-      $('#e-gmaps').value=l.gmaps_url||'';
-      setChips('#e-abilities',l.abilities||[]);
-      setChips('#e-gutters',l.abilities||[]);
-      setChips('#e-gutmats',l.abilities||[]);
-      // subsets render from the company chips, so set locations after them
-      setAdmLocs((Array.isArray(l.locations)&&l.locations.length)?l.locations
-        :[{address:l.address||'',city:l.city||'',lat:l.lat,lng:l.lng}]);
-      $('#e-moreabilities').value=(l.abilities||[]).filter(a=>!ALL_CANON.includes(a)).join(', ');
-      setChips('#e-colors',l.colors||[]);
-      $('#e-morecolors').value=(l.colors||[]).filter(c=>!STOCK_COLORS.includes(c)).join(', ');
-      $('#e-coildesc').value=l.coil_desc||'';$('#e-fabdesc').value=l.fab_desc||'';
-      $('#e-website').value=l.website||'';$('#e-phone').value=l.phone||'';$('#e-chart').value=l.colorchart_url||'';
-      $('#e-photos').value=(l.photos||[]).join('\n');
-      $('#e-logo').value=l.logo_url||'';
-      $('#scrape-note').textContent='';$('#geo-note').textContent='';$('#pin-note').textContent='';
-      delete $('#e-save').dataset.appId;
-      $('#save-note').textContent='';
-      $('#editor').scrollIntoView({behavior:'smooth',block:'start'});
-    };
+    edit.onclick=()=>openListing(l);
     row.appendChild(edit);
     const flip=document.createElement('button');flip.className='mini '+(l.status==='live'?'':'gold');
     flip.textContent=l.status==='live'?'Take down':'Make live';
@@ -668,6 +652,149 @@ async function loadListings(){
     box.appendChild(card);
   });
 }
+
+function openListing(l){
+  editingId=l.id;
+  $('#ed-title').textContent='Editing — '+l.name;
+  $('#e-name').value=l.name;$('#e-status').value=l.status;
+  $('#e-bcoil').classList.toggle('sel',(l.badges||[]).includes('coil'));
+  $('#e-bfab').classList.toggle('sel',(l.badges||[]).includes('fab'));
+  $('#e-bturnkey').classList.toggle('sel',(l.badges||[]).includes('turnkey'));
+  $('#e-lic').value=l.licensed_states||'';
+  $('#e-featured').classList.toggle('sel',!!l.featured);
+  $('#e-logobg').value=l.logo_bg||'';
+  $('#e-area').value=l.area_keywords||'';
+  $('#e-gmaps').value=l.gmaps_url||'';
+  setChips('#e-abilities',l.abilities||[]);
+  setChips('#e-gutters',l.abilities||[]);
+  setChips('#e-gutmats',l.abilities||[]);
+  // subsets render from the company chips, so set locations after them
+  setAdmLocs((Array.isArray(l.locations)&&l.locations.length)?l.locations
+    :[{address:l.address||'',city:l.city||'',lat:l.lat,lng:l.lng}]);
+  $('#e-moreabilities').value=(l.abilities||[]).filter(a=>!ALL_CANON.includes(a)).join(', ');
+  setChips('#e-colors',l.colors||[]);
+  $('#e-morecolors').value=(l.colors||[]).filter(c=>!STOCK_COLORS.includes(c)).join(', ');
+  $('#e-coildesc').value=l.coil_desc||'';$('#e-fabdesc').value=l.fab_desc||'';
+  $('#e-website').value=l.website||'';$('#e-phone').value=l.phone||'';$('#e-chart').value=l.colorchart_url||'';
+  $('#e-photos').value=(l.photos||[]).join('\n');
+  $('#e-logo').value=l.logo_url||'';
+  $('#scrape-note').textContent='';$('#geo-note').textContent='';$('#pin-note').textContent='';
+  $('#e-owner').value=ownerEmails[l.id]||'';$('#owner-note').textContent='';
+  delete $('#e-save').dataset.appId;
+  $('#save-note').textContent='';
+  $('#editor').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+/* ── supplier-proposed edits (from /manage-listing.html) ───────────────── */
+const FIELD_LABELS={name:'Company name',phone:'Phone',website:'Website',gmaps_url:'Maps link',licensed_states:'Licensed states',coil_desc:'Coil sentence',fab_desc:'Fabrication sentence',colors:'Colors',abilities:'Abilities'};
+const fmtVal=v=>Array.isArray(v)?(v.length?v.join(', '):'(none)'):(v==null||v===''?'(empty)':String(v));
+
+async function loadOwners(){
+  ownerEmails={};
+  try{((await api('/rest/v1/rpc/staff_listing_owners',{method:'POST',body:'{}'}))||[]).forEach(r=>{ownerEmails[r.listing_id]=r.email})}
+  catch(x){console.warn('owner list unavailable',x)}
+}
+
+async function loadEdits(){
+  const box=$('#sedits');box.textContent='';
+  let rows=[];
+  try{rows=await api('/rest/v1/listing_edits?select=*&status=eq.pending&order=created_at.asc')}
+  catch(x){box.textContent='Could not load supplier edits.';$('#se-count').textContent='!';return}
+  $('#se-count').textContent=rows.length;
+  if(!rows.length){const p=document.createElement('p');p.className='empty';p.textContent='No edits waiting — suppliers propose them from /manage-listing.html.';box.appendChild(p);return}
+  rows.forEach(e=>{
+    const l=listings.find(x=>x.id===e.listing_id);
+    const card=document.createElement('div');card.className='appcard';
+    const b=document.createElement('b');b.textContent=(l?l.name:'(listing gone)');card.appendChild(b);
+    const meta=document.createElement('div');meta.className='meta';meta.style.whiteSpace='pre-line';
+    // submitted_email is server-stamped since the hardening migration, but
+    // collapse whitespace anyway so a value can never forge extra card lines
+    const fromEmail=String(e.submitted_email||'(unknown)').replace(/\s+/g,' ').slice(0,120);
+    const own=ownerEmails[e.listing_id];
+    meta.textContent='from '+fromEmail+(own&&own!==fromEmail?' · listing owner: '+own:'')+' · '+new Date(e.created_at).toLocaleString()
+      +Object.entries(e.proposed||{}).map(([k,v])=>'\n'+(FIELD_LABELS[k]||k)+':\n   now: '+fmtVal(l?l[k]:null)+'\n   proposed: '+fmtVal(v)).join('')
+      +(e.note?'\nnote: '+e.note:'');
+    card.appendChild(meta);
+    const row=document.createElement('div');row.className='row';
+    const hasFields=Object.keys(e.proposed||{}).length>0;
+    if(hasFields&&l){
+      const apply=document.createElement('button');apply.className='mini gold';apply.textContent='Apply to listing';
+      apply.onclick=()=>applyEdit(e);row.appendChild(apply);
+    }
+    if(l){
+      const open=document.createElement('button');open.className='mini';open.textContent='Open in editor';
+      open.onclick=()=>openListing(l);row.appendChild(open);
+    }
+    const done=document.createElement('button');done.className='mini';done.textContent='Mark handled';
+    done.onclick=()=>decideEdit(e,'applied');row.appendChild(done);
+    const dis=document.createElement('button');dis.className='mini red';dis.textContent='Dismiss';
+    dis.onclick=()=>decideEdit(e,'dismissed');row.appendChild(dis);
+    card.appendChild(row);
+    box.appendChild(card);
+  });
+}
+
+// Proposed values are supplier input: URLs re-pass the same gates as the
+// editor, list values are canonicalized against the taxonomy ('|' is the
+// public search delimiter and can never survive into an item), and the
+// listing is re-fetched so a stale "now:" column can't cause a blind apply.
+async function applyEdit(e){
+  const p=e.proposed||{};
+  const snap=listings.find(x=>x.id===e.listing_id);
+  let cur=[];
+  try{cur=await api('/rest/v1/directory_listings?id=eq.'+e.listing_id+'&select=*')}catch(x){alert('Could not re-check the listing: '+x.message);return}
+  if(!cur.length){alert('That listing no longer exists.');loadListings().then(loadEdits);return}
+  const changed=Object.keys(p).some(k=>JSON.stringify(cur[0][k]??null)!==JSON.stringify((snap&&snap[k])??null));
+  if(changed){alert('This listing changed since this card was drawn — the "now" values were stale. Refreshing; please review the card again.');loadListings().then(loadEdits);return}
+  const patch={};
+  for(const k of Object.keys(p)){
+    let v=p[k];
+    if(k==='website'){const c=v?safeUrl(v):'';if(v&&!c){alert('Their proposed website is not a normal http(s) URL — open the listing in the editor and handle it by hand.');return}v=c||''}
+    else if(k==='gmaps_url'){const c=v?mapsUrl(v):'';if(v&&!c){alert('Their proposed Maps link is not a Google Maps address — open the listing in the editor and handle it by hand.');return}v=c||''}
+    else if(k==='name'){v=String(v).trim();if(!v){alert('Their proposed name is empty — dismiss this edit.');return}}
+    else if(k==='colors'||k==='abilities'){
+      if(!Array.isArray(v)||!v.every(x=>typeof x==='string')){alert('Malformed '+k+' — dismiss this edit.');return}
+      const CANON=(k==='colors'?STOCK_COLORS:ALL_CANON);
+      const out=[];
+      v.forEach(x=>{
+        x=x.replace(/\|/g,' ').replace(/\s+/g,' ').trim();if(!x)return;
+        const hit=CANON.find(s=>s.toLowerCase()===x.toLowerCase())||x;
+        if(!out.some(o=>o.toLowerCase()===hit.toLowerCase()))out.push(hit);
+      });
+      v=out;
+      if(k==='abilities'&&!v.length){alert('Their proposed abilities list is empty — nothing could find the listing. Dismiss or edit by hand.');return}
+    }
+    else v=String(v).trim();
+    patch[k]=v;
+  }
+  patch.updated_at=new Date().toISOString();
+  try{
+    await api('/rest/v1/directory_listings?id=eq.'+e.listing_id,{method:'PATCH',body:JSON.stringify(patch)});
+    await api('/rest/v1/listing_edits?id=eq.'+e.id,{method:'PATCH',body:JSON.stringify({status:'applied',reviewed_at:new Date().toISOString(),reviewed_by:me})});
+    loadListings().then(loadEdits);
+  }catch(x){alert('Apply failed: '+x.message)}
+}
+
+async function decideEdit(e,status){
+  try{
+    await api('/rest/v1/listing_edits?id=eq.'+e.id,{method:'PATCH',body:JSON.stringify({status,reviewed_at:new Date().toISOString(),reviewed_by:me})});
+    loadEdits();
+  }catch(x){alert('Update failed: '+x.message)}
+}
+
+/* ── owner linking ─────────────────────────────────────────────────────── */
+$('#e-setowner').onclick=async()=>{
+  const note=$('#owner-note');note.classList.remove('errline');
+  if(!editingId){note.textContent='Save the listing first, then link the owner.';note.classList.add('errline');return}
+  const em=$('#e-owner').value.trim();
+  note.textContent=em?'Linking…':'Clearing…';
+  try{
+    const res=await api('/rest/v1/rpc/set_listing_owner',{method:'POST',body:JSON.stringify({p_listing_id:editingId,p_email:em})});
+    if(res==='no-account'){note.textContent='No RoofCoil account uses that email — have them create a free account (Sign in / Sign up on any page), then link again.';note.classList.add('errline');return}
+    note.textContent=res==='cleared'?'✓ Owner cleared — nobody can propose edits to this listing.':'✓ Linked — they can now propose edits at roofcoil.com/manage-listing.html.';
+    await loadOwners();loadListings().then(loadEdits);
+  }catch(x){note.textContent='Failed: '+x.message;note.classList.add('errline')}
+};
 </script>
 </body>
 </html>

@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Manage Your Listing | RoofCoil</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/styles.css">
+<script src="/auth.js" defer></script>
+<script defer src="/_vercel/insights/script.js"></script>
+<style>
+.mlwrap{max-width:860px;margin:0 auto;padding:clamp(18px,3vw,34px) var(--gut) 60px}
+.chipgrid{display:flex;flex-wrap:wrap;gap:7px}
+.mini{font-family:var(--disp);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;padding:7px 14px;border-radius:999px;border:1.5px solid rgba(15,61,92,.25);background:#fff;color:var(--ink);cursor:pointer}
+.mini:hover{border-color:var(--gold)}
+.mini.red{color:#B3261E;border-color:rgba(179,38,30,.4)}
+.okline{font-size:12.5px;color:var(--patina);font-weight:600;min-height:16px;margin-top:8px}
+.errline{color:#B3261E}
+.lockmsg{max-width:560px;margin:70px auto;text-align:center;color:var(--steel);font-size:15px;line-height:1.7}
+.ecard{border:1px solid rgba(15,61,92,.12);border-radius:var(--r-sm);padding:13px 15px;margin-bottom:10px;background:var(--paper)}
+.ecard .meta{font-family:var(--mono);font-size:10.5px;color:var(--steel);letter-spacing:.03em;margin:3px 0 6px;line-height:1.7;word-break:break-word;white-space:pre-line}
+.stat{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;font-weight:600;padding:3px 9px;border-radius:999px;margin-left:8px}
+.stat.pending{background:#E4DFD2;color:#6b6353}
+.stat.applied{background:var(--patina);color:#fff}
+.stat.dismissed{background:#8A94A6;color:#fff}
+.pickrow{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 18px}
+</style>
+</head>
+<body data-auth-required>
+<header class="nav"><div class="nav-in">
+  <a class="brand" href="/"><b>Roof<i>Coil</i></b><span>Manage your listing</span></a>
+  <nav class="nav-links">
+    <a href="/">Home</a>
+    <a href="/suppliers.html">View directory</a>
+  </nav>
+  <span data-auth-slot></span>
+</div></header>
+
+<div id="loaderr" class="lockmsg" style="display:none">
+  <p class="eyebrow" style="justify-content:center">Couldn't load</p>
+  <p>We couldn't load your listing just now — check your connection and refresh this page. If it keeps happening, email <a href="mailto:orders@roofcoil.com" style="color:var(--copper);font-weight:600">orders@roofcoil.com</a>.</p>
+  <a class="btn" href="/manage-listing.html">Refresh</a>
+</div>
+
+<div id="unlinked" class="lockmsg" style="display:none">
+  <p class="eyebrow" style="justify-content:center">No listing linked</p>
+  <p>You're signed in, but no directory listing is linked to this account yet.</p>
+  <p style="font-size:14px">Already listed on RoofCoil? Email <a href="mailto:orders@roofcoil.com" style="color:var(--copper);font-weight:600">orders@roofcoil.com</a> from your company email and ask us to link your listing to this account — it takes a minute on our side. Not listed yet? <a href="/get-listed.html" style="color:var(--copper);font-weight:600">Get listed free</a>.</p>
+  <a class="btn" href="/suppliers.html">Back to the directory</a>
+</div>
+
+<div id="manage" class="mlwrap" style="display:none">
+  <p class="eyebrow">Your directory listing</p>
+  <h1 class="disp" style="font-size:clamp(24px,3.5vw,34px);margin:0 0 6px" id="m-title">Manage your listing</h1>
+  <p style="color:#4E6273;font-size:14.5px;max-width:70ch;margin:0 0 18px">Change anything below and send it in. Edits don't go live by themselves — the RoofCoil shop reviews them first, usually within a business day, and you'll see the status of every request at the bottom of this page.</p>
+
+  <div class="pickrow" id="pickrow" style="display:none"></div>
+
+  <div class="step"><h3><span class="sn">1</span>Company &amp; contact</h3>
+    <div class="fld"><label>Company name</label><input id="f-name"></div>
+    <div class="frow">
+      <div class="fld"><label>Public phone</label><input id="f-phone" inputmode="tel"></div>
+      <div class="fld"><label>Website</label><input id="f-website" placeholder="https://"></div>
+    </div>
+    <div class="fld"><label>Google Maps link — your Business Profile</label><input id="f-gmaps" placeholder="https://maps.app.goo.gl/…"></div>
+    <div class="fld"><label>Licensed states (comma separated — shown on turnkey listings)</label><input id="f-lic" placeholder="TX, OK, LA"></div>
+  </div>
+
+  <div class="step"><h3><span class="sn">2</span>What you run</h3>
+    <div class="fld"><label>Abilities — tap everything you offer</label><div class="chipgrid" id="f-abilities"></div></div>
+    <div class="fld"><label>Gutter profiles</label><div class="chipgrid" id="f-gutters"></div></div>
+    <div class="fld"><label>Gutter materials</label><div class="chipgrid" id="f-gutmats"></div></div>
+    <div class="fld"><label>Anything you run that isn't a button above (comma separated)</label><input id="f-moreabilities"></div>
+  </div>
+
+  <div class="step"><h3><span class="sn">3</span>Colors</h3>
+    <div class="fld"><label>Colors you carry — powers the directory's color search</label><div class="chipgrid" id="f-colors"></div></div>
+    <div class="fld"><label>Extra colors we don't list (comma separated)</label><input id="f-morecolors"></div>
+  </div>
+
+  <div class="step"><h3><span class="sn">4</span>The two card sentences</h3>
+    <div class="fld"><label>Coil line — one sentence</label><textarea id="f-coildesc" rows="2"></textarea></div>
+    <div class="fld"><label>Fabrication — one sentence</label><textarea id="f-fabdesc" rows="2"></textarea></div>
+  </div>
+
+  <div class="step"><h3><span class="sn">5</span>Anything else</h3>
+    <div class="fld"><label>Address changes, new locations, photos, a logo, or anything the fields above don't cover — describe it and we'll handle it</label><textarea id="f-note" rows="3" placeholder="We moved to 2200 Industrial Blvd, Weatherford…"></textarea></div>
+  </div>
+
+  <button class="btn" style="width:100%" id="f-send">Send changes for review</button>
+  <div class="okline" id="send-note"></div>
+
+  <div class="step" style="margin-top:26px"><h3><span class="sn">✓</span><span id="edits-title">Your edit requests</span></h3>
+    <div id="myedits"><p style="color:var(--steel);font-size:13px">Loading…</p></div>
+  </div>
+</div>
+
+<script>
+const SUPA="https://znueitseoqijhkkvdomc.supabase.co";
+const KEY="sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
+// Same taxonomy the directory admin uses — keep the two lists in sync by hand.
+const ABILITIES=["Coil & flat sheet","Painted coil — PVDF / Kynar","Painted coil — SMP","Bare — Galvalume · G90 · bonderized","Copper","1″ mechanical lock","1.5″ snap-lock","1.75″ snap-lock","1.5″ mechanical lock (single)","1.5″ mechanical lock (double)","2″ mechanical lock","1″ nail strip","1.5″ nail strip","T-panel (138T)","T-panel (238T)","Batten seam","2.5″ trapezoidal","3″ trapezoidal structural","Exposed fastener","Flush wall & soffit","Board & batten","Trim & flashing","3D parts — boxes · scuppers · caps","On-site roll forming","On-site gutter roll forming","Turnkey — supply · fabrication · labor"];
+const GUTTER_PROFILES=["5″ K-style gutter","6″ K-style gutter","7″ K-style gutter","5″ half-round gutter","6″ half-round gutter","6″ box gutter","7″ box gutter","8″ box gutter","6″ euro box gutter","Fascia gutter","Straight-face / square gutter"];
+const GUTTER_MATERIALS=["Gutter — .027 aluminum","Gutter — .032 aluminum","Gutter — 26 ga painted steel","Gutter — 24 ga painted steel","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
+const ALL_CANON=[...ABILITIES,...GUTTER_PROFILES,...GUTTER_MATERIALS];
+const STOCK_COLORS=["Regal White","Almond","Ash Gray","Slate Gray","Burnished Slate","Charcoal","Medium Bronze","Dark Bronze","Matte Black","Evergreen","Copper Metallic","Galvalume","Texas Silver","Bare Copper","Bonderized"];
+const FIELD_LABELS={name:"Company name",phone:"Phone",website:"Website",gmaps_url:"Maps link",licensed_states:"Licensed states",coil_desc:"Coil sentence",fab_desc:"Fabrication sentence",colors:"Colors",abilities:"Abilities"};
+const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
+let token=null,me=null,myEmail=null,listing=null,myListings=[],lastEdits=[];
+
+function safeUrl(raw){
+  if(!raw)return null;
+  let s=String(raw).trim();
+  if(!/^https?:\/\//i.test(s))s='https://'+s;
+  try{const u=new URL(s);if(u.protocol!=='https:'&&u.protocol!=='http:')return null;return u.href}catch(e){return null}
+}
+function mapsUrl(raw){
+  const s=safeUrl(raw);if(!s)return null;
+  try{
+    const u=new URL(s);const h=u.hostname.toLowerCase();
+    if(h==='maps.app.goo.gl'||h==='g.page'||h==='share.google')return u.href;
+    if(h==='maps.google.com'&&(u.pathname==='/'||u.pathname.startsWith('/maps')))return u.href;
+    if((h==='google.com'||h==='www.google.com')&&u.pathname.startsWith('/maps'))return u.href;
+    if(h==='goo.gl'&&u.pathname.startsWith('/maps'))return u.href;
+    if(h==='g.co'&&u.pathname.startsWith('/kgs'))return u.href;
+    return null;
+  }catch(e){return null}
+}
+
+const segChip=(t,label)=>{const b=document.createElement('button');b.type='button';b.className='seg';b.dataset.v=t;b.textContent=label||t;b.onclick=()=>b.classList.toggle('sel');return b};
+const gutLabel=(t)=>{const d=t.replace(/ gutter$/,'').replace(/^Gutter — /,'');return d.charAt(0).toUpperCase()+d.slice(1)};
+ABILITIES.forEach(a=>$('#f-abilities').appendChild(segChip(a)));
+GUTTER_PROFILES.forEach(a=>$('#f-gutters').appendChild(segChip(a,gutLabel(a))));
+GUTTER_MATERIALS.forEach(a=>$('#f-gutmats').appendChild(segChip(a,gutLabel(a))));
+STOCK_COLORS.forEach(c=>$('#f-colors').appendChild(segChip(c)));
+
+// Every call refreshes the access token first (auth.js refreshes when the old
+// one is stale), so a form finished an hour after the page opened still sends.
+async function api(path,opts){
+  try{const s=await window.rcAuth.getSession();if(s)token=s.access_token}catch(e){}
+  opts=opts||{};opts.headers=Object.assign({apikey:KEY,Authorization:'Bearer '+token,'Content-Type':'application/json'},opts.headers||{});
+  const r=await fetch(SUPA+path,opts);
+  if(r.status===401)throw new Error('Your sign-in expired — reload this page and sign in again.');
+  if(!r.ok)throw new Error((await r.text()).slice(0,300)||('HTTP '+r.status));
+  const t=await r.text();return t?JSON.parse(t):null;
+}
+
+document.addEventListener('rc:auth',async e=>{
+  const s=e.detail&&e.detail.session;if(!s)return; // auth.js shows its blocking sign-in modal
+  token=s.access_token;me=s.user.id;myEmail=s.user.email||'';
+  // a fetch failure is NOT "no listing" — show a retry state instead
+  try{myListings=await api('/rest/v1/directory_listings?select=id,name,status,phone,website,gmaps_url,licensed_states,coil_desc,fab_desc,colors,abilities&owner_id=eq.'+me+'&order=name.asc')}
+  catch(x){$('#loaderr').style.display='block';return}
+  if(!myListings.length){$('#unlinked').style.display='block';return}
+  $('#manage').style.display='block';
+  if(myListings.length>1){
+    const row=$('#pickrow');row.style.display='flex';
+    myListings.forEach((l,i)=>{const b=document.createElement('button');b.className='seg'+(i===0?' sel':'');b.textContent=l.name;
+      b.onclick=()=>{
+        if(l===listing)return;
+        // unsent edits die on switch — say so before wiping the form
+        if(listing&&formDirty()&&!confirm('You have unsent changes for '+listing.name+' — switch anyway and lose them?'))return;
+        [...row.children].forEach(x=>x.classList.remove('sel'));b.classList.add('sel');fillForm(l);
+      };row.appendChild(b)});
+  }
+  fillForm(myListings[0]);
+});
+
+function setChips(sel,values){
+  const want=(values||[]).map(v=>String(v).toLowerCase());
+  $$(sel+' .seg').forEach(b=>b.classList.toggle('sel',want.includes(b.dataset.v.toLowerCase())));
+}
+// extras = values that match no chip; compare case-insensitively so a
+// legacy 'charcoal' selects the Charcoal chip and does NOT also land here
+const notCanon=(list,canon)=>(list||[]).filter(v=>!canon.some(s=>s.toLowerCase()===String(v).toLowerCase()));
+function fillForm(l){
+  listing=l;
+  $('#m-title').textContent='Manage your listing — '+l.name;
+  $('#edits-title').textContent=myListings.length>1?'Your edit requests — '+l.name:'Your edit requests';
+  $('#f-name').value=l.name||'';
+  $('#f-phone').value=l.phone||'';
+  $('#f-website').value=l.website||'';
+  $('#f-gmaps').value=l.gmaps_url||'';
+  $('#f-lic').value=l.licensed_states||'';
+  setChips('#f-abilities',l.abilities||[]);setChips('#f-gutters',l.abilities||[]);setChips('#f-gutmats',l.abilities||[]);
+  $('#f-moreabilities').value=notCanon(l.abilities,ALL_CANON).join(', ');
+  setChips('#f-colors',l.colors||[]);
+  $('#f-morecolors').value=notCanon(l.colors,STOCK_COLORS).join(', ');
+  $('#f-coildesc').value=l.coil_desc||'';
+  $('#f-fabdesc').value=l.fab_desc||'';
+  $('#f-note').value='';
+  $('#send-note').textContent='';
+  loadMyEdits();
+}
+
+// canonicalize free-typed entries against the taxonomy so 'charcoal' and
+// 'Charcoal' never become two different search facets; '|' is the public
+// search delimiter, so it can never live inside an item
+function collect(chipSel,extraSel,canon){
+  const out=[...$$(chipSel+' .seg.sel')].map(b=>b.dataset.v);
+  $(extraSel).value.split(',').map(s=>s.replace(/\|/g,' ').replace(/\s+/g,' ').trim()).filter(Boolean).forEach(c=>{
+    const hit=canon.find(s=>s.toLowerCase()===c.toLowerCase())||c;
+    if(!out.some(x=>x.toLowerCase()===hit.toLowerCase()))out.push(hit);
+  });
+  return out;
+}
+const sameSet=(a,b)=>{
+  const n=x=>JSON.stringify([...new Set((x||[]).map(v=>String(v).toLowerCase()))].sort());
+  return n(a)===n(b);
+};
+// stable stringify (sorted keys) — jsonb from the server reorders keys
+const stableStr=o=>JSON.stringify(o,Object.keys(o||{}).sort());
+
+// Builds {err} or {proposed} from the form vs the loaded listing. Old rows may
+// hold un-normalized URLs; normalize BOTH sides so an untouched form diffs empty.
+function buildProposed(){
+  const p={};
+  const name=$('#f-name').value.trim();
+  if(!name)return{err:'Company name can\'t be empty.'};
+  if(name!==(listing.name||''))p.name=name;
+  const phone=$('#f-phone').value.trim();
+  if(phone!==(listing.phone||''))p.phone=phone;
+  const siteRaw=$('#f-website').value.trim();
+  const site=siteRaw?safeUrl(siteRaw):'';
+  if(siteRaw&&!site)return{err:'Website must be a normal http(s) address.'};
+  const storedSite=(listing.website?safeUrl(listing.website):'')||(listing.website||'');
+  if((site||'')!==storedSite)p.website=site||'';
+  const gmRaw=$('#f-gmaps').value.trim();
+  const gm=gmRaw?mapsUrl(gmRaw):'';
+  if(gmRaw&&!gm)return{err:'The Maps link must be a Google Maps / Business Profile address (maps.app.goo.gl, google.com/maps…).'};
+  const storedGm=(listing.gmaps_url?mapsUrl(listing.gmaps_url):'')||(listing.gmaps_url||'');
+  if((gm||'')!==storedGm)p.gmaps_url=gm||'';
+  const lic=$('#f-lic').value.trim();
+  if(lic!==(listing.licensed_states||''))p.licensed_states=lic;
+  const abilities=[...collect('#f-abilities','#f-moreabilities',ALL_CANON),
+    ...[...$$('#f-gutters .seg.sel')].map(b=>b.dataset.v),
+    ...[...$$('#f-gutmats .seg.sel')].map(b=>b.dataset.v)].filter((v,i,arr)=>arr.findIndex(x=>x.toLowerCase()===v.toLowerCase())===i);
+  if(!abilities.length)return{err:'Keep at least one ability tapped — the directory search runs on them.'};
+  if(!sameSet(abilities,listing.abilities))p.abilities=abilities;
+  const colors=collect('#f-colors','#f-morecolors',STOCK_COLORS);
+  if(!sameSet(colors,listing.colors))p.colors=colors;
+  const coild=$('#f-coildesc').value.trim();
+  if(coild!==(listing.coil_desc||''))p.coil_desc=coild;
+  const fabd=$('#f-fabdesc').value.trim();
+  if(fabd!==(listing.fab_desc||''))p.fab_desc=fabd;
+  return{proposed:p};
+}
+function formDirty(){
+  if(!listing)return false;
+  if($('#f-note').value.trim())return true;
+  const b=buildProposed();
+  return !!b.err||Object.keys(b.proposed||{}).length>0;
+}
+
+$('#f-send').onclick=async()=>{
+  const note=$('#send-note');note.classList.remove('errline');note.textContent='';
+  if(!listing){note.textContent='No listing loaded.';note.classList.add('errline');return}
+  const built=buildProposed();
+  if(built.err){note.textContent=built.err;note.classList.add('errline');return}
+  const proposed=built.proposed;
+  const msg=$('#f-note').value.trim();
+  if(!Object.keys(proposed).length&&!msg){note.textContent='Nothing changed — edit a field above or write a note first.';note.classList.add('errline');return}
+  // the same request twice just clutters the review queue
+  const dup=lastEdits.some(r=>r.status==='pending'&&stableStr(r.proposed)===stableStr(proposed)&&(r.note||'')===(msg||''));
+  if(dup){note.textContent='You already sent exactly this change — it\'s waiting for review below.';note.classList.add('errline');return}
+  const btn=$('#f-send');btn.disabled=true;btn.textContent='Sending…';
+  try{
+    await api('/rest/v1/listing_edits',{method:'POST',headers:{Prefer:'return=minimal'},
+      body:JSON.stringify({listing_id:listing.id,submitted_by:me,proposed,note:msg||null})});
+    note.textContent='✓ Sent — the shop reviews it before anything changes on the public directory.';
+    $('#f-note').value='';
+    loadMyEdits();
+  }catch(x){note.textContent='Could not send: '+x.message;note.classList.add('errline')}
+  btn.disabled=false;btn.textContent='Send changes for review';
+};
+
+const fmtVal=v=>Array.isArray(v)?v.join(', '):(v===''?'(cleared)':String(v));
+async function loadMyEdits(){
+  if(!listing)return;
+  const id=listing.id; // guard: a listing switch mid-flight must not paint stale cards
+  const box=$('#myedits');box.textContent='';
+  let rows=[];
+  try{rows=await api('/rest/v1/listing_edits?select=*&listing_id=eq.'+id+'&order=created_at.desc&limit=10')}
+  catch(x){if(listing&&listing.id===id)box.textContent='Could not load your requests.';return}
+  if(!listing||listing.id!==id)return;
+  box.textContent='';
+  lastEdits=rows;
+  if(!rows.length){const p=document.createElement('p');p.style.cssText='color:var(--steel);font-size:13px';p.textContent='No edit requests yet.';box.appendChild(p);return}
+  rows.forEach(r=>{
+    const card=document.createElement('div');card.className='ecard';
+    const b=document.createElement('b');b.style.fontSize='13px';b.textContent=new Date(r.created_at).toLocaleDateString();card.appendChild(b);
+    const st=document.createElement('span');st.className='stat '+r.status;st.textContent=r.status;card.appendChild(st);
+    const meta=document.createElement('div');meta.className='meta';
+    meta.textContent=Object.entries(r.proposed||{}).map(([k,v])=>(FIELD_LABELS[k]||k)+' → '+fmtVal(v)).join('\n')+(r.note?'\nnote: '+r.note:'');
+    card.appendChild(meta);
+    if(r.status==='pending'){
+      const del=document.createElement('button');del.className='mini red';del.textContent='Withdraw';
+      del.onclick=async()=>{try{await api('/rest/v1/listing_edits?id=eq.'+r.id,{method:'DELETE'});loadMyEdits()}catch(x){alert('Could not withdraw: '+x.message)}};
+      card.appendChild(del);
+    }
+    box.appendChild(card);
+  });
+}
+</script>
+</body>
+</html>
