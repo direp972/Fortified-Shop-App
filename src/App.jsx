@@ -827,14 +827,14 @@ function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = 
   if (!points || points.length < 2) return "";
   const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
   const size = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 1);
-  const folds = endFolds(points, hemStart, hemEnd, size / 100);
-  const [minX, minY, maxX, maxY] = profileBounds(points, folds); // the folds have to fit on the sheet too
+  const { dp, d: pathInches } = profileDisplay(points, (size / 100) * 2.2); // hems drawn as legs show as a doubled line
+  const folds = endFolds(dp, hemStart, hemEnd, size / 100);
+  const [minX, minY, maxX, maxY] = profileBounds(dp, folds); // the folds have to fit on the sheet too
   const pad = 30, w = 480, h = 320;
   const spanX = Math.max(maxX - minX, 1), spanY = Math.max(maxY - minY, 1);
   const scale = Math.min((w - pad * 2) / spanX, (h - pad * 2) / spanY);
   const toSvg = ([x, y]) => [(x - minX) * scale + pad, (y - minY) * scale + pad];
-  const pathPts = points.map(toSvg);
-  const pathD = pathPts.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+  const pathPts = dp.map(toSvg);
   let labels = "";
   for (let i = 1; i < points.length; i++) {
     const len = dist(points[i - 1], points[i]);
@@ -848,8 +848,10 @@ function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = 
   const foldSvg = folds
     .map((f) => `<path d="${f.d}" fill="none" stroke="#B8860B" stroke-width="${f.closed ? 3.5 : 2.5}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`).join("");
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="background:#fff;border:1px solid #ddd;border-radius:8px;">
-    <path d="${pathD}" fill="none" stroke="${colorHex || "#333"}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
-    <g transform="translate(${(pad - minX * scale).toFixed(2)} ${(pad - minY * scale).toFixed(2)}) scale(${scale.toFixed(4)})">${foldSvg}</g>
+    <g transform="translate(${(pad - minX * scale).toFixed(2)} ${(pad - minY * scale).toFixed(2)}) scale(${scale.toFixed(4)})">
+      <path d="${pathInches}" fill="none" stroke="${colorHex || "#333"}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+      ${foldSvg}
+    </g>
     ${dotSvg}
     ${labels}
   </svg>`;
@@ -1109,21 +1111,19 @@ function ShapeThumb({ order, size = 64 }) {
   const pts = order.points || [[0, 0], [0, 1]];
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
   const extent = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 0.5);
-  const folds = pts.length > 1 ? endFolds(pts, order.hemStart, order.hemEnd, extent / 100) : [];
-  const [minX, minY, maxX, maxY] = profileBounds(pts, folds); // fit the folds in the thumbnail too
+  const { dp, d } = profileDisplay(pts, (extent / 100) * 2.6); // hems drawn as legs show as a doubled line
+  const folds = pts.length > 1 ? endFolds(dp, order.hemStart, order.hemEnd, extent / 100) : [];
+  const [minX, minY, maxX, maxY] = profileBounds(dp, folds); // fit the folds in the thumbnail too
   const w = Math.max(0.5, maxX - minX), h = Math.max(0.5, maxY - minY);
   const s = Math.min((size - pad * 2) / w, (size - pad * 2) / h);
   const offX = (size - w * s) / 2 - minX * s;
   const offY = (size - h * s) / 2 - minY * s;
-  const d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0] * s + offX} ${p[1] * s + offY}`).join(" ");
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <path d={d} fill="none" stroke={order.colorHex} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
-      {folds.length > 0 && (
-        <g transform={`translate(${offX} ${offY}) scale(${s})`}>
-          {folds.map((f) => <path key={f.which} d={f.d} fill="none" stroke={SAFETY} strokeWidth={f.closed ? 2.5 : 1.8} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />)}
-        </g>
-      )}
+      <g transform={`translate(${offX} ${offY}) scale(${s})`}>
+        <path d={d} fill="none" stroke={order.colorHex} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        {folds.map((f) => <path key={f.which} d={f.d} fill="none" stroke={SAFETY} strokeWidth={f.closed ? 2.5 : 1.8} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />)}
+      </g>
     </svg>
   );
 }
@@ -1213,6 +1213,35 @@ function endFolds(points, hemStart, hemEnd, unit) {
     if (g) out.push({ which: "end", type: he.type, ...g });
   }
   return out;
+}
+
+// ---- Fold-backs: a hem drawn as a leg. A point tagged "fold-left" / "fold-right" means the
+// leg that ends at it runs straight back along the previous leg, folded 180° to that side
+// of the previous leg's direction of travel (the same left/right the end folds use). The
+// stored geometry stays true — the point sits on the previous leg's line, so girth and the
+// bend count are exact — and only the drawing offsets the return by a small gap so both
+// layers can be seen, the way a hem is sketched. ----
+const foldSide = (pt) => (pt && pt[2] === "fold-left" ? "left" : pt && pt[2] === "fold-right" ? "right" : null);
+const withFold = (xy, side) => (side ? [xy[0], xy[1], `fold-${side}`] : [xy[0], xy[1]]);
+const keepFold = (pt, xy) => withFold(xy, foldSide(pt));
+// Display geometry: every point shifted by the fold-backs before it, and the path to draw
+// (a tight 180° turn at each fold, then the return running alongside the leg).
+function profileDisplay(points, gap) {
+  const dp = [], off = [0, 0];
+  let d = "";
+  for (let k = 0; k < points.length; k++) {
+    const side = k > 1 ? foldSide(points[k]) : null; // a fold-back needs a leg to fold back along
+    if (side) {
+      const dir = unitVec(points[k - 2], points[k - 1]), perp = sidePerp(dir, side);
+      const v = [points[k - 1][0] + off[0], points[k - 1][1] + off[1]]; // the fold, as displayed
+      off[0] += perp[0] * gap; off[1] += perp[1] * gap;
+      d += ` A ${gap / 2} ${gap / 2} 0 0 ${side === "left" ? 1 : 0} ${v[0] + perp[0] * gap} ${v[1] + perp[1] * gap}`;
+    }
+    const p = [points[k][0] + off[0], points[k][1] + off[1]];
+    dp.push(p);
+    d += `${k === 0 ? "M" : " L"} ${p[0]} ${p[1]}`;
+  }
+  return { dp, d: d.trim() };
 }
 
 // ---- Label placement: length tags, angle bubbles and fold captions that keep clear of the drawing ----
@@ -1396,6 +1425,10 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const [pitchOpen, setPitchOpen] = useState(false);
   const [pitch, setPitch] = useState(4);
   const [invalid, setInvalid] = useState(false); // Done with a value that can't be applied keeps the sheet open and says so
+  // A tap back on the last leg (Draw mode) offers a hem: two rings, one either side, and the
+  // chosen one folds the leg back on itself. `t` is where along the leg the tap landed.
+  const [pendingFold, setPendingFold] = useState(null);
+  const dispRef = useRef([]); // display points (stored points shifted by fold-backs), captured each render
   const inputRef = useRef(null);
   const modeBeforeFold = useRef(null); // the fold chips borrow Folds mode; closing the sheet hands the old mode back
 
@@ -1417,9 +1450,9 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   };
   const rotatePoints = (pts, origin, deg) => {
     const r = (deg * Math.PI) / 180, c = Math.cos(r), sn = Math.sin(r);
-    return pts.map(([x, y]) => {
-      const dx = x - origin[0], dy = y - origin[1];
-      return [origin[0] + dx * c - dy * sn, origin[1] + dx * sn + dy * c]; // positive = clockwise on screen
+    return pts.map((pt) => {
+      const dx = pt[0] - origin[0], dy = pt[1] - origin[1];
+      return keepFold(pt, [origin[0] + dx * c - dy * sn, origin[1] + dx * sn + dy * c]); // positive = clockwise on screen
     });
   };
   const normDeg = (d) => { let r = d % 360; if (r > 180) r -= 360; if (r <= -180) r += 360; return r; };
@@ -1460,7 +1493,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const mirrorProfile = () => {
     if (points.length < 2) return;
     const [cx] = bboxCenter(points);
-    setPoints(points.map(([x, y]) => [2 * cx - x, y]));
+    setPoints(points.map((pt) => { const s = foldSide(pt); return withFold([2 * cx - pt[0], pt[1]], s ? (s === "left" ? "right" : "left") : null); }));
     setHemStart?.(flipHem(hemStart));
     setHemEnd?.(flipHem(hemEnd));
     setPaintSide?.(paintSide === "left" ? "right" : "left");
@@ -1478,6 +1511,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     setZoom(1);
     setRotation(0);
     closeEditor();
+    setPendingFold(null);
   }, [viewResetKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // Points can be removed (Undo, a preset) while an editor is pointing at one of them.
   useEffect(() => {
@@ -1485,6 +1519,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     const n = points.length;
     if ((editor.kind === "length" && editor.i > n - 1) || (editor.kind === "angle" && editor.i > n - 2) || n < 2) closeEditor();
   }, [points.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (points.length < 2) setPendingFold(null); }, [points.length]);
   useEffect(() => {
     if (editor && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); }
   }, [editor?.kind, editor?.i]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1502,6 +1537,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const handleBgDown = (e) => {
     if (dragIdx !== null) return;
     if (editor) { closeEditor(); return; } // a tap on the drawing puts the sheet away, nothing more
+    if (pendingFold) { setPendingFold(null); return; } // a tap anywhere else says "no hem after all"
     if (mode === "select") { setSelectedIdx(null); return; }
     if (mode !== "draw") return;
     const now = Date.now();
@@ -1511,11 +1547,34 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     setPoints((p) => {
       if (p.length === 0) return [[x, y]];
       const last = p[p.length - 1];
-      const dx = Math.abs(x - last[0]), dy = Math.abs(y - last[1]);
-      // Keep the new segment a straight horizontal or vertical line off the last point.
-      const next = dx >= dy ? [x, last[1]] : [last[0], y];
+      // The tap lands in display space; measure from where the last point is drawn (it may
+      // sit a hem's gap off its stored position) and keep the new leg horizontal or vertical.
+      const shown = dispRef.current[p.length - 1] || last;
+      const dx = x - shown[0], dy = y - shown[1];
+      const next = Math.abs(dx) >= Math.abs(dy) ? [snap(last[0] + dx), last[1]] : [last[0], snap(last[1] + dy)];
       return [...p, next];
     });
+  };
+  // A tap on a leg: on the last leg in Draw mode it starts a hem (fold back along that leg);
+  // anywhere else it opens the length sheet.
+  const legTap = (i, e) => {
+    const n = points.length, dp = dispRef.current;
+    if (mode === "draw" && i === n - 1 && n >= 2 && dp[i]) {
+      const [x, y] = toUser(e.clientX, e.clientY);
+      const a = dp[i - 1], b = dp[i], vx = b[0] - a[0], vy = b[1] - a[1], L2 = vx * vx + vy * vy;
+      const t = L2 ? ((x - a[0]) * vx + (y - a[1]) * vy) / L2 : 0;
+      if (t > 0.04 && t < 0.96) { setPendingFold({ t }); return; }
+    }
+    openLength(i);
+  };
+  const commitFoldBack = (side) => {
+    const n = points.length;
+    if (!pendingFold || n < 2) return;
+    const a = points[n - 2], b = points[n - 1], dir = unitVec(a, b);
+    const back = snap(dist(a, b) * (1 - pendingFold.t)); // the return's length, on the 1/20" grid
+    setPendingFold(null);
+    if (back <= 0) return;
+    setPoints((p) => [...p, withFold([b[0] - dir[0] * back, b[1] - dir[1] * back], side)]);
   };
 
   // ---- Editing a leg or a bend keeps everything else as it was: the legs downstream
@@ -1529,7 +1588,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     const dir = unitVec(points[i - 1], points[i]);
     const target = [points[i - 1][0] + dir[0] * val, points[i - 1][1] + dir[1] * val];
     const dx = target[0] - points[i][0], dy = target[1] - points[i][1];
-    setPoints((pts) => pts.map((pt, idx) => (idx >= i ? [pt[0] + dx, pt[1] + dy] : pt)));
+    setPoints((pts) => pts.map((pt, idx) => (idx >= i ? keepFold(pt, [pt[0] + dx, pt[1] + dy]) : pt)));
     return true;
   };
   // `desired` is the inside angle in degrees: 90 for a square corner, 170 for a shallow ridge.
@@ -1548,7 +1607,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     setPoints((pts) => pts.map((pt, idx) => {
       if (idx <= i) return pt;
       const rx = pt[0] - cur[0], ry = pt[1] - cur[1];
-      return [cur[0] + rx * cosD - ry * sinD, cur[1] + rx * sinD + ry * cosD];
+      return keepFold(pt, [cur[0] + rx * cosD - ry * sinD, cur[1] + rx * sinD + ry * cosD]);
     }));
     return true;
   };
@@ -1562,7 +1621,9 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const lengthDraft = (i) => (unitSystem === "metric" ? String(Math.round(dist(points[i - 1], points[i]) * 25.4)) : trimNum(Math.round(dist(points[i - 1], points[i]) * 100) / 100));
   const angleDraft = (i) => trimNum(Math.round(insideAngle(points[i - 1], points[i], points[i + 1]) * 10) / 10);
   const openLength = (i) => { if (i < 1 || i > points.length - 1) return; const t = lengthDraft(i); setEditor({ kind: "length", i, orig: t }); setDraft(t); };
-  const openAngle = (i) => { if (i < 1 || i > points.length - 2) return; const t = angleDraft(i); setEditor({ kind: "angle", i, orig: t }); setDraft(t); };
+  // A hem's fold is a fixed 180°, not a bend to edit — the angle sheet skips it.
+  const angleEditable = (i) => i >= 1 && i <= points.length - 2 && !foldSide(points[i + 1]);
+  const openAngle = (i) => { if (!angleEditable(i)) return; const t = angleDraft(i); setEditor({ kind: "angle", i, orig: t }); setDraft(t); };
   const openFold = (end) => {
     if (points.length < 2) return;
     if (mode !== "folds") modeBeforeFold.current = mode;
@@ -1591,7 +1652,8 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const step = (delta) => {
     if (!stepRange) return;
     if (!commitDraft()) { setInvalid(true); return; }
-    const j = editor.i + delta;
+    let j = editor.i + delta;
+    while (editor.kind === "angle" && j >= stepRange[0] && j <= stepRange[1] && !angleEditable(j)) j += delta;
     if (j < stepRange[0] || j > stepRange[1]) return;
     const t = editor.kind === "length" ? lengthDraft(j) : angleDraft(j);
     setEditor({ ...editor, i: j, orig: t });
@@ -1635,7 +1697,18 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     const dy = (uy - start.startUy) * DRAG_DAMPING;
     const x = snap(start.origPoint[0] + dx);
     const y = snap(start.origPoint[1] + dy);
-    setPoints((p) => p.map((pt, i) => (i === dragIdx ? [x, y] : pt)));
+    setPoints((p) => {
+      let next = p.map((pt, i) => (i === dragIdx ? keepFold(pt, [x, y]) : pt));
+      // A hem's return stays on its leg: the dragged fold point slides along the line, and
+      // moving either end of the leg carries the return with it.
+      const onLine = (pts, k) => {
+        const a = pts[k - 2], b = pts[k - 1], c = pts[k], d = unitVec(a, b);
+        const along = (c[0] - b[0]) * d[0] + (c[1] - b[1]) * d[1];
+        return keepFold(c, [b[0] + d[0] * along, b[1] + d[1] * along]);
+      };
+      next = next.map((pt, k) => (k > 1 && foldSide(pt) && (k === dragIdx || k - 1 === dragIdx || k - 2 === dragIdx) ? onLine(next, k) : pt));
+      return next;
+    });
   };
 
   // Auto-fit & recenter the view around whatever has been drawn so far,
@@ -1674,8 +1747,11 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     }
   }
 
-  const pathD = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0]} ${p[1]}`).join(" ");
-  const folds = endFolds(points, hemStart, hemEnd, unit);
+  // Hems drawn as legs are shown a small gap off their leg so both layers read; every
+  // position below comes from these display points, every number from the stored ones.
+  const { dp, d: pathD } = profileDisplay(points, 2.2 * unit);
+  dispRef.current = dp;
+  const folds = endFolds(dp, hemStart, hemEnd, unit);
   const stop = (e) => e.stopPropagation();
 
   // ---- Dimensions: small tags beside each leg and a bubble at each bend, placed so they
@@ -1686,6 +1762,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   }) : [];
   const angLabels = [];
   for (let i = 1; i < points.length - 1; i++) {
+    if (foldSide(points[i + 1])) continue; // a hem's fold: always 180°, captioned "HEM" instead
     const deg = insideAngle(points[i - 1], points[i], points[i + 1]);
     const isRightAngle = Math.abs(deg - 90) < 0.5;
     const isDiagonal = Math.abs(deg - 45) < 0.5 || Math.abs(deg - 135) < 0.5;
@@ -1699,7 +1776,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   if (points.length > 1) {
     let best = 1;
     for (let i = 2; i < points.length; i++) if (dist(points[i - 1], points[i]) > dist(points[best - 1], points[best])) best = i;
-    const a = points[best - 1], b = points[best], dir = unitVec(a, b), perp = sidePerp(dir, paintSide);
+    const a = dp[best - 1], b = dp[best], dir = unitVec(a, b), perp = sidePerp(dir, paintSide);
     const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
     const at = (d) => [m[0] + perp[0] * d * unit, m[1] + perp[1] * d * unit];
     paintArrow = { s: at(2.2), base: at(5.6), tip: at(8), dir, box: { x: at(5)[0], y: at(5)[1], w: 6.5 * unit, h: 6.5 * unit } };
@@ -1710,12 +1787,17 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     const xs = f.extent.map((q) => q[0]), ys = f.extent.map((q) => q[1]);
     obstacles.push({ x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, w: Math.max(...xs) - Math.min(...xs) + unit, h: Math.max(...ys) - Math.min(...ys) + unit });
     const label = foldType(f.type).label.toUpperCase(), fs = 2.1 * unit;
-    const at = f.which === "start" ? points[0] : points[points.length - 1];
-    const out = f.which === "start" ? unitVec(points[1], points[0]) : unitVec(points[points.length - 2], points[points.length - 1]);
+    const at = f.which === "start" ? dp[0] : dp[dp.length - 1];
+    const out = f.which === "start" ? unitVec(dp[1], dp[0]) : unitVec(dp[dp.length - 2], dp[dp.length - 1]);
     return { which: f.which, label, fs, w: label.length * fs * 0.62 + fs * 0.4, h: fs * 1.3, at, out };
   });
-  if (mode === "folds" && points.length > 1) for (const p of [points[0], points[points.length - 1]]) obstacles.push({ x: p[0], y: p[1], w: 11 * unit, h: 11 * unit });
-  const layout = placeLabels(points, unit, lenLabels, angLabels, capLabels, obstacles, { x: zVbX, y: zVbY, w: zVbW, h: zVbH });
+  for (let k = 2; k < points.length; k++) {
+    if (!foldSide(points[k])) continue;
+    const fs = 2.1 * unit;
+    capLabels.push({ which: `hem${k}`, label: "HEM", fs, w: 3 * fs * 0.62 + fs * 0.4, h: fs * 1.3, at: dp[k - 1], out: unitVec(dp[k - 2], dp[k - 1]) });
+  }
+  if (mode === "folds" && points.length > 1) for (const p of [dp[0], dp[dp.length - 1]]) obstacles.push({ x: p[0], y: p[1], w: 11 * unit, h: 11 * unit });
+  const layout = placeLabels(dp, unit, lenLabels, angLabels, capLabels, obstacles, { x: zVbX, y: zVbY, w: zVbW, h: zVbH });
   const hiLeg = editor?.kind === "length" ? editor.i : null;   // leg being edited
   const hiBend = editor?.kind === "angle" ? editor.i : null;   // bend being edited
   const otherSide = paintSide === "left" ? "right" : "left";
@@ -1738,7 +1820,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
         <div style={{ display: "flex", borderRadius: 6, overflow: "hidden", border: "1px solid rgba(255,255,255,0.18)" }}>
           {[["draw", "Draw"], ["select", "Select"], ["folds", "Folds"]].map(([id, label]) => (
             <button key={id} type="button" data-testid={`mode-${id}`}
-              onClick={() => { setMode(id); setSelectedIdx(null); modeBeforeFold.current = null; if (id === "draw") setZoom(1); if (editor?.kind === "fold" && id !== "folds") setEditor(null); }}
+              onClick={() => { setMode(id); setSelectedIdx(null); modeBeforeFold.current = null; setPendingFold(null); if (id === "draw") setZoom(1); if (editor?.kind === "fold" && id !== "folds") setEditor(null); }}
               style={{ padding: "5px 10px", fontSize: 10.5, fontWeight: 700, border: "none", cursor: "pointer",
                 background: mode === id ? SAFETY : INK, color: "#fff" }}>
               {label}
@@ -1830,17 +1912,24 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
         <path d={pathD} fill="none" stroke="#fff" strokeWidth={2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
       )}
       {/* The leg (or both legs of the bend) being edited lights up so it's clear what the sheet changes. */}
-      {hiLeg !== null && points[hiLeg] && (
-        <line x1={points[hiLeg - 1][0]} y1={points[hiLeg - 1][1]} x2={points[hiLeg][0]} y2={points[hiLeg][1]}
+      {hiLeg !== null && dp[hiLeg] && (
+        <line x1={dp[hiLeg - 1][0]} y1={dp[hiLeg - 1][1]} x2={dp[hiLeg][0]} y2={dp[hiLeg][1]}
           stroke={SAFETY} strokeWidth={4} vectorEffect="non-scaling-stroke" strokeLinecap="round" pointerEvents="none" />
       )}
-      {hiBend !== null && points[hiBend + 1] && (
+      {hiBend !== null && dp[hiBend + 1] && (
         <g pointerEvents="none">
-          <path d={`M ${points[hiBend - 1][0]} ${points[hiBend - 1][1]} L ${points[hiBend][0]} ${points[hiBend][1]} L ${points[hiBend + 1][0]} ${points[hiBend + 1][1]}`}
+          <path d={`M ${dp[hiBend - 1][0]} ${dp[hiBend - 1][1]} L ${dp[hiBend][0]} ${dp[hiBend][1]} L ${dp[hiBend + 1][0]} ${dp[hiBend + 1][1]}`}
             fill="none" stroke={SAFETY} strokeWidth={4} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" opacity={0.7} />
-          <circle cx={points[hiBend][0]} cy={points[hiBend][1]} r={3.5 * unit} fill="none" stroke={SAFETY} strokeWidth={1} vectorEffect="non-scaling-stroke" strokeDasharray={`${1.2 * unit} ${1 * unit}`} />
+          <circle cx={dp[hiBend][0]} cy={dp[hiBend][1]} r={3.5 * unit} fill="none" stroke={SAFETY} strokeWidth={1} vectorEffect="non-scaling-stroke" strokeDasharray={`${1.2 * unit} ${1 * unit}`} />
         </g>
       )}
+      {capLabels.filter((L) => L.which.startsWith("hem")).map((L) => {
+        const b = layout.cap.get(L.which);
+        return b ? (
+          <text key={L.which} x={b.x} y={b.y} fill={SAFETY} fontSize={L.fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
+            textAnchor="middle" dominantBaseline="central" pointerEvents="none">{L.label}</text>
+        ) : null;
+      })}
       {folds.map((f) => {
         const c = capLabels.find((L) => L.which === f.which), b = layout.cap.get(f.which);
         return (
@@ -1855,14 +1944,14 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
           </g>
         );
       })}
-      {points.length > 1 && points.slice(1).map((p, idx) => {
+      {dp.length > 1 && dp.slice(1).map((p, idx) => {
         const i = idx + 1;
-        const prevPt = points[idx];
+        const prevPt = dp[idx];
         return (
           <line key={`hit${i}`} x1={prevPt[0]} y1={prevPt[1]} x2={p[0]} y2={p[1]}
             stroke="transparent" strokeWidth={6 * unit}
             onPointerDown={stop}
-            onClick={() => openLength(i)}
+            onClick={(e) => legTap(i, e)}
             style={{ cursor: "pointer" }} />
         );
       })}
@@ -1903,7 +1992,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
         );
       })}
       {/* Points: small crisp dots (gold at the start), with a wider invisible handle for dragging. */}
-      {points.map((p, i) => (
+      {dp.map((p, i) => (
         <g key={i}>
           {mode === "select" && selectedIdx === i && (
             <circle cx={p[0]} cy={p[1]} r={3.6 * unit} fill="none" stroke="#4EA8FF" strokeWidth={1} vectorEffect="non-scaling-stroke"
@@ -1915,12 +2004,26 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
         </g>
       ))}
       {/* Folds mode: a ring on each end. Tap it to choose what that end does. */}
-      {mode === "folds" && points.length > 1 && ["start", "end"].map((end) => {
-        const i = end === "start" ? 0 : points.length - 1;
-        const p = points[i];
+      {/* A hem in the making: tap the ring on the side the leg folds back to. */}
+      {pendingFold && dp.length > 1 && (() => {
+        const a = dp[dp.length - 2], b = dp[dp.length - 1], dir = unitVec(a, b);
+        const m = [a[0] + (b[0] - a[0]) * pendingFold.t, a[1] + (b[1] - a[1]) * pendingFold.t];
+        return ["left", "right"].map((side) => {
+          const p = sidePerp(dir, side), c = [m[0] + p[0] * 7 * unit, m[1] + p[1] * 7 * unit];
+          return (
+            <g key={side} data-testid={`fold-back-${side}`} onPointerDown={stop} onClick={() => commitFoldBack(side)} style={{ cursor: "pointer" }}>
+              <circle cx={c[0]} cy={c[1]} r={5.5 * unit} fill="transparent" />
+              <circle cx={c[0]} cy={c[1]} r={4 * unit} fill="rgba(212,175,55,0.14)" stroke={SAFETY} strokeWidth={2} vectorEffect="non-scaling-stroke" />
+            </g>
+          );
+        });
+      })()}
+      {mode === "folds" && dp.length > 1 && ["start", "end"].map((end) => {
+        const i = end === "start" ? 0 : dp.length - 1;
+        const p = dp[i];
         const h = parseHem(end === "start" ? hemStart : hemEnd);
         const active = editor?.kind === "fold" && editor.end === end;
-        const out = end === "start" ? unitVec(points[1], points[0]) : unitVec(points[points.length - 2], points[points.length - 1]);
+        const out = end === "start" ? unitVec(dp[1], dp[0]) : unitVec(dp[dp.length - 2], dp[dp.length - 1]);
         const badge = [p[0] + out[0] * 5 * unit, p[1] + out[1] * 5 * unit];
         return (
           <g key={end} data-testid={`ring-${end}`} onPointerDown={stop} onClick={() => openFold(end)} style={{ cursor: "pointer" }}>
@@ -1941,9 +2044,14 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
           Tap to place the first point of your profile
         </text>
       )}
-      {mode === "folds" && points.length > 1 && !editor && (
+      {mode === "folds" && points.length > 1 && !editor && !pendingFold && (
         <text x={zVbX + zVbW / 2} y={zVbY + zVbH - 3 * unit} fill="rgba(255,255,255,0.6)" fontSize={2.8 * unit} textAnchor="middle" fontFamily="Inter, sans-serif">
           Tap a ring to add a hem, hook or kick to that end
+        </text>
+      )}
+      {pendingFold && (
+        <text x={zVbX + zVbW / 2} y={zVbY + zVbH - 3 * unit} fill="rgba(255,255,255,0.6)" fontSize={2.8 * unit} textAnchor="middle" fontFamily="Inter, sans-serif">
+          Hem: tap the ring on the side it folds back to
         </text>
       )}
     </svg>
@@ -5776,7 +5884,7 @@ export default function ShopOrderApp() {
                       onBlur={(e) => { if (e.target.value === "") setSheetWidth(48); }}
                       className="mono" style={{ width: 48, padding: "5px 6px", border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12 }} />
                   </label>
-                  <button onClick={() => setPoints([])}
+                  <button onClick={() => { setPoints([]); setHemStart("none"); setHemEnd("none"); setPaintSide("left"); }} title="Start the drawing over — folds and painted side reset with it"
                     style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, padding: "5px 9px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, cursor: "pointer" }}>
                     <Trash2 size={12} /> Clear
                   </button>
