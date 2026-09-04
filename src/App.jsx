@@ -102,7 +102,7 @@ const PROFILE_INFO = {
   'SSQ275 – 2" Snap-Lock / Mech. Seam': { code: "SSQ275", family: "newlock", takeup: 6.5, delisted: true, desc: "Proprietary two-in-one profile — install as snap-lock, seam it later if the job calls for it." },
   // Adax Metals (Weatherford, TX) — licensed Ultra Seam profiles they roll in-house.
   // vendor: "adax" routes these into the Adax section of the panel catalog; entries
-  // without a vendor field are Fortified's own machines. Ultra Seam publishes NO
+  // without a vendor field are the New Tech Machinery profiles above. Ultra Seam publishes NO
   // coil-width/material-usage specs (checked every data sheet 2026-08-19), so these
   // takeups are estimates borrowed from the equivalent NTM seam geometry above —
   // replace with Adax's real numbers when the shop gets them.
@@ -368,8 +368,8 @@ function generatePanelIsoSvg(profileLabel, ribStyle, idSuffix) {
 // profiles arrays here as vendor lineups change.
 const PANEL_VENDORS = [
   {
-    id: "fortified", name: "Fortified Metal", tagline: "Rolled in-house on our own machines",
-    city: "Sherman", state: "TX", lat: 33.6357, lng: -96.6089, // 605 E Mulberry St, Sherman, TX (per the shop)
+    id: "newtech", name: "New Tech", tagline: "New Tech Machinery roll-former profiles",
+    city: "Denver", state: "CO", lat: 39.7392, lng: -104.9903, // New Tech Machinery is Denver-based; city center, per the note above
     profiles: PROFILES.filter((p) => !PROFILE_INFO[p].vendor),
   },
   {
