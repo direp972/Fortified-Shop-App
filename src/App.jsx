@@ -1215,6 +1215,122 @@ function endFolds(points, hemStart, hemEnd, unit) {
   return out;
 }
 
+// ---- Label placement: length tags, angle bubbles and fold captions that keep clear of the drawing ----
+const boxesOverlap = (a, b, gap) => Math.abs(a.x - b.x) < (a.w + b.w) / 2 + gap && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + gap;
+// Half-extent of a w×h box along direction n — how far its edge reaches from its centre that way.
+const extentAlong = (w, h, n) => (w / 2) * Math.abs(n[0]) + (h / 2) * Math.abs(n[1]);
+// Every tag tries a few spots — beside its line, outside or inside its corner, a little
+// further out — and takes the one that covers no line, touches no other tag, stays on
+// the canvas and sits away from the body of the drawing. Length tags go first (they have
+// the fewest options), then angle bubbles, then fold captions fit in around them.
+// `obstacles` are things already drawn (paint arrow, folds, end rings) that tags avoid.
+function placeLabels(points, unit, lenLabels, angLabels, capLabels, obstacles = [], view = null) {
+  const n = points.length;
+  const legs = [];
+  for (let i = 1; i < n; i++) legs.push([points[i - 1], points[i]]);
+  const cx = points.reduce((s, p) => s + p[0], 0) / (n || 1), cy = points.reduce((s, p) => s + p[1], 0) / (n || 1);
+  const placed = obstacles.slice();
+  // How deep (in units) the box, padded a little, cuts into any leg: the line is walked in
+  // steps smaller than the box so a thin crossing can't slip between samples.
+  const intrusion = (box) => {
+    const hw = box.w / 2 + 0.8 * unit, hh = box.h / 2 + 0.8 * unit, step = Math.min(hw, hh) / 2;
+    let worst = 0;
+    for (const [a, b] of legs) {
+      const k = Math.min(200, Math.max(2, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step)));
+      for (let s = 0; s <= k; s++) {
+        const t = s / k, qx = a[0] + (b[0] - a[0]) * t, qy = a[1] + (b[1] - a[1]) * t;
+        const ox = hw - Math.abs(qx - box.x), oy = hh - Math.abs(qy - box.y);
+        if (ox > 0 && oy > 0) worst = Math.max(worst, Math.min(ox, oy));
+      }
+    }
+    return worst / unit;
+  };
+  const overflow = (box) => {
+    if (!view) return 0;
+    const l = Math.max(0, view.x - (box.x - box.w / 2)), r = Math.max(0, box.x + box.w / 2 - (view.x + view.w));
+    const t = Math.max(0, view.y - (box.y - box.h / 2)), b = Math.max(0, box.y + box.h / 2 - (view.y + view.h));
+    return (l + r + t + b) / unit;
+  };
+  // A tag's pointer must not cut through another tag either.
+  const pointerCrosses = (box, o) => {
+    const a = box.anchor, b = [box.x, box.y];
+    for (let s = 0; s <= 12; s++) {
+      const x = a[0] + (b[0] - a[0]) * s / 12, y = a[1] + (b[1] - a[1]) * s / 12;
+      if (Math.abs(x - o.x) < o.w / 2 && Math.abs(y - o.y) < o.h / 2) return true;
+    }
+    return false;
+  };
+  const cost = (box, ox, oy) => {
+    const cut = intrusion(box);
+    let c = (cut > 0 ? 30 + 10 * cut : 0) + 8 * overflow(box); // covering a line is the one thing a tag must not do
+    for (const o of placed) { if (boxesOverlap(box, o, 1.2 * unit)) c += 40; else if (box.anchor && pointerCrosses(box, o)) c += 25; }
+    const ax = box.x - cx, ay = box.y - cy, m = Math.hypot(ax, ay) || 1;
+    return c - 1.5 * ((ox * ax + oy * ay) / m); // away from the centroid reads as "out of the way"
+  };
+  const pick = (cands, w, h) => {
+    let best = null;
+    cands.forEach((c, k) => {
+      const box = { x: c.x, y: c.y, w, h, anchor: c.anchor };
+      const s = cost(box, c.ox, c.oy) + 0.3 * k; // earlier candidates are the preferred spots
+      if (!best || s < best.s) best = { ...box, s };
+    });
+    placed.push(best);
+    return best;
+  };
+  const len = new Map(), ang = new Map(), cap = new Map();
+  for (const L of lenLabels) {
+    const a = points[L.i - 1], b = points[L.i], d = unitVec(a, b);
+    const cands = [];
+    for (const extra of [1.3 * unit, 6 * unit]) {
+      for (const t of [0.5, 0.32, 0.68]) {
+        const m = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+        for (const p of [[-d[1], d[0]], [d[1], -d[0]]]) {
+          const off = extentAlong(L.w, L.h, p) + extra; // clear of the line whichever way the leg runs
+          cands.push({ x: m[0] + p[0] * off, y: m[1] + p[1] * off, ox: p[0], oy: p[1], anchor: m });
+        }
+      }
+    }
+    len.set(L.i, pick(cands, L.w, L.h));
+  }
+  for (const L of angLabels) {
+    const v = points[L.i], v1 = unitVec(v, points[L.i - 1]), v2 = unitVec(v, points[L.i + 1]);
+    let bx = v1[0] + v2[0], by = v1[1] + v2[1];
+    const bm = Math.hypot(bx, by);
+    if (bm < 1e-6) { bx = -v2[1]; by = v2[0]; } else { bx /= bm; by /= bm; }
+    // Outside the corner, inside, either side, straight up — each also swung ±35° so two
+    // bends close together (a valley's W, a Z-closure) can both find room.
+    const base = [[-bx, -by], [bx, by], [-by, bx], [by, -bx], [0, -1]];
+    const dirs = [];
+    for (const [x, y] of base) for (const a of [0, 0.61, -0.61, 1.13, -1.13]) dirs.push([x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)]);
+    const cands = [];
+    for (const extra of [4.5 * unit, 8 * unit, 12 * unit]) for (const d of dirs) {
+      const off = extentAlong(L.w, L.h, d) + extra;
+      cands.push({ x: v[0] + d[0] * off, y: v[1] + d[1] * off, ox: d[0], oy: d[1], anchor: v });
+    }
+    ang.set(L.i, pick(cands, L.w, L.h));
+  }
+  for (const L of capLabels) {
+    const p = L.at, out = L.out, cands = [];
+    for (const extra of [2.5 * unit, 6 * unit]) {
+      for (const d of [[-out[1], out[0]], [out[1], -out[0]], out]) {
+        const off = extentAlong(L.w, L.h, d) + extra;
+        const back = d === out ? 0 : 2 * unit; // captions beside the fold sit a touch back along the leg
+        cands.push({ x: p[0] + d[0] * off - out[0] * back, y: p[1] + d[1] * off - out[1] * back, ox: d[0], oy: d[1], anchor: p });
+      }
+    }
+    cap.set(L.which, pick(cands, L.w, L.h));
+  }
+  return { len, ang, cap };
+}
+// A rounded tag with a small pointer toward what it labels (the line, or the vertex).
+function tagPointer(box, unit, gap) {
+  const dx = box.anchor[0] - box.x, dy = box.anchor[1] - box.y, m = Math.hypot(dx, dy) || 1;
+  const ux = dx / m, uy = dy / m;
+  const tip = [box.anchor[0] - ux * gap, box.anchor[1] - uy * gap];
+  const w = 1.3 * unit;
+  return `M ${box.x - uy * w} ${box.y + ux * w} L ${tip[0]} ${tip[1]} L ${box.x + uy * w} ${box.y - ux * w} Z`;
+}
+
 const PITCH_CHIPS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18];
 const FRACTION_CHIPS = [["⅛", "1/8"], ["¼", "1/4"], ["⅜", "3/8"], ["½", "1/2"], ["⅝", "5/8"], ["¾", "3/4"], ["⅞", "7/8"]];
 const fmtDeg = (d) => { const r = Math.round(d * 10) / 10; return `${Number.isInteger(r) ? r : r.toFixed(1)}°`; };
@@ -1561,6 +1677,45 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const pathD = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0]} ${p[1]}`).join(" ");
   const folds = endFolds(points, hemStart, hemEnd, unit);
   const stop = (e) => e.stopPropagation();
+
+  // ---- Dimensions: small tags beside each leg and a bubble at each bend, placed so they
+  // cover no line and crowd nothing (see placeLabels). Sizes scale with the view. ----
+  const lenLabels = points.length > 1 ? points.slice(1).map((p, idx) => {
+    const label = formatLen(dist(points[idx], p)), fs = 2.9 * unit;
+    return { i: idx + 1, label, fs, w: label.length * fs * 0.62 + fs * 0.9, h: fs * 1.55 };
+  }) : [];
+  const angLabels = [];
+  for (let i = 1; i < points.length - 1; i++) {
+    const deg = insideAngle(points[i - 1], points[i], points[i + 1]);
+    const isRightAngle = Math.abs(deg - 90) < 0.5;
+    const isDiagonal = Math.abs(deg - 45) < 0.5 || Math.abs(deg - 135) < 0.5;
+    if (angleVisibility === "hide90" && isRightAngle) continue;
+    if (angleVisibility === "hideAll" && (isRightAngle || isDiagonal)) continue;
+    const label = fmtDeg(deg), fs = 2.6 * unit;
+    angLabels.push({ i, label, fs, w: label.length * fs * 0.62 + fs * 0.8, h: fs * 1.5 });
+  }
+  // Painted side: a slim arrow off the longest leg pointing at the face that shows.
+  let paintArrow = null;
+  if (points.length > 1) {
+    let best = 1;
+    for (let i = 2; i < points.length; i++) if (dist(points[i - 1], points[i]) > dist(points[best - 1], points[best])) best = i;
+    const a = points[best - 1], b = points[best], dir = unitVec(a, b), perp = sidePerp(dir, paintSide);
+    const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const at = (d) => [m[0] + perp[0] * d * unit, m[1] + perp[1] * d * unit];
+    paintArrow = { s: at(2.2), base: at(5.6), tip: at(8), dir, box: { x: at(5)[0], y: at(5)[1], w: 6.5 * unit, h: 6.5 * unit } };
+  }
+  const obstacles = [];
+  if (paintArrow) obstacles.push(paintArrow.box);
+  const capLabels = folds.map((f) => {
+    const xs = f.extent.map((q) => q[0]), ys = f.extent.map((q) => q[1]);
+    obstacles.push({ x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, w: Math.max(...xs) - Math.min(...xs) + unit, h: Math.max(...ys) - Math.min(...ys) + unit });
+    const label = foldType(f.type).label.toUpperCase(), fs = 2.1 * unit;
+    const at = f.which === "start" ? points[0] : points[points.length - 1];
+    const out = f.which === "start" ? unitVec(points[1], points[0]) : unitVec(points[points.length - 2], points[points.length - 1]);
+    return { which: f.which, label, fs, w: label.length * fs * 0.62 + fs * 0.4, h: fs * 1.3, at, out };
+  });
+  if (mode === "folds" && points.length > 1) for (const p of [points[0], points[points.length - 1]]) obstacles.push({ x: p[0], y: p[1], w: 11 * unit, h: 11 * unit });
+  const layout = placeLabels(points, unit, lenLabels, angLabels, capLabels, obstacles, { x: zVbX, y: zVbY, w: zVbW, h: zVbH });
   const hiLeg = editor?.kind === "length" ? editor.i : null;   // leg being edited
   const hiBend = editor?.kind === "angle" ? editor.i : null;   // bend being edited
   const otherSide = paintSide === "left" ? "right" : "left";
@@ -1578,35 +1733,35 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
 
   return (
     <div style={{ position: "relative", userSelect: "none", WebkitUserSelect: "none", MozUserSelect: "none" }}>
-      <div style={{ position: "absolute", top: 6, left: 6, zIndex: 2, display: "flex", flexDirection: "column", gap: 3 }}>
-        <button type="button" onClick={() => setZoom((z) => Math.max(0.35, +(z - 0.2).toFixed(2)))}
-          style={{ width: 24, height: 24, borderRadius: 5, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(10,43,65,0.85)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>
-          +
-        </button>
-        <button type="button" onClick={() => setZoom((z) => Math.min(3, +(z + 0.2).toFixed(2)))}
-          style={{ width: 24, height: 24, borderRadius: 5, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(10,43,65,0.85)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>
-          −
-        </button>
-      </div>
-      <div style={{ position: "absolute", top: 6, right: 6, zIndex: 2, display: "flex", gap: 3 }}>
-        <div style={{ display: "flex", borderRadius: 5, overflow: "hidden", border: "1px solid rgba(255,255,255,0.4)" }}>
+      {/* Tools live above the drawing, not on top of it, so nothing sits over the profile. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 5 }}>
+        <div style={{ display: "flex", borderRadius: 6, overflow: "hidden", border: "1px solid rgba(255,255,255,0.18)" }}>
           {[["draw", "Draw"], ["select", "Select"], ["folds", "Folds"]].map(([id, label]) => (
             <button key={id} type="button" data-testid={`mode-${id}`}
               onClick={() => { setMode(id); setSelectedIdx(null); modeBeforeFold.current = null; if (id === "draw") setZoom(1); if (editor?.kind === "fold" && id !== "folds") setEditor(null); }}
-              style={{ padding: "4px 8px", fontSize: 10, fontWeight: 700, border: "none", cursor: "pointer",
-                background: mode === id ? SAFETY : "rgba(10,43,65,0.85)", color: "#fff" }}>
+              style={{ padding: "5px 10px", fontSize: 10.5, fontWeight: 700, border: "none", cursor: "pointer",
+                background: mode === id ? SAFETY : INK, color: "#fff" }}>
               {label}
             </button>
           ))}
         </div>
-        <button type="button" onClick={() => setShowSettings((s) => !s)}
-          style={{ width: 24, height: 24, borderRadius: 5, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(10,43,65,0.85)", color: "#fff", fontSize: 12, cursor: "pointer", lineHeight: 1 }}>
+        <span style={{ flex: 1 }} />
+        <button type="button" aria-label="Zoom in" onClick={() => setZoom((z) => Math.max(0.35, +(z - 0.2).toFixed(2)))}
+          style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: INK, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>
+          +
+        </button>
+        <button type="button" aria-label="Zoom out" onClick={() => setZoom((z) => Math.min(3, +(z + 0.2).toFixed(2)))}
+          style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: INK, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>
+          −
+        </button>
+        <button type="button" aria-label="Canvas settings" onClick={() => setShowSettings((s) => !s)}
+          style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${showSettings ? SAFETY : "rgba(255,255,255,0.18)"}`, background: INK, color: "#fff", fontSize: 12, cursor: "pointer", lineHeight: 1 }}>
           ⚙
         </button>
       </div>
       {showSettings && (
         <div style={{
-          position: "absolute", top: 34, right: 6, zIndex: 3, width: 190, background: "#0F2C3F", border: "1px solid rgba(255,255,255,0.25)",
+          position: "absolute", top: 32, right: 0, zIndex: 3, width: 190, background: "#0F2C3F", border: "1px solid rgba(255,255,255,0.25)",
           borderRadius: 8, padding: 10, boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
         }}>
           <div style={{ fontSize: 10, color: "#8FB4C9", fontWeight: 700, marginBottom: 4 }}>UNITS</div>
@@ -1668,33 +1823,38 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
       {gridDots}
       {rotating && rotRef.current && rotRef.current.basePoints.length > 1 && (
         <path d={rotRef.current.basePoints.map((pt, i) => `${i === 0 ? "M" : "L"} ${pt[0]} ${pt[1]}`).join(" ")}
-          fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth={1.2 * unit} strokeDasharray={`${2 * unit} ${1.5 * unit}`}
+          fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" strokeDasharray={`${2 * unit} ${1.5 * unit}`}
           strokeLinejoin="round" strokeLinecap="round" />
       )}
       {points.length > 1 && (
-        <path d={pathD} fill="none" stroke="#fff" strokeWidth={1.75 * unit} strokeLinejoin="round" strokeLinecap="round" />
+        <path d={pathD} fill="none" stroke="#fff" strokeWidth={2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
       )}
       {/* The leg (or both legs of the bend) being edited lights up so it's clear what the sheet changes. */}
       {hiLeg !== null && points[hiLeg] && (
         <line x1={points[hiLeg - 1][0]} y1={points[hiLeg - 1][1]} x2={points[hiLeg][0]} y2={points[hiLeg][1]}
-          stroke={SAFETY} strokeWidth={2.4 * unit} strokeLinecap="round" pointerEvents="none" />
+          stroke={SAFETY} strokeWidth={4} vectorEffect="non-scaling-stroke" strokeLinecap="round" pointerEvents="none" />
       )}
       {hiBend !== null && points[hiBend + 1] && (
         <g pointerEvents="none">
           <path d={`M ${points[hiBend - 1][0]} ${points[hiBend - 1][1]} L ${points[hiBend][0]} ${points[hiBend][1]} L ${points[hiBend + 1][0]} ${points[hiBend + 1][1]}`}
-            fill="none" stroke={SAFETY} strokeWidth={2.4 * unit} strokeLinecap="round" strokeLinejoin="round" opacity={0.7} />
-          <circle cx={points[hiBend][0]} cy={points[hiBend][1]} r={4 * unit} fill="none" stroke={SAFETY} strokeWidth={0.6 * unit} strokeDasharray={`${1.2 * unit} ${1 * unit}`} />
+            fill="none" stroke={SAFETY} strokeWidth={4} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" opacity={0.7} />
+          <circle cx={points[hiBend][0]} cy={points[hiBend][1]} r={3.5 * unit} fill="none" stroke={SAFETY} strokeWidth={1} vectorEffect="non-scaling-stroke" strokeDasharray={`${1.2 * unit} ${1 * unit}`} />
         </g>
       )}
-      {folds.map((f) => (
-        <g key={f.which} onPointerDown={stop} onClick={() => openFold(f.which)} style={{ cursor: "pointer" }}>
-          <path d={f.d} fill="none" stroke={SAFETY} strokeWidth={(f.closed ? 1.5 : 1) * unit} strokeLinecap="round" strokeLinejoin="round" />
-          <text x={f.labelPos[0]} y={f.labelPos[1]} fill={SAFETY} fontSize={2.4 * unit} fontWeight="700"
-            fontFamily="'IBM Plex Mono', monospace" textAnchor="middle" dominantBaseline="central">
-            {foldType(f.type).label.toUpperCase()}
-          </text>
-        </g>
-      ))}
+      {folds.map((f) => {
+        const c = capLabels.find((L) => L.which === f.which), b = layout.cap.get(f.which);
+        return (
+          <g key={f.which} onPointerDown={stop} onClick={() => openFold(f.which)} style={{ cursor: "pointer" }}>
+            <path d={f.d} fill="none" stroke={SAFETY} strokeWidth={f.closed ? 2.5 : 1.5} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
+            {b && (
+              <text x={b.x} y={b.y} fill={SAFETY} fontSize={c.fs} fontWeight="700"
+                fontFamily="'IBM Plex Mono', monospace" textAnchor="middle" dominantBaseline="central">
+                {c.label}
+              </text>
+            )}
+          </g>
+        );
+      })}
       {points.length > 1 && points.slice(1).map((p, idx) => {
         const i = idx + 1;
         const prevPt = points[idx];
@@ -1706,116 +1866,54 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
             style={{ cursor: "pointer" }} />
         );
       })}
-      {/* Painted side: an arrow off the longest leg pointing at the face that shows. Tap it to switch. */}
-      {points.length > 1 && (() => {
-        let best = 1;
-        for (let i = 2; i < points.length; i++) if (dist(points[i - 1], points[i]) > dist(points[best - 1], points[best])) best = i;
-        const a = points[best - 1], b = points[best];
-        const dir = unitVec(a, b), perp = sidePerp(dir, paintSide);
-        const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-        const at = (d) => [m[0] + perp[0] * d * unit, m[1] + perp[1] * d * unit];
-        const s = at(2.5), tip = at(9), base = at(6), hw = 2 * unit;
+      {paintArrow && (() => {
+        const { s, base, tip, dir } = paintArrow, hw = 1.7 * unit;
         const head = `M ${tip[0]} ${tip[1]} L ${base[0] + dir[0] * hw} ${base[1] + dir[1] * hw} L ${base[0] - dir[0] * hw} ${base[1] - dir[1] * hw} Z`;
-        const lab = at(12.5);
         return (
           <g data-testid="paint-arrow" onPointerDown={stop} onClick={() => setPaintSide?.(otherSide)} style={{ cursor: "pointer" }}>
             <title>Painted side — tap to switch</title>
-            <line x1={s[0]} y1={s[1]} x2={base[0]} y2={base[1]} stroke="#fff" strokeWidth={2.4 * unit} strokeLinecap="round" />
-            <line x1={s[0]} y1={s[1]} x2={base[0]} y2={base[1]} stroke={colorHex} strokeWidth={1.3 * unit} strokeLinecap="round" />
-            <path d={head} fill={colorHex} stroke="#fff" strokeWidth={0.5 * unit} strokeLinejoin="round" />
-            <text x={lab[0]} y={lab[1]} fill="#fff" fontSize={2.3 * unit} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
-              textAnchor="middle" dominantBaseline="central">PAINT</text>
+            <line x1={s[0]} y1={s[1]} x2={base[0]} y2={base[1]} stroke="#fff" strokeWidth={3} vectorEffect="non-scaling-stroke" strokeLinecap="round" />
+            <line x1={s[0]} y1={s[1]} x2={base[0]} y2={base[1]} stroke={colorHex} strokeWidth={1.5} vectorEffect="non-scaling-stroke" strokeLinecap="round" />
+            <path d={head} fill={colorHex} stroke="#fff" strokeWidth={1} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
           </g>
         );
       })()}
-      {points.map((p, i) => {
-        const prev = points[i - 1], next = points[i + 1];
+      {/* Length tags: white, beside the line, with a pointer to it. Tap to edit. */}
+      {lenLabels.map((L) => {
+        const b = layout.len.get(L.i), active = hiLeg === L.i;
+        const bg = active ? SAFETY : "#fff", fg = active ? "#fff" : INK_DEEP;
         return (
-          <g key={i}>
-            {prev && (() => {
-              const mx = (prev[0] + p[0]) / 2, my = (prev[1] + p[1]) / 2;
-              const segLen = dist(prev, p);
-              const label = formatLen(segLen);
-              const fs = 3.4 * unit;
-              const boxW = label.length * fs * 0.62 + fs * 0.9, boxH = fs * 1.6;
-              // Always sit off the line (never directly on top of it) — with a thin
-              // leader tick — so the actual line and its endpoints stay visible. Pills
-              // keep to the unpainted side, leaving the painted side to the arrow.
-              const perp = sidePerp(unitVec(prev, p), otherSide);
-              const offset = boxH * 0.9;
-              const lx = mx + perp[0] * offset, ly = my + perp[1] * offset;
-              const active = hiLeg === i;
-              return (
-                <g
-                  data-testid={`len-${i}`}
-                  onPointerDown={stop}
-                  onClick={() => openLength(i)}
-                  style={{ cursor: "pointer" }}
-                >
-                  <line x1={mx} y1={my} x2={lx} y2={ly} stroke="rgba(255,255,255,0.5)" strokeWidth={0.25 * unit} />
-                  <rect x={lx - boxW / 2} y={ly - boxH / 2} width={boxW} height={boxH} rx={boxH / 2}
-                    fill={active ? "#fff" : SAFETY} stroke={active ? SAFETY : INK} strokeWidth={(active ? 0.6 : 0.3) * unit} />
-                  <text x={lx} y={ly} dy="0.35em" fill={active ? INK_DEEP : "#fff"} fontSize={fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
-                    textAnchor="middle">
-                    {label}
-                  </text>
-                </g>
-              );
-            })()}
-            {prev && next && (() => {
-              const deg = insideAngle(prev, p, next);
-              const isRightAngle = Math.abs(deg - 90) < 0.5;
-              const isDiagonal = Math.abs(deg - 45) < 0.5 || Math.abs(deg - 135) < 0.5;
-              if (angleVisibility === "hide90" && isRightAngle) return null;
-              if (angleVisibility === "hideAll" && (isRightAngle || isDiagonal)) return null;
-              const label = fmtDeg(deg);
-              const fs = 2.8 * unit;
-              const boxW = label.length * fs * 0.62 + fs * 0.7, boxH = fs * 1.5;
-              // The pill sits inside the corner, on the bisector, the way an angle is
-              // dimensioned on a shop drawing — and further out the tighter the bend.
-              const v1 = unitVec(p, prev), v2 = unitVec(p, next);
-              let bx = v1[0] + v2[0], by = v1[1] + v2[1];
-              const bm = Math.hypot(bx, by);
-              if (bm < 1e-6) { bx = -v2[1]; by = v2[0]; } else { bx /= bm; by /= bm; }
-              const off = (9 * unit) / Math.max(Math.sin((deg * Math.PI) / 360), 0.5);
-              const lx = p[0] + bx * off, ly = p[1] + by * off;
-              const active = hiBend === i;
-              return (
-                <g
-                  data-testid={`ang-${i}`}
-                  onPointerDown={stop}
-                  onClick={() => openAngle(i)}
-                  style={{ cursor: "pointer" }}
-                >
-                  <rect x={lx - boxW / 2} y={ly - boxH / 2} width={boxW} height={boxH} rx={boxH / 2}
-                    fill={active ? SAFETY : INK_DEEP} stroke={SAFETY} strokeWidth={0.25 * unit} />
-                  <text x={lx} y={ly} dy="0.35em" fill={active ? "#fff" : SAFETY} fontSize={fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
-                    textAnchor="middle">
-                    {label}
-                  </text>
-                </g>
-              );
-            })()}
-            {(() => {
-              const isSelected = mode === "select" && selectedIdx === i;
-              return (
-                <g>
-                  {isSelected && (
-                    <circle cx={p[0]} cy={p[1]} r={4.5 * unit} fill="none" stroke="#4EA8FF" strokeWidth={0.5 * unit}
-                      strokeDasharray={`${1.2 * unit} ${1 * unit}`} />
-                  )}
-                  <circle
-                    cx={p[0]} cy={p[1]} r={2.5 * unit}
-                    fill={i === 0 ? SAFETY : "#fff"} stroke={INK_DEEP} strokeWidth={0.5 * unit}
-                    onPointerDown={handlePointDown(i)}
-                    style={{ cursor: "grab", touchAction: "none" }}
-                  />
-                </g>
-              );
-            })()}
+          <g key={`len${L.i}`} data-testid={`len-${L.i}`} onPointerDown={stop} onClick={() => openLength(L.i)} style={{ cursor: "pointer" }}>
+            <path d={tagPointer(b, unit, 0)} fill={bg} />
+            <rect x={b.x - b.w / 2} y={b.y - b.h / 2} width={b.w} height={b.h} rx={b.h / 2} fill={bg} />
+            <text x={b.x} y={b.y} dy="0.35em" fill={fg} fontSize={L.fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace" textAnchor="middle">{L.label}</text>
           </g>
         );
       })}
+      {/* Angle bubbles: gold, off the corner, pointing at the bend. Tap to edit. */}
+      {angLabels.map((L) => {
+        const b = layout.ang.get(L.i), active = hiBend === L.i;
+        const bg = active ? "#fff" : SAFETY, fg = active ? SAFETY : "#fff";
+        return (
+          <g key={`ang${L.i}`} data-testid={`ang-${L.i}`} onPointerDown={stop} onClick={() => openAngle(L.i)} style={{ cursor: "pointer" }}>
+            <path d={tagPointer(b, unit, 2.2 * unit)} fill={bg} />
+            <rect x={b.x - b.w / 2} y={b.y - b.h / 2} width={b.w} height={b.h} rx={b.h / 2} fill={bg} />
+            <text x={b.x} y={b.y} dy="0.35em" fill={fg} fontSize={L.fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace" textAnchor="middle">{L.label}</text>
+          </g>
+        );
+      })}
+      {/* Points: small crisp dots (gold at the start), with a wider invisible handle for dragging. */}
+      {points.map((p, i) => (
+        <g key={i}>
+          {mode === "select" && selectedIdx === i && (
+            <circle cx={p[0]} cy={p[1]} r={3.6 * unit} fill="none" stroke="#4EA8FF" strokeWidth={1} vectorEffect="non-scaling-stroke"
+              strokeDasharray={`${1.2 * unit} ${1 * unit}`} />
+          )}
+          <circle cx={p[0]} cy={p[1]} r={1.6 * unit} fill={i === 0 ? SAFETY : "#fff"} stroke={INK_DEEP} strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+          <circle cx={p[0]} cy={p[1]} r={3.5 * unit} fill="transparent" stroke="none"
+            onPointerDown={handlePointDown(i)} style={{ cursor: "grab", touchAction: "none" }} />
+        </g>
+      ))}
       {/* Folds mode: a ring on each end. Tap it to choose what that end does. */}
       {mode === "folds" && points.length > 1 && ["start", "end"].map((end) => {
         const i = end === "start" ? 0 : points.length - 1;
@@ -1823,15 +1921,15 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
         const h = parseHem(end === "start" ? hemStart : hemEnd);
         const active = editor?.kind === "fold" && editor.end === end;
         const out = end === "start" ? unitVec(points[1], points[0]) : unitVec(points[points.length - 2], points[points.length - 1]);
-        const badge = [p[0] + out[0] * 5.5 * unit, p[1] + out[1] * 5.5 * unit];
+        const badge = [p[0] + out[0] * 5 * unit, p[1] + out[1] * 5 * unit];
         return (
           <g key={end} data-testid={`ring-${end}`} onPointerDown={stop} onClick={() => openFold(end)} style={{ cursor: "pointer" }}>
-            <circle cx={p[0]} cy={p[1]} r={5.5 * unit} fill={active ? "rgba(212,175,55,0.22)" : "rgba(10,43,65,0.35)"}
-              stroke={SAFETY} strokeWidth={0.8 * unit} strokeDasharray={h ? undefined : `${1.6 * unit} ${1.2 * unit}`} />
+            <circle cx={p[0]} cy={p[1]} r={5 * unit} fill={active ? "rgba(212,175,55,0.22)" : "rgba(10,43,65,0.35)"}
+              stroke={SAFETY} strokeWidth={1.5} vectorEffect="non-scaling-stroke" strokeDasharray={h ? undefined : `${1.6 * unit} ${1.2 * unit}`} />
             {h && (
               <g>
-                <circle cx={badge[0]} cy={badge[1]} r={2.4 * unit} fill={SAFETY} stroke={INK_DEEP} strokeWidth={0.4 * unit} />
-                <text x={badge[0]} y={badge[1]} fill="#fff" fontSize={2.6 * unit} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
+                <circle cx={badge[0]} cy={badge[1]} r={2.2 * unit} fill={SAFETY} stroke={INK_DEEP} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+                <text x={badge[0]} y={badge[1]} fill="#fff" fontSize={2.4 * unit} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
                   textAnchor="middle" dominantBaseline="central">{foldType(h.type).short}</text>
               </g>
             )}
