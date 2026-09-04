@@ -1175,7 +1175,7 @@ function unitVec(a, b) {
   return [dx / m, dy / m];
 }
 // Perpendicular to the direction of travel along the profile, on the named side — the one
-// convention the painted-side arrow and both end folds share.
+// convention the painted-side shadow line and both end folds share.
 const sidePerp = (dir, side) => (side === "left" ? [-dir[1], dir[0]] : [dir[1], -dir[0]]);
 
 // One end fold, drawn true to size in inches. `p` is the end point, `dir` points off the
@@ -1210,7 +1210,7 @@ function profileBounds(points, folds) {
 }
 // Both end folds of a profile, ready to draw. The start fold runs backward along the first
 // leg, so its side is mirrored — "left" stays on the same side of the profile as the end
-// fold's "left" and the paint arrow (all relative to start→end travel).
+// fold's "left" and the shadow line (all relative to start→end travel).
 function endFolds(points, hemStart, hemEnd, unit) {
   const out = [];
   if (!points || points.length < 2) return out;
@@ -1238,7 +1238,7 @@ const keepFold = (pt, xy) => withFold(xy, foldSide(pt));
 // Display geometry: every point shifted by the fold-backs before it, and the path to draw
 // (a tight 180° turn at each fold, then the return running alongside the leg).
 function profileDisplay(points, gap) {
-  const dp = [], off = [0, 0];
+  const dp = [], poly = [], off = [0, 0];
   let d = "";
   for (let k = 0; k < points.length; k++) {
     const side = k > 1 ? foldSide(points[k]) : null; // a fold-back needs a leg to fold back along
@@ -1246,13 +1246,42 @@ function profileDisplay(points, gap) {
       const dir = unitVec(points[k - 2], points[k - 1]), perp = sidePerp(dir, side);
       const v = [points[k - 1][0] + off[0], points[k - 1][1] + off[1]]; // the fold, as displayed
       off[0] += perp[0] * gap; off[1] += perp[1] * gap;
-      d += ` A ${gap / 2} ${gap / 2} 0 0 ${side === "left" ? 1 : 0} ${v[0] + perp[0] * gap} ${v[1] + perp[1] * gap}`;
+      const turn = [v[0] + perp[0] * gap, v[1] + perp[1] * gap]; // where the fold's arc lands
+      poly.push(turn);
+      d += ` A ${gap / 2} ${gap / 2} 0 0 ${side === "left" ? 1 : 0} ${turn[0]} ${turn[1]}`;
     }
     const p = [points[k][0] + off[0], points[k][1] + off[1]];
     dp.push(p);
+    poly.push(p);
     d += `${k === 0 ? "M" : " L"} ${p[0]} ${p[1]}`;
   }
-  return { dp, d: d.trim() };
+  // `dp` is one point per stored point (what the dots, tags and drags work from); `poly`
+  // is the line as actually drawn — the fold arcs included — for anything tracing it.
+  return { dp, poly, d: d.trim() };
+}
+
+// A shadow line: the profile echoed a short way off to one side — the shop-drawing way of
+// calling out which face shows. Corners are mitered so the echo stays parallel to every
+// leg, with the miter capped so a sharp bend doesn't shoot off a spike; where a leg folds
+// 180° back on itself the shadow crosses over with it, the way paint wraps around a hem.
+function shadowLine(pts, side, off) {
+  if (!pts || pts.length < 2) return [];
+  const dirs = [];
+  for (let i = 1; i < pts.length; i++) dirs.push(unitVec(pts[i - 1], pts[i]));
+  const out = [];
+  for (let i = 0; i < pts.length; i++) {
+    const din = dirs[i - 1], dout = dirs[i];
+    const shift = (v, d) => [pts[i][0] + v[0] * d, pts[i][1] + v[1] * d];
+    if (!din || !dout) { out.push(shift(sidePerp(din || dout, side), off)); continue; } // the two ends
+    const pin = sidePerp(din, side), pout = sidePerp(dout, side);
+    const mx = pin[0] + pout[0], my = pin[1] + pout[1], m = Math.hypot(mx, my);
+    // m/2 is the cosine of half the turn. Past about 140° — a hem folded back on itself —
+    // a miter would shoot away from the corner, so each leg keeps its own parallel echo
+    // and they join with a short jog across the fold, the way paint wraps around it.
+    if (m < 0.7) { out.push(shift(pin, off)); out.push(shift(pout, off)); continue; }
+    out.push(shift([mx / m, my / m], off / (m / 2)));
+  }
+  return out;
 }
 
 // ---- Label placement: length tags, angle bubbles and fold captions that keep clear of the drawing ----
@@ -1263,7 +1292,7 @@ const extentAlong = (w, h, n) => (w / 2) * Math.abs(n[0]) + (h / 2) * Math.abs(n
 // further out — and takes the one that covers no line, touches no other tag, stays on
 // the canvas and sits away from the body of the drawing. Length tags go first (they have
 // the fewest options), then angle bubbles, then fold captions fit in around them.
-// `obstacles` are things already drawn (paint arrow, folds, end rings) that tags avoid.
+// `obstacles` are things already drawn (folds, end rings) that tags avoid.
 // Do two segments cross (properly, not just touch at an end)?
 function segmentsCross(p1, p2, q1, q2) {
   const o = (a, b, c) => Math.sign((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]));
@@ -1274,7 +1303,7 @@ function placeLabels(points, unit, lenLabels, angLabels, capLabels, obstacles = 
   const n = points.length;
   const legs = [];
   for (let i = 1; i < n; i++) legs.push([points[i - 1], points[i]]);
-  for (const s of extraLegs) legs.push(s); // folds and the paint arrow count as lines too
+  for (const s of extraLegs) legs.push(s); // folds and the shadow line count as lines too
   const cx = points.reduce((s, p) => s + p[0], 0) / (n || 1), cy = points.reduce((s, p) => s + p[1], 0) / (n || 1);
   const placed = obstacles.slice();
   // How deep (in units) the box, padded a little, cuts into any leg: the line is walked in
@@ -1359,7 +1388,7 @@ function placeLabels(points, unit, lenLabels, angLabels, capLabels, obstacles = 
   for (const L of lenLabels) {
     const a = points[L.i - 1], b = points[L.i], d = unitVec(a, b);
     const cands = [];
-    const ts = L.avoidMid ? [0.32, 0.68, 0.5] : [0.5, 0.32, 0.68]; // not on top of the paint arrow's tail
+    const ts = [0.5, 0.32, 0.68];
     // Beside the leg first (close, then a little further out), then off the corners and
     // straight off either end — the spots a short leg or a hemmed leg needs.
     for (const [extra, bias] of [[1.3 * unit, 0], [4 * unit, 3], [7.5 * unit, 6], [11 * unit, 8], [16 * unit, 11]]) { // further out costs more, but beats covering or crowding
@@ -1566,7 +1595,8 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   };
 
   // Formats a length in inches for display, switching to mm when metric is selected.
-  const formatLen = (inches) => (unitSystem === "metric" ? `${Math.round(inches * 25.4)}mm` : `${inches.toFixed(2)}"`);
+  // Under an inch the leading zero comes off — .50" the way it's called out on a drawing.
+  const formatLen = (inches) => (unitSystem === "metric" ? `${Math.round(inches * 25.4)}mm` : `${inches.toFixed(2).replace(/^0\./, ".")}"`);
 
   // When a preset is loaded, reset to a neutral zoom. Sizing itself is now handled by
   // the proportional margin above (scales with each shape's own size), so every preset
@@ -1689,7 +1719,9 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     setDraft(t);
     setEditor({ kind: "rotate", orig: t });
   };
-  const lengthDraft = (i) => (unitSystem === "metric" ? String(Math.round(dist(points[i - 1], points[i]) * 25.4)) : trimNum(Math.round(dist(points[i - 1], points[i]) * 100) / 100));
+  // The sheet opens on the number as its tag reads it — sub-inch without the leading zero
+  // (parseLength takes ".5" the same as "0.5", so what's typed back still reads fine).
+  const lengthDraft = (i) => (unitSystem === "metric" ? String(Math.round(dist(points[i - 1], points[i]) * 25.4)) : trimNum(Math.round(dist(points[i - 1], points[i]) * 100) / 100).replace(/^0\./, "."));
   const angleDraft = (i) => trimNum(Math.round(insideAngle(points[i - 1], points[i], points[i + 1]) * 10) / 10);
   const openLength = (i) => { if (i < 1 || i > points.length - 1) return; const t = lengthDraft(i); setEditor({ kind: "length", i, orig: t }); setDraft(t); };
   // A hem's fold is a fixed 180°, not a bend to edit — the angle sheet skips it.
@@ -1838,7 +1870,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
 
   // Hems drawn as legs are shown a small gap off their leg so both layers read; every
   // position below comes from these display points, every number from the stored ones.
-  const { dp, d: pathD } = profileDisplay(points, 2.2 * unit);
+  const { dp, poly, d: pathD } = profileDisplay(points, 2.2 * unit);
   dispRef.current = dp;
   const folds = endFolds(dp, hemStart, hemEnd, unit);
   const stop = (e) => e.stopPropagation();
@@ -1860,19 +1892,17 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     const label = fmtDeg(deg), fs = fsFor(2.6, 10);
     angLabels.push({ i, label, fs, w: label.length * fs * 0.62 + fs * 0.8, h: fs * 1.5 });
   }
-  // Painted side: a slim arrow off the longest leg pointing at the face that shows.
-  let paintArrow = null;
-  if (points.length > 1) {
-    let best = 1;
-    for (let i = 2; i < points.length; i++) if (dist(points[i - 1], points[i]) > dist(points[best - 1], points[best])) best = i;
-    const a = dp[best - 1], b = dp[best], dir = unitVec(a, b), perp = sidePerp(dir, paintSide);
-    const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-    const at = (d) => [m[0] + perp[0] * d * unit, m[1] + perp[1] * d * unit];
-    paintArrow = { s: at(2.2), base: at(5.6), tip: at(8), dir, leg: best, box: { x: at(5)[0], y: at(5)[1], w: 6.5 * unit, h: 6.5 * unit } };
-    lenLabels[best - 1].avoidMid = true; // the arrow's tail is at the midpoint of this leg
+  // Painted side: a shadow line in the finish color running the length of the profile,
+  // a short way off the face that shows — the way a shop drawing calls out the paint side.
+  let paintShadow = null;
+  if (dp.length > 1) {
+    const sp = shadowLine(poly, paintSide, 3.4 * unit);
+    const segs = [];
+    for (let i = 1; i < sp.length; i++) segs.push([sp[i - 1], sp[i]]);
+    paintShadow = { d: sp.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0]} ${p[1]}`).join(" "), segs };
   }
   const obstacles = [], extraLegs = [];
-  if (paintArrow) { obstacles.push(paintArrow.box); extraLegs.push([paintArrow.s, paintArrow.tip]); }
+  if (paintShadow) for (const seg of paintShadow.segs) extraLegs.push(seg); // tags stay off the shadow line too
   for (const p of dp) obstacles.push({ x: p[0], y: p[1], w: 2.2 * unit, h: 2.2 * unit, gap: 0, dot: true }); // the dots themselves, no clearance
   const capLabels = folds.map((f) => {
     // The fold's own drawing is a line to keep off, and a box to keep tags out of; the box
@@ -2009,6 +2039,17 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
           fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" strokeDasharray="6 4"
           strokeLinejoin="round" strokeLinecap="round" />
       )}
+      {/* Painted side: the shadow line alongside the face that shows — tap it to switch sides.
+          A pale backing stroke keeps a dark finish color readable on the dark canvas. */}
+      {paintShadow && (
+        <g data-testid="paint-shadow" onPointerDown={stop} onClick={() => setPaintSide?.(otherSide)}
+          pointerEvents={mode === "draw" ? "none" : "auto"} style={{ cursor: "pointer" }}>
+          <title>Painted side — tap to switch</title>
+          <path d={paintShadow.d} fill="none" stroke="#fff" strokeWidth={5} opacity={0.35} vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+          <path d={paintShadow.d} fill="none" stroke={colorHex} strokeWidth={3} vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+          <path d={paintShadow.d} fill="none" stroke="transparent" strokeWidth={4 * unit} />
+        </g>
+      )}
       {points.length > 1 && (
         <path d={pathD} fill="none" stroke="#fff" strokeWidth={2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
       )}
@@ -2053,18 +2094,6 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
             style={{ cursor: "pointer" }} />
         );
       })}
-      {paintArrow && (() => {
-        const { s, base, tip, dir } = paintArrow, hw = 1.7 * unit;
-        const head = `M ${tip[0]} ${tip[1]} L ${base[0] + dir[0] * hw} ${base[1] + dir[1] * hw} L ${base[0] - dir[0] * hw} ${base[1] - dir[1] * hw} Z`;
-        return (
-          <g data-testid="paint-arrow" onPointerDown={stop} onClick={() => setPaintSide?.(otherSide)} style={{ cursor: "pointer" }}>
-            <title>Painted side — tap to switch</title>
-            <line x1={s[0]} y1={s[1]} x2={base[0]} y2={base[1]} stroke="#fff" strokeWidth={3} vectorEffect="non-scaling-stroke" strokeLinecap="round" />
-            <line x1={s[0]} y1={s[1]} x2={base[0]} y2={base[1]} stroke={colorHex} strokeWidth={1.5} vectorEffect="non-scaling-stroke" strokeLinecap="round" />
-            <path d={head} fill={colorHex} stroke="#fff" strokeWidth={1} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
-          </g>
-        );
-      })()}
       {/* Points: small crisp dots (gold at the start, gold while its bend is being edited), with a
           wider invisible handle for dragging. Drawn under the tags so a tag near a dot still opens. */}
       {dp.map((p, i) => (
