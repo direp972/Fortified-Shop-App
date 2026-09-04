@@ -43,6 +43,9 @@
 .apptile-sub{font-size:13px;color:#C7D6E2;line-height:1.45}
 .apptile-go{font-size:12.5px;font-weight:600;color:var(--gold-soft);margin-top:3px}
 .apptile:last-of-type{margin-bottom:14px}
+.apptile.cta,.apptile.cta:last-of-type{flex:1 1 250px;margin-bottom:0}
+.apptile.primary{border-color:var(--gold);background:rgba(212,175,55,.12)}
+.apptile.primary:hover{background:rgba(212,175,55,.2)}
 </style>
 <script src="/auth.js" defer></script>
 <script defer src="/_vercel/insights/script.js"></script>
@@ -71,8 +74,22 @@
       <h1>Everything sheet metal.<em>One search engine.</em></h1>
       <p class="lede">RoofCoil is the search engine for sheet metal in North America. Find the suppliers, fabricators and contractors who can run your metal, locate materials by ability, color and location, and use specialized tools to price panels, draw trim and match colors — from "who can run this?" to the right shop in a couple of taps.</p>
       <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:28px">
-        <a class="btn" href="/suppliers.html">Search RoofCoil</a>
-        <a class="btn ghost" href="/get-listed.html">List your business</a>
+        <a class="apptile cta primary" href="/suppliers.html" aria-label="Search RoofCoil">
+          <img src="/search-icon.svg" width="56" height="56" alt="">
+          <span class="apptile-txt">
+            <b>Search RoofCoil</b>
+            <span class="apptile-sub">Who can run your metal — by ability, color and distance.</span>
+            <span class="apptile-go">Search →</span>
+          </span>
+        </a>
+        <a class="apptile cta" href="/get-listed.html" aria-label="List your business">
+          <img src="/list-business-icon.svg" width="56" height="56" alt="">
+          <span class="apptile-txt">
+            <b>List your business</b>
+            <span class="apptile-sub">Free listing for suppliers, fabricators and contractors.</span>
+            <span class="apptile-go">Get listed →</span>
+          </span>
+        </a>
       </div>
       <dl class="spec-strip">
         <div><dt>Listed shops</dt><dd>2 &amp; growing</dd></div>
