@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase } from "lucide-react";
+import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase, Package } from "lucide-react";
 import * as THREE from "three";
 import { storage } from "./lib/storage";
 import { supabase } from "./lib/supabaseClient";
@@ -528,11 +528,86 @@ const TRIM_PRESETS = {
   "Rake": [[0, 0], [5.5, 0], [5.5, 5.5], [6, 5.6]],
   // Ridge cap: symmetric tent over the peak with hemmed drip edges on both sides
   "Ridge Cap": [[0, 1], [0, 0], [6, -3], [12, 0], [12, 1]],
-  // Sidewall flashing: small kickout, roof leg, wall leg, hemmed top edge
-  "Sidewall Flashing": [[-0.375, 0.25], [0, 0], [4, 0], [4, -4], [4.5, -4.1]],
+  // Sidewall flashing: small kickout, roof leg, wall leg (hem the top edge with the hem setting)
+  "Sidewall Flashing": [[-0.375, 0.25], [0, 0], [4, 0], [4, -4]],
   "F-Channel": [[0, 0], [0, 10.5], [7, 10.5], [7, 4], [10, 4], [10, 0]],
   "Custom": [[0, 0], [0, 6]],
 };
+
+/* ---------------------------------- Roof in a Box ---------------------------------- */
+// The standard trim set for a 24 ga standing seam roof, drawn to the roof's pitch and the
+// panel's seam height. Every entry is a real profile the drawing tool can open and edit:
+// points in inches, y grows downward, drawn with the leg that sits on the panel (or the
+// wall) horizontal, the way trim details appear on a shop drawing. paintSide is the
+// exposed face; hems fold toward the unpainted side.
+const ROOF_PITCHES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 14]; // rise per 12
+const SEAM_HEIGHTS = [1, 1.5, 1.75, 2];
+const pitchAngle = (rise) => Math.atan(rise / 12); // radians
+const r3 = (v) => Math.round(v * 1000) / 1000;
+const kitPt = (x, y) => [r3(x), r3(y)];
+const fmtPitch = (rise) => `${rise}:12`;
+
+function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
+  const th = pitchAngle(pitch);
+  const H = seamHeight;
+  // Ridge: both legs follow the roof slope. Hip and valley: the two roof planes meet along
+  // a diagonal, so they fold at a flatter angle — half the angle between the planes'
+  // normals, acos(cos²θ) for equal pitches.
+  const ridgeHalf = th;
+  const hipHalf = Math.acos(Math.cos(th) ** 2) / 2;
+  const capLeg = H <= 1 ? 4 : H <= 1.5 ? 5 : 6; // clears the seam + Z-closure with room for the drip
+  const cap = (half) => {
+    const c = Math.cos(half), sn = Math.sin(half);
+    return [kitPt(-capLeg * c, capLeg * sn + 0.5), kitPt(-capLeg * c, capLeg * sn), kitPt(0, 0), kitPt(capLeg * c, capLeg * sn), kitPt(capLeg * c, capLeg * sn + 0.5)];
+  };
+  const vHalf = hipHalf, vc = Math.cos(vHalf), vs = Math.sin(vHalf), W = 10;
+  const wallTilt = { x: Math.sin(th), y: -Math.cos(th) }; // a plumb wall seen with the roof leg drawn flat
+  const lowerTh = pitchAngle(Math.min(lowerPitch, pitch));
+  const dTrans = th - lowerTh; // how much flatter the lower roof is
+  const riser = H + 0.5;       // steps up over the lower roof's Z-closure
+  const apronKick = (15 * Math.PI) / 180;
+
+  return [
+    { id: "eave", name: "Eave Trim", dims: '3" × 2"', per: "eave", on: true,
+      where: "Bottom edge of the roof — over the fascia, under the panels, with a hemmed drip.",
+      points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 2), kitPt(3.6, 2.1)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
+    { id: "apron", name: "Gutter Apron", dims: '4½" × 2" · 15° kick', per: "eave with gutters", on: false,
+      where: "Eave trim for gutter runs — a longer deck flange and a face kicked out over the gutter's back.",
+      points: [kitPt(0, 0), kitPt(4.5, 0), kitPt(4.5 + 2 * Math.sin(apronKick), 2 * Math.cos(apronKick))], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
+    { id: "rake", name: "Rake Trim", dims: '5½" × 5½"', per: "rake edge", on: true,
+      where: "Gable ends — covers the panel edge and the fascia; hooks the rake cleat.",
+      points: [kitPt(0, 0), kitPt(5.5, 0), kitPt(5.5, 5.5), kitPt(6, 5.6)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
+    { id: "higheave", name: "High-Side Eave", dims: '5" × 5½"', per: "high eave (single-slope roofs)", on: false,
+      where: "Top edge of a shed or single-slope roof — sits over the Z-closure and drops down the high fascia, hemmed.",
+      points: [kitPt(0, 0), kitPt(5, 0), kitPt(5, 5.5), kitPt(5.5, 5.6)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
+    { id: "ridge", name: "Ridge Cap", dims: `${capLeg}" legs · bent to ${fmtPitch(pitch)}`, per: "ridge", on: true,
+      where: "Peak of the roof over the Z-closures, both legs hemmed for the drip.",
+      points: cap(ridgeHalf), hemStart: "open-left", hemEnd: "open-left", paintSide: "right" },
+    { id: "hip", name: "Hip Cap", dims: `${capLeg}" legs · hip angle for ${fmtPitch(pitch)}`, per: "hip", on: false,
+      where: "Same cap over a hip — the two slopes meet along the diagonal, so the fold is flatter than the ridge.",
+      points: cap(hipHalf), hemStart: "open-left", hemEnd: "open-left", paintSide: "right" },
+    { id: "valley", name: "W-Valley", dims: `${W}" wings · 1" diverter`, per: "valley", on: true,
+      where: "Under the panels where two slopes meet — center rib keeps water from crossing, edges hooked for clips.",
+      points: [kitPt(-0.75 - W * vc, -W * vs), kitPt(-0.75, 0), kitPt(0, -1), kitPt(0.75, 0), kitPt(0.75 + W * vc, -W * vs)],
+      hemStart: "open-left", hemEnd: "open-left", paintSide: "right" },
+    { id: "sidewall", name: "Sidewall Flashing", dims: '4" × 4" · ⅜" kickout', per: "sidewall", on: true,
+      where: "Where the roof runs along a wall — roof leg over the panel, wall leg behind the siding or counterflashing, hemmed top.",
+      points: [kitPt(-0.375, 0.25), kitPt(0, 0), kitPt(4, 0), kitPt(4, -4)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
+    { id: "endwall", name: "Endwall Flashing", dims: `5" × 4" · wall leg for ${fmtPitch(pitch)}`, per: "headwall", on: true,
+      where: "Where the roof runs up into a wall — sits over the Z-closure, wall leg plumb at your pitch behind the siding or counterflashing.",
+      points: [kitPt(-0.375, 0.25), kitPt(0, 0), kitPt(5, 0), kitPt(5 + 4 * wallTilt.x, 4 * wallTilt.y)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
+    { id: "zclosure", name: "Z-Closure", dims: `1" × ${H}" × 1"`, per: "ridge and hip (two per length, one on each slope), plus headwalls and pitch breaks", on: true,
+      where: "Fills the seam height between panels under the ridge and hip caps, at headwalls and pitch breaks; sealed to the pan. Eaves are usually hemmed over a cleat instead.",
+      points: [kitPt(0, 0), kitPt(1, 0), kitPt(1, -H), kitPt(2, -H)], hemStart: "none", hemEnd: "none", paintSide: "right" },
+    { id: "transition", name: "Pitch Transition", dims: `4" × ${riser}" × 4" · ${fmtPitch(pitch)} to ${fmtPitch(Math.min(lowerPitch, pitch))}`, per: "pitch break", on: false,
+      where: "Where a steep roof breaks to a flatter one — upper leg under the upper panels, steps up over the lower Z-closure, lower leg follows the flatter pitch.",
+      points: [kitPt(0, 0), kitPt(4, 0), kitPt(4, -riser), kitPt(4 + 4 * Math.cos(dTrans), -riser - 4 * Math.sin(dTrans))], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
+    { id: "cleat", name: "Offset Cleat", dims: '1" × ⅜" × 1½"', per: "eave and rake (under the trim)", on: false,
+      where: "Continuous cleat the eave and rake trims hook onto — usually 24 ga bare or paint-grip.",
+      points: [kitPt(0, 0), kitPt(1, 0), kitPt(1, 0.375), kitPt(2.5, 0.375)], hemStart: "none", hemEnd: "none", paintSide: "right" },
+  ];
+}
+const ROOF_KIT_DEFAULT_SEL = Object.fromEntries(buildRoofKit().map((it) => [it.id, it.on ? 1 : 0]));
 
 const STATUS_FLOW = ["Pending", "In Production", "Ready for Pickup", "Completed"];
 const RIB_LABELS = { bead: "Bead Ribs", pencil: "Pencil Ribs", v: "V Ribs", striations: "Striations" };
@@ -596,14 +671,16 @@ function parseLength(input) {
 const dist = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
 const money = (n) => `$${n.toFixed(2)}`;
 
-function bendAngle(prev, cur, next) {
+// Inside angle at a bend, in degrees (not rounded): 90 at a square corner, close to 180
+// at a gentle ridge, small when a leg folds back on itself — the number a brake operator
+// reads off a drawing, and the one the canvas shows and edits.
+function insideAngle(prev, cur, next) {
   const v1 = [prev[0] - cur[0], prev[1] - cur[1]];
   const v2 = [next[0] - cur[0], next[1] - cur[1]];
-  const dot = v1[0] * v2[0] + v1[1] * v2[1];
   const m1 = Math.hypot(...v1), m2 = Math.hypot(...v2);
   if (m1 === 0 || m2 === 0) return 0;
-  const cos = Math.max(-1, Math.min(1, dot / (m1 * m2)));
-  return Math.round(180 - (Math.acos(cos) * 180) / Math.PI);
+  const cos = Math.max(-1, Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1]) / (m1 * m2)));
+  return (Math.acos(cos) * 180) / Math.PI;
 }
 
 // Most brands have one flat color list. Some (Quality Metals, currently delisted) have
@@ -745,17 +822,18 @@ function formatFeetInches(totalInches) {
 
 // Renders a trim profile as a plain, static SVG string (not the interactive drawing
 // tool) for print/export — clean outline with length labels at each segment.
-function generateProfileSvgString(points, colorHex) {
+function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = "none") {
   if (!points || points.length < 2) return "";
   const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
-  const minX = Math.min(...xs), maxX = Math.max(...xs);
-  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const size = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 1);
+  const { dp, d: pathInches } = profileDisplay(points, (size / 100) * 2.2); // hems drawn as legs show as a doubled line
+  const folds = endFolds(dp, hemStart, hemEnd, size / 100);
+  const [minX, minY, maxX, maxY] = profileBounds(dp, folds); // the folds have to fit on the sheet too
   const pad = 30, w = 480, h = 320;
   const spanX = Math.max(maxX - minX, 1), spanY = Math.max(maxY - minY, 1);
   const scale = Math.min((w - pad * 2) / spanX, (h - pad * 2) / spanY);
   const toSvg = ([x, y]) => [(x - minX) * scale + pad, (y - minY) * scale + pad];
-  const pathPts = points.map(toSvg);
-  const pathD = pathPts.map((p, i) => (i === 0 ? "M" : "L") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ");
+  const pathPts = dp.map(toSvg);
   let labels = "";
   for (let i = 1; i < points.length; i++) {
     const len = dist(points[i - 1], points[i]);
@@ -764,8 +842,15 @@ function generateProfileSvgString(points, colorHex) {
     labels += `<text x="${mx.toFixed(1)}" y="${(my - 8).toFixed(1)}" font-size="11" text-anchor="middle" font-family="monospace" fill="#333">${len.toFixed(2)}"</text>`;
   }
   const dotSvg = pathPts.map((p) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${colorHex || "#333"}" />`).join("");
+  // End folds are drawn in inches inside a scaled group so the same geometry the canvas
+  // shows lands on the spec sheet, with a stroke that doesn't scale with it.
+  const foldSvg = folds
+    .map((f) => `<path d="${f.d}" fill="none" stroke="#B8860B" stroke-width="${f.closed ? 3.5 : 2.5}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`).join("");
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="background:#fff;border:1px solid #ddd;border-radius:8px;">
-    <path d="${pathD}" fill="none" stroke="${colorHex || "#333"}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+    <g transform="translate(${(pad - minX * scale).toFixed(2)} ${(pad - minY * scale).toFixed(2)}) scale(${scale.toFixed(4)})">
+      <path d="${pathInches}" fill="none" stroke="${colorHex || "#333"}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+      ${foldSvg}
+    </g>
     ${dotSvg}
     ${labels}
   </svg>`;
@@ -775,7 +860,7 @@ function generateProfileSvgString(points, colorHex) {
 // print dialog — the person can "Save as PDF" from there. No PDF library needed or
 // available in this environment, so this is the reliable cross-browser path.
 function printPartAsPDF(item) {
-  const svg = generateProfileSvgString(item.points, item.colorHex);
+  const svg = generateProfileSvgString(item.points, item.colorHex, item.hemStart, item.hemEnd);
   const win = window.open("", "_blank");
   if (!win) { window.alert("Your browser blocked the print window — please allow popups for this site and try again."); return; }
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -802,8 +887,8 @@ function printPartAsPDF(item) {
         <div><b>Brand</b>${esc(item.brand)}</div>
         <div><b>Color</b>${esc(item.colorName)}</div>
         <div><b>Paint side</b>${item.paintSide === "left" ? "Left" : "Right"}</div>
-        <div><b>Start hem</b>${esc(item.hemStart)}</div>
-        <div><b>End hem</b>${esc(item.hemEnd)}</div>
+        <div><b>Start fold</b>${esc(formatHem(item.hemStart) || "None")}</div>
+        <div><b>End fold</b>${esc(formatHem(item.hemEnd) || "None")}</div>
         ${item.photo ? `<img class="ref" src="${item.photo}" />` : ""}
       </div>
     </div>
@@ -1024,65 +1109,327 @@ function ShapeThumb({ order, size = 64 }) {
   }
   const pts = order.points || [[0, 0], [0, 1]];
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
-  const minX = Math.min(...xs), maxX = Math.max(...xs);
-  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const extent = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 0.5);
+  const { dp, d } = profileDisplay(pts, (extent / 100) * 2.6); // hems drawn as legs show as a doubled line
+  const folds = pts.length > 1 ? endFolds(dp, order.hemStart, order.hemEnd, extent / 100) : [];
+  const [minX, minY, maxX, maxY] = profileBounds(dp, folds); // fit the folds in the thumbnail too
   const w = Math.max(0.5, maxX - minX), h = Math.max(0.5, maxY - minY);
   const s = Math.min((size - pad * 2) / w, (size - pad * 2) / h);
   const offX = (size - w * s) / 2 - minX * s;
   const offY = (size - h * s) / 2 - minY * s;
-  const d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0] * s + offX} ${p[1] * s + offY}`).join(" ");
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <path d={d} fill="none" stroke={order.colorHex} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+      <g transform={`translate(${offX} ${offY}) scale(${s})`}>
+        <path d={d} fill="none" stroke={order.colorHex} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+        {folds.map((f) => <path key={f.which} d={f.d} fill="none" stroke={SAFETY} strokeWidth={f.closed ? 2.5 : 1.8} strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />)}
+      </g>
     </svg>
   );
 }
 
 /* ---------------------------------- drawing canvas ---------------------------------- */
+// End folds: what happens at each end of the profile. Stored as "<type>-<side>"
+// ("open-left", "hook-right" …) or "none" — the same strings every saved order already
+// carries. `allowance` is the flat width the fold adds to the girth (what the shear cuts).
+const FOLD_TYPES = [
+  { id: "closed", label: "Closed hem", short: "C", allowance: 0.5, hint: "Folded flat back on itself — a stiff, safe edge" },
+  { id: "open", label: "Open hem", short: "O", allowance: 0.5, hint: "Folded back with a gap — slips over a cleat or drip" },
+  { id: "hook", label: "Hook", short: "H", allowance: 0.75, hint: "Longer open fold that hooks a starter or cleat" },
+  { id: "kick", label: "Kick", short: "K", allowance: 0.5, hint: "Short leg kicked out 45° to throw water clear" },
+];
+const foldType = (id) => FOLD_TYPES.find((t) => t.id === id) || null;
+const fracIn = (v) => ({ 0.125: "⅛", 0.25: "¼", 0.375: "⅜", 0.5: "½", 0.625: "⅝", 0.75: "¾", 0.875: "⅞" }[v] || `${v}`) + '"';
 function parseHem(value) {
   if (!value || value === "none") return null;
-  const [type, dir] = value.split("-");
-  return { type, dir };
+  const [type, dir] = String(value).split("-");
+  if (!foldType(type)) return null;
+  return { type, dir: dir === "right" ? "right" : "left" };
 }
 function formatHem(value) {
   const h = parseHem(value);
   if (!h) return null;
-  const type = h.type === "open" ? "Open" : "Closed";
-  const dir = h.dir.charAt(0).toUpperCase() + h.dir.slice(1);
-  return `${type}, faces ${dir}`;
+  return `${foldType(h.type).label}, faces ${h.dir === "left" ? "Left" : "Right"}`;
+}
+const flipHem = (value) => { const h = parseHem(value); return h ? `${h.type}-${h.dir === "left" ? "right" : "left"}` : "none"; };
+const hemAllowance = (value) => { const h = parseHem(value); return h ? foldType(h.type).allowance : 0; };
+// Girth is the flat width of the blank: every leg plus whatever the end folds add.
+function profileGirth(pts, hemStart = "none", hemEnd = "none") {
+  if (!pts || pts.length < 2) return 0;
+  return pts.reduce((s, p, i) => s + (i > 0 ? dist(pts[i - 1], p) : 0), 0) + hemAllowance(hemStart) + hemAllowance(hemEnd);
 }
 function unitVec(a, b) {
   const dx = b[0] - a[0], dy = b[1] - a[1];
   const m = Math.hypot(dx, dy) || 1;
   return [dx / m, dy / m];
 }
-// One leg continues straight off the profile line; the other leg folds 180°
-// back over it, offset to the chosen side. Touching = closed, spaced = open.
-function hemGlyph(p, dir, side, isOpen, unit) {
-  const sideMult = side === "left" ? 1 : -1;
-  const perp = [-dir[1] * sideMult, dir[0] * sideMult];
-  const L = 3.5 * unit;
-  const gap = (isOpen ? 2 : 0.4) * unit;
-  const r = gap / 2;
-  const tip1 = [p[0] + dir[0] * L, p[1] + dir[1] * L];
-  const tip2 = [tip1[0] + perp[0] * gap, tip1[1] + perp[1] * gap];
-  const end2 = [tip2[0] - dir[0] * L, tip2[1] - dir[1] * L];
-  const sweep = sideMult === 1 ? 1 : 0; // mirrored side needs the mirrored arc direction too
-  const d = `M ${p[0]} ${p[1]} L ${tip1[0]} ${tip1[1]} A ${r} ${r} 0 0 ${sweep} ${tip2[0]} ${tip2[1]} L ${end2[0]} ${end2[1]}`;
-  const labelPos = [tip1[0] + dir[0] * 2.5 * unit + perp[0] * (gap / 2), tip1[1] + dir[1] * 2.5 * unit + perp[1] * (gap / 2)];
-  return { d, labelPos };
+// Perpendicular to the direction of travel along the profile, on the named side — the one
+// convention the painted-side arrow and both end folds share.
+const sidePerp = (dir, side) => (side === "left" ? [-dir[1], dir[0]] : [dir[1], -dir[0]]);
+
+// One end fold, drawn true to size in inches. `p` is the end point, `dir` points off the
+// end of the profile (past the last point, or back past the first), `side` is which side
+// of the travel direction the fold turns toward, `unit` is the canvas's stroke scale.
+function foldGlyph(p, dir, side, type, unit) {
+  const t = foldType(type);
+  if (!t) return null;
+  const perp = sidePerp(dir, side);
+  const at = (along, across) => [p[0] + dir[0] * along + perp[0] * across, p[1] + dir[1] * along + perp[1] * across];
+  const L = Math.max(t.allowance, 2.5 * unit); // real size, but never so small it disappears on a wide profile
+  if (type === "kick") {
+    const k = L / Math.SQRT2;
+    const tip = at(k, k);
+    return { d: `M ${p[0]} ${p[1]} L ${tip[0]} ${tip[1]}`, closed: false, labelPos: at(k + 1.5 * unit, k + 3.5 * unit), extent: [p, tip] };
+  }
+  // The leg ends at p and folds 180° back over itself: closed sits tight against the leg,
+  // open leaves a gap, a hook leaves a bigger one.
+  const gap = type === "closed" ? 1.6 * unit : type === "open" ? Math.max(0.125, 3 * unit) : Math.max(0.25, 4.5 * unit);
+  const a = at(0, gap), b = at(-L, gap);
+  const sweep = side === "left" ? 1 : 0; // the arc must bulge past the end, whichever side the fold is on
+  return {
+    d: `M ${p[0]} ${p[1]} A ${gap / 2} ${gap / 2} 0 0 ${sweep} ${a[0]} ${a[1]} L ${b[0]} ${b[1]}`, closed: type === "closed", labelPos: at(-L / 2, gap + 3.5 * unit),
+    extent: [p, a, b, at(gap / 2, 0), at(gap / 2, gap)], // points a bounding box must include (the arc's bulge too)
+  };
+}
+// Bounding box of a profile with its end folds, in inches: [minX, minY, maxX, maxY].
+function profileBounds(points, folds) {
+  const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
+  for (const f of folds) for (const q of f.extent) { xs.push(q[0]); ys.push(q[1]); }
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+// Both end folds of a profile, ready to draw. The start fold runs backward along the first
+// leg, so its side is mirrored — "left" stays on the same side of the profile as the end
+// fold's "left" and the paint arrow (all relative to start→end travel).
+function endFolds(points, hemStart, hemEnd, unit) {
+  const out = [];
+  if (!points || points.length < 2) return out;
+  const n = points.length, hs = parseHem(hemStart), he = parseHem(hemEnd);
+  if (hs) {
+    const g = foldGlyph(points[0], unitVec(points[1], points[0]), hs.dir === "left" ? "right" : "left", hs.type, unit);
+    if (g) out.push({ which: "start", type: hs.type, ...g });
+  }
+  if (he) {
+    const g = foldGlyph(points[n - 1], unitVec(points[n - 2], points[n - 1]), he.dir, he.type, unit);
+    if (g) out.push({ which: "end", type: he.type, ...g });
+  }
+  return out;
 }
 
-function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, viewResetKey }) {
+// ---- Fold-backs: a hem drawn as a leg. A point tagged "fold-left" / "fold-right" means the
+// leg that ends at it runs straight back along the previous leg, folded 180° to that side
+// of the previous leg's direction of travel (the same left/right the end folds use). The
+// stored geometry stays true — the point sits on the previous leg's line, so girth and the
+// bend count are exact — and only the drawing offsets the return by a small gap so both
+// layers can be seen, the way a hem is sketched. ----
+const foldSide = (pt) => (pt && pt[2] === "fold-left" ? "left" : pt && pt[2] === "fold-right" ? "right" : null);
+const withFold = (xy, side) => (side ? [xy[0], xy[1], `fold-${side}`] : [xy[0], xy[1]]);
+const keepFold = (pt, xy) => withFold(xy, foldSide(pt));
+// Display geometry: every point shifted by the fold-backs before it, and the path to draw
+// (a tight 180° turn at each fold, then the return running alongside the leg).
+function profileDisplay(points, gap) {
+  const dp = [], off = [0, 0];
+  let d = "";
+  for (let k = 0; k < points.length; k++) {
+    const side = k > 1 ? foldSide(points[k]) : null; // a fold-back needs a leg to fold back along
+    if (side) {
+      const dir = unitVec(points[k - 2], points[k - 1]), perp = sidePerp(dir, side);
+      const v = [points[k - 1][0] + off[0], points[k - 1][1] + off[1]]; // the fold, as displayed
+      off[0] += perp[0] * gap; off[1] += perp[1] * gap;
+      d += ` A ${gap / 2} ${gap / 2} 0 0 ${side === "left" ? 1 : 0} ${v[0] + perp[0] * gap} ${v[1] + perp[1] * gap}`;
+    }
+    const p = [points[k][0] + off[0], points[k][1] + off[1]];
+    dp.push(p);
+    d += `${k === 0 ? "M" : " L"} ${p[0]} ${p[1]}`;
+  }
+  return { dp, d: d.trim() };
+}
+
+// ---- Label placement: length tags, angle bubbles and fold captions that keep clear of the drawing ----
+const boxesOverlap = (a, b, gap) => Math.abs(a.x - b.x) < (a.w + b.w) / 2 + gap && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + gap;
+// Half-extent of a w×h box along direction n — how far its edge reaches from its centre that way.
+const extentAlong = (w, h, n) => (w / 2) * Math.abs(n[0]) + (h / 2) * Math.abs(n[1]);
+// Every tag tries a few spots — beside its line, outside or inside its corner, a little
+// further out — and takes the one that covers no line, touches no other tag, stays on
+// the canvas and sits away from the body of the drawing. Length tags go first (they have
+// the fewest options), then angle bubbles, then fold captions fit in around them.
+// `obstacles` are things already drawn (paint arrow, folds, end rings) that tags avoid.
+function placeLabels(points, unit, lenLabels, angLabels, capLabels, obstacles = [], view = null) {
+  const n = points.length;
+  const legs = [];
+  for (let i = 1; i < n; i++) legs.push([points[i - 1], points[i]]);
+  const cx = points.reduce((s, p) => s + p[0], 0) / (n || 1), cy = points.reduce((s, p) => s + p[1], 0) / (n || 1);
+  const placed = obstacles.slice();
+  // How deep (in units) the box, padded a little, cuts into any leg: the line is walked in
+  // steps smaller than the box so a thin crossing can't slip between samples.
+  const intrusion = (box) => {
+    const hw = box.w / 2 + 0.8 * unit, hh = box.h / 2 + 0.8 * unit, step = Math.min(hw, hh) / 2;
+    let worst = 0;
+    for (const [a, b] of legs) {
+      const k = Math.min(200, Math.max(2, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step)));
+      for (let s = 0; s <= k; s++) {
+        const t = s / k, qx = a[0] + (b[0] - a[0]) * t, qy = a[1] + (b[1] - a[1]) * t;
+        const ox = hw - Math.abs(qx - box.x), oy = hh - Math.abs(qy - box.y);
+        if (ox > 0 && oy > 0) worst = Math.max(worst, Math.min(ox, oy));
+      }
+    }
+    return worst / unit;
+  };
+  const overflow = (box) => {
+    if (!view) return 0;
+    const l = Math.max(0, view.x - (box.x - box.w / 2)), r = Math.max(0, box.x + box.w / 2 - (view.x + view.w));
+    const t = Math.max(0, view.y - (box.y - box.h / 2)), b = Math.max(0, box.y + box.h / 2 - (view.y + view.h));
+    return (l + r + t + b) / unit;
+  };
+  // A tag's pointer must not cut through another tag either.
+  const pointerCrosses = (box, o) => {
+    const a = box.anchor, b = [box.x, box.y];
+    for (let s = 0; s <= 12; s++) {
+      const x = a[0] + (b[0] - a[0]) * s / 12, y = a[1] + (b[1] - a[1]) * s / 12;
+      if (Math.abs(x - o.x) < o.w / 2 && Math.abs(y - o.y) < o.h / 2) return true;
+    }
+    return false;
+  };
+  const cost = (box, ox, oy) => {
+    const cut = intrusion(box);
+    let c = (cut > 0 ? 30 + 10 * cut : 0) + 8 * overflow(box); // covering a line is the one thing a tag must not do
+    for (const o of placed) { if (boxesOverlap(box, o, 1.2 * unit)) c += 40; else if (box.anchor && pointerCrosses(box, o)) c += 25; }
+    const ax = box.x - cx, ay = box.y - cy, m = Math.hypot(ax, ay) || 1;
+    return c - 1.5 * ((ox * ax + oy * ay) / m); // away from the centroid reads as "out of the way"
+  };
+  const pick = (cands, w, h) => {
+    let best = null;
+    cands.forEach((c, k) => {
+      const box = { x: c.x, y: c.y, w, h, anchor: c.anchor };
+      const s = cost(box, c.ox, c.oy) + 0.3 * k; // earlier candidates are the preferred spots
+      if (!best || s < best.s) best = { ...box, s };
+    });
+    placed.push(best);
+    return best;
+  };
+  const len = new Map(), ang = new Map(), cap = new Map();
+  for (const L of lenLabels) {
+    const a = points[L.i - 1], b = points[L.i], d = unitVec(a, b);
+    const cands = [];
+    for (const extra of [1.3 * unit, 6 * unit]) {
+      for (const t of [0.5, 0.32, 0.68]) {
+        const m = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+        for (const p of [[-d[1], d[0]], [d[1], -d[0]]]) {
+          const off = extentAlong(L.w, L.h, p) + extra; // clear of the line whichever way the leg runs
+          cands.push({ x: m[0] + p[0] * off, y: m[1] + p[1] * off, ox: p[0], oy: p[1], anchor: m });
+        }
+      }
+    }
+    len.set(L.i, pick(cands, L.w, L.h));
+  }
+  for (const L of angLabels) {
+    const v = points[L.i], v1 = unitVec(v, points[L.i - 1]), v2 = unitVec(v, points[L.i + 1]);
+    let bx = v1[0] + v2[0], by = v1[1] + v2[1];
+    const bm = Math.hypot(bx, by);
+    if (bm < 1e-6) { bx = -v2[1]; by = v2[0]; } else { bx /= bm; by /= bm; }
+    // Outside the corner, inside, either side, straight up — each also swung ±35° so two
+    // bends close together (a valley's W, a Z-closure) can both find room.
+    const base = [[-bx, -by], [bx, by], [-by, bx], [by, -bx], [0, -1]];
+    const dirs = [];
+    for (const [x, y] of base) for (const a of [0, 0.61, -0.61, 1.13, -1.13]) dirs.push([x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)]);
+    const cands = [];
+    for (const extra of [4.5 * unit, 8 * unit, 12 * unit]) for (const d of dirs) {
+      const off = extentAlong(L.w, L.h, d) + extra;
+      cands.push({ x: v[0] + d[0] * off, y: v[1] + d[1] * off, ox: d[0], oy: d[1], anchor: v });
+    }
+    ang.set(L.i, pick(cands, L.w, L.h));
+  }
+  for (const L of capLabels) {
+    const p = L.at, out = L.out, cands = [];
+    for (const extra of [2.5 * unit, 6 * unit]) {
+      for (const d of [[-out[1], out[0]], [out[1], -out[0]], out]) {
+        const off = extentAlong(L.w, L.h, d) + extra;
+        const back = d === out ? 0 : 2 * unit; // captions beside the fold sit a touch back along the leg
+        cands.push({ x: p[0] + d[0] * off - out[0] * back, y: p[1] + d[1] * off - out[1] * back, ox: d[0], oy: d[1], anchor: p });
+      }
+    }
+    cap.set(L.which, pick(cands, L.w, L.h));
+  }
+  return { len, ang, cap };
+}
+// A rounded tag with a small pointer toward what it labels (the line, or the vertex).
+function tagPointer(box, unit, gap) {
+  const dx = box.anchor[0] - box.x, dy = box.anchor[1] - box.y, m = Math.hypot(dx, dy) || 1;
+  const ux = dx / m, uy = dy / m;
+  const tip = [box.anchor[0] - ux * gap, box.anchor[1] - uy * gap];
+  const w = 1.3 * unit;
+  return `M ${box.x - uy * w} ${box.y + ux * w} L ${tip[0]} ${tip[1]} L ${box.x + uy * w} ${box.y - ux * w} Z`;
+}
+
+const PITCH_CHIPS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18];
+const FRACTION_CHIPS = [["⅛", "1/8"], ["¼", "1/4"], ["⅜", "3/8"], ["½", "1/2"], ["⅝", "5/8"], ["¾", "3/4"], ["⅞", "7/8"]];
+const fmtDeg = (d) => { const r = Math.round(d * 10) / 10; return `${Number.isInteger(r) ? r : r.toFixed(1)}°`; };
+const trimNum = (v) => String(Math.round(v * 1000) / 1000);
+
+// Picker pictures for the fold sheet: a leg coming down with the fold at its end, all four
+// at the same scale, so the choice reads at a glance.
+function FoldPicture({ type, active }) {
+  const leg = active ? "#fff" : "#B9CFDC";
+  const fold = active ? SAFETY : "#B9CFDC";
+  const d = type === "closed" ? "M 20 34 A 2 2 0 0 0 24 34 L 24 16"
+    : type === "open" ? "M 20 34 A 4 4 0 0 0 28 34 L 28 16"
+    : type === "hook" ? "M 20 34 A 6 6 0 0 0 32 34 L 32 22"
+    : type === "kick" ? "M 20 34 L 30 44" : null;
+  return (
+    <svg width="40" height="48" viewBox="0 0 40 48" aria-hidden="true">
+      <line x1="20" y1="4" x2="20" y2="34" stroke={leg} strokeWidth="3" strokeLinecap="round" />
+      {d ? <path d={d} fill="none" stroke={fold} strokeWidth={type === "closed" ? 3 : 2.2} strokeLinecap="round" strokeLinejoin="round" />
+        : <circle cx="20" cy="34" r="3" fill={leg} />}
+    </svg>
+  );
+}
+// Pitch cards: how a wall or ridge bend looks for the chosen pitch, with the inside angle.
+function PitchPicture({ kind, th }) {
+  const r = (th * Math.PI) / 180, c = [30, 26], L = 22;
+  const legs = kind === "internal"
+    ? [[c[0], c[1] - L], [c[0] + L * Math.cos(r), c[1] - L * Math.sin(r)]]   // wall up, roof climbing away
+    : kind === "open"
+    ? [[c[0], c[1] - L], [c[0] + L * Math.cos(r), c[1] + L * Math.sin(r)]]   // wall up, roof falling away
+    : [[c[0] - L * Math.cos(r), c[1] + L * Math.sin(r)], [c[0] + L * Math.cos(r), c[1] + L * Math.sin(r)]]; // ridge
+  const arc = (a, b) => {
+    const ra = 9, aa = Math.atan2(a[1] - c[1], a[0] - c[0]), ab = Math.atan2(b[1] - c[1], b[0] - c[0]);
+    let sweep = ab - aa; if (sweep < -Math.PI) sweep += 2 * Math.PI; if (sweep > Math.PI) sweep -= 2 * Math.PI;
+    const pa = [c[0] + ra * Math.cos(aa), c[1] + ra * Math.sin(aa)], pb = [c[0] + ra * Math.cos(ab), c[1] + ra * Math.sin(ab)];
+    return `M ${pa[0]} ${pa[1]} A ${ra} ${ra} 0 0 ${sweep > 0 ? 1 : 0} ${pb[0]} ${pb[1]}`;
+  };
+  return (
+    <svg width="60" height="46" viewBox="0 0 60 50" aria-hidden="true">
+      <path d={`M ${legs[0][0]} ${legs[0][1]} L ${c[0]} ${c[1]} L ${legs[1][0]} ${legs[1][1]}`} fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d={arc(legs[0], legs[1])} fill="none" stroke={SAFETY} strokeWidth="1.5" strokeDasharray="2 2" />
+      <circle cx={c[0]} cy={c[1]} r="2.2" fill={SAFETY} />
+    </svg>
+  );
+}
+
+function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, setHemStart, setHemEnd, setPaintSide, viewResetKey }) {
   const svgRef = useRef(null);
   const [dragIdx, setDragIdx] = useState(null);
   const [zoom, setZoom] = useState(1); // 1 = the auto-fit view; smaller zooms in, larger zooms out
-  const [mode, setMode] = useState("draw"); // "draw" | "select"
+  const [mode, setMode] = useState("draw"); // "draw" | "select" | "folds"
   const [selectedIdx, setSelectedIdx] = useState(null);
   const [gridSpacing, setGridSpacing] = useState(3); // inches between dots
   const [angleVisibility, setAngleVisibility] = useState("all"); // "all" | "hide90" | "hideAll"
   const [showSettings, setShowSettings] = useState(false);
   const [unitSystem, setUnitSystem] = useState("imperial"); // "imperial" | "metric" — display only, data always stays in inches
+
+  // ---- In-place editors: tap a length pill, an angle pill, an end ring or the rotation
+  // readout and a sheet opens under the canvas — no browser prompt. ----
+  // `orig` is the text the sheet opened with: Done only applies what was actually changed,
+  // so an untouched draft (rounded for display) never rewrites the geometry underneath.
+  const [editor, setEditor] = useState(null); // { kind: "length"|"angle", i, orig } | { kind: "fold", end: "start"|"end" } | { kind: "rotate", orig }
+  const [draft, setDraft] = useState("");
+  const [pitchOpen, setPitchOpen] = useState(false);
+  const [pitch, setPitch] = useState(4);
+  const [invalid, setInvalid] = useState(false); // Done with a value that can't be applied keeps the sheet open and says so
+  // A tap back on the last leg (Draw mode) offers a hem: two rings, one either side, and the
+  // chosen one folds the leg back on itself. `t` is where along the leg the tap landed.
+  const [pendingFold, setPendingFold] = useState(null);
+  const dispRef = useRef([]); // display points (stored points shifted by fold-backs), captured each render
+  const inputRef = useRef(null);
+  const modeBeforeFold = useRef(null); // the fold chips borrow Folds mode; closing the sheet hands the old mode back
 
   // ---- Rotate the whole profile: a ruler under the canvas you drag sideways ----
   // A rigid turn about the drawing's centre, applied to the points themselves so the
@@ -1102,9 +1449,9 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   };
   const rotatePoints = (pts, origin, deg) => {
     const r = (deg * Math.PI) / 180, c = Math.cos(r), sn = Math.sin(r);
-    return pts.map(([x, y]) => {
-      const dx = x - origin[0], dy = y - origin[1];
-      return [origin[0] + dx * c - dy * sn, origin[1] + dx * sn + dy * c]; // positive = clockwise on screen
+    return pts.map((pt) => {
+      const dx = pt[0] - origin[0], dy = pt[1] - origin[1];
+      return keepFold(pt, [origin[0] + dx * c - dy * sn, origin[1] + dx * sn + dy * c]); // positive = clockwise on screen
     });
   };
   const normDeg = (d) => { let r = d % 360; if (r > 180) r -= 360; if (r <= -180) r += 360; return r; };
@@ -1114,6 +1461,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     const target = normDeg(deg);
     setPoints(rotatePoints(base, origin, target - from));
     setRotation(target);
+    syncRotateSheet(target);
   };
   const rotDown = (e) => {
     if (points.length < 2) return;
@@ -1137,16 +1485,20 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     applyRotation(deg, st.basePoints, st.origin, st.startRotation);
   };
   const rotEnd = () => { if (!rotRef.current) return; rotRef.current = null; rotViewRef.current = null; setRotating(false); };
-  const rotPrompt = () => {
-    if (points.length < 2) return;
-    const input = window.prompt("Rotate the drawing to (degrees clockwise, 0 = as drawn):", String(Math.round(rotation * 10) / 10));
-    if (input === null) return;
-    const deg = parseFloat(input);
-    if (!isFinite(deg)) return;
-    applyRotation(deg);
-  };
-  const fmtDeg = (d) => { const r = Math.round(d * 10) / 10; return `${Number.isInteger(r) ? r : r.toFixed(1)}°`; };
   useEffect(() => { if (points.length < 2) setRotation(0); }, [points.length]); // nothing left to be rotated
+
+  // Mirror left-to-right: the same trim for the opposite hand. Folds and the painted side
+  // swap sides with it so the picture stays a true mirror image.
+  const mirrorProfile = () => {
+    if (points.length < 2) return;
+    const [cx] = bboxCenter(points);
+    setPoints(points.map((pt) => { const s = foldSide(pt); return withFold([2 * cx - pt[0], pt[1]], s ? (s === "left" ? "right" : "left") : null); }));
+    setHemStart?.(flipHem(hemStart));
+    setHemEnd?.(flipHem(hemEnd));
+    setPaintSide?.(paintSide === "left" ? "right" : "left");
+    setRotation((r) => normDeg(-r));
+    syncRotateSheet(normDeg(-rotation));
+  };
 
   // Formats a length in inches for display, switching to mm when metric is selected.
   const formatLen = (inches) => (unitSystem === "metric" ? `${Math.round(inches * 25.4)}mm` : `${inches.toFixed(2)}"`);
@@ -1157,7 +1509,19 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   useEffect(() => {
     setZoom(1);
     setRotation(0);
-  }, [viewResetKey]);
+    closeEditor();
+    setPendingFold(null);
+  }, [viewResetKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Points can be removed (Undo, a preset) while an editor is pointing at one of them.
+  useEffect(() => {
+    if (!editor) return;
+    const n = points.length;
+    if ((editor.kind === "length" && editor.i > n - 1) || (editor.kind === "angle" && editor.i > n - 2) || n < 2) closeEditor();
+  }, [points.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (points.length < 2) setPendingFold(null); }, [points.length]);
+  useEffect(() => {
+    if (editor && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); }
+  }, [editor?.kind, editor?.i]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toUser = useCallback((clientX, clientY) => {
     const svg = svgRef.current;
@@ -1171,7 +1535,10 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const lastAddRef = useRef(0);
   const handleBgDown = (e) => {
     if (dragIdx !== null) return;
+    if (editor) { closeEditor(); return; } // a tap on the drawing puts the sheet away, nothing more
+    if (pendingFold) { setPendingFold(null); return; } // a tap anywhere else says "no hem after all"
     if (mode === "select") { setSelectedIdx(null); return; }
+    if (mode !== "draw") return;
     const now = Date.now();
     if (now - lastAddRef.current < 220) return; // debounce — stops one tap from registering as several points
     lastAddRef.current = now;
@@ -1179,55 +1546,127 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     setPoints((p) => {
       if (p.length === 0) return [[x, y]];
       const last = p[p.length - 1];
-      const dx = Math.abs(x - last[0]), dy = Math.abs(y - last[1]);
-      // Keep the new segment a straight horizontal or vertical line off the last point.
-      const next = dx >= dy ? [x, last[1]] : [last[0], y];
+      // The tap lands in display space; measure from where the last point is drawn (it may
+      // sit a hem's gap off its stored position) and keep the new leg horizontal or vertical.
+      const shown = dispRef.current[p.length - 1] || last;
+      const dx = x - shown[0], dy = y - shown[1];
+      const next = Math.abs(dx) >= Math.abs(dy) ? [snap(last[0] + dx), last[1]] : [last[0], snap(last[1] + dy)];
       return [...p, next];
     });
   };
+  // A tap on a leg: on the last leg in Draw mode it starts a hem (fold back along that leg);
+  // anywhere else it opens the length sheet.
+  const legTap = (i, e) => {
+    const n = points.length, dp = dispRef.current;
+    if (mode === "draw" && i === n - 1 && n >= 2 && dp[i]) {
+      const [x, y] = toUser(e.clientX, e.clientY);
+      const a = dp[i - 1], b = dp[i], vx = b[0] - a[0], vy = b[1] - a[1], L2 = vx * vx + vy * vy;
+      const t = L2 ? ((x - a[0]) * vx + (y - a[1]) * vy) / L2 : 0;
+      if (t > 0.04 && t < 0.96) { setPendingFold({ t }); return; }
+    }
+    openLength(i);
+  };
+  const commitFoldBack = (side) => {
+    const n = points.length;
+    if (!pendingFold || n < 2) return;
+    const a = points[n - 2], b = points[n - 1], dir = unitVec(a, b);
+    const back = snap(dist(a, b) * (1 - pendingFold.t)); // the return's length, on the 1/20" grid
+    setPendingFold(null);
+    if (back <= 0) return;
+    setPoints((p) => [...p, withFold([b[0] - dir[0] * back, b[1] - dir[1] * back], side)]);
+  };
 
-  const editSegmentLength = (i) => {
-    const current = dist(points[i - 1], points[i]);
-    const unitLabel = unitSystem === "metric" ? "mm" : "inches";
-    const promptDefault = unitSystem === "metric" ? Math.round(current * 25.4).toString() : current.toFixed(2);
-    const input = window.prompt(`Exact length for this segment (${unitLabel}${unitSystem === "metric" ? "" : " — e.g. 6.5 or 6 1/2"}):`, promptDefault);
-    if (input === null) return;
-    const raw = parseLength(input);
-    if (!isFinite(raw) || raw <= 0) return;
+  // ---- Editing a leg or a bend keeps everything else as it was: the legs downstream
+  // slide (length) or swing (angle) along with the change, so they keep their own
+  // lengths and bends instead of getting skewed. ----
+  const applyLength = (i, text) => {
+    if (i < 1 || i > points.length - 1) return false;
+    const raw = parseLength(text);
+    if (!isFinite(raw) || raw <= 0) return false;
     const val = unitSystem === "metric" ? raw / 25.4 : raw; // always store in inches internally
     const dir = unitVec(points[i - 1], points[i]);
     const target = [points[i - 1][0] + dir[0] * val, points[i - 1][1] + dir[1] * val];
-    // Shift everything downstream by the same amount so only this leg changes length —
-    // the legs after it keep their lengths and bend angles instead of getting skewed.
     const dx = target[0] - points[i][0], dy = target[1] - points[i][1];
-    setPoints((pts) => pts.map((pt, idx) => (idx >= i ? [pt[0] + dx, pt[1] + dy] : pt)));
+    setPoints((pts) => pts.map((pt, idx) => (idx >= i ? keepFold(pt, [pt[0] + dx, pt[1] + dy]) : pt)));
+    return true;
   };
-
-  const editAngle = (i) => {
+  // `desired` is the inside angle in degrees: 90 for a square corner, 170 for a shallow ridge.
+  const applyAngle = (i, desired) => {
+    if (i < 1 || i > points.length - 2) return false;
+    if (!isFinite(desired) || desired <= 0 || desired > 180) return false;
     const prev = points[i - 1], cur = points[i], next = points[i + 1];
-    const current = bendAngle(prev, cur, next);
-    const input = window.prompt("Exact bend angle at this point (degrees):", current.toFixed(1));
-    if (input === null) return;
-    const desired = parseFloat(input);
-    if (!isFinite(desired) || desired < 0 || desired > 180) return;
-
     const v1 = unitVec(cur, prev); // direction cur -> prev, held fixed
-    const v2 = unitVec(cur, next); // direction cur -> next, to be rotated
+    const v2 = unitVec(cur, next); // direction cur -> next, to be swung
     const cross = v1[0] * v2[1] - v1[1] * v2[0];
     const dot = Math.max(-1, Math.min(1, v1[0] * v2[0] + v1[1] * v2[1]));
-    const signedCurrent = Math.atan2(cross, dot); // radians, current signed angle from v1 to v2
+    const signedCurrent = Math.atan2(cross, dot); // current signed angle from v1 to v2
     const sign = signedCurrent === 0 ? 1 : Math.sign(signedCurrent);
-    const desiredBetween = (180 - desired) * (Math.PI / 180); // unsigned angle between v1 and v2'
-    const theta = sign * desiredBetween;
-    // Rotate every point after the bend about it by the change in angle, so the legs
-    // downstream keep their own lengths and bends — only this bend opens or closes.
-    const delta = theta - signedCurrent;
+    const delta = sign * (desired * Math.PI) / 180 - signedCurrent;
     const cosD = Math.cos(delta), sinD = Math.sin(delta);
     setPoints((pts) => pts.map((pt, idx) => {
       if (idx <= i) return pt;
       const rx = pt[0] - cur[0], ry = pt[1] - cur[1];
-      return [cur[0] + rx * cosD - ry * sinD, cur[1] + rx * sinD + ry * cosD];
+      return keepFold(pt, [cur[0] + rx * cosD - ry * sinD, cur[1] + rx * sinD + ry * cosD]);
     }));
+    return true;
+  };
+  // Keep the ROTATE sheet showing the real rotation when the ruler, +90°, ⟲ or Mirror change it.
+  const syncRotateSheet = (deg) => {
+    if (editor?.kind !== "rotate") return;
+    const t = trimNum(Math.round(deg * 10) / 10);
+    setDraft(t);
+    setEditor({ kind: "rotate", orig: t });
+  };
+  const lengthDraft = (i) => (unitSystem === "metric" ? String(Math.round(dist(points[i - 1], points[i]) * 25.4)) : trimNum(Math.round(dist(points[i - 1], points[i]) * 100) / 100));
+  const angleDraft = (i) => trimNum(Math.round(insideAngle(points[i - 1], points[i], points[i + 1]) * 10) / 10);
+  const openLength = (i) => { if (i < 1 || i > points.length - 1) return; const t = lengthDraft(i); setEditor({ kind: "length", i, orig: t }); setDraft(t); };
+  // A hem's fold is a fixed 180°, not a bend to edit — the angle sheet skips it.
+  const angleEditable = (i) => i >= 1 && i <= points.length - 2 && !foldSide(points[i + 1]);
+  const openAngle = (i) => { if (!angleEditable(i)) return; const t = angleDraft(i); setEditor({ kind: "angle", i, orig: t }); setDraft(t); };
+  const openFold = (end) => {
+    if (points.length < 2) return;
+    if (mode !== "folds") modeBeforeFold.current = mode;
+    setMode("folds");
+    setEditor({ kind: "fold", end });
+  };
+  const closeEditor = () => {
+    if (editor?.kind === "fold" && modeBeforeFold.current) { setMode(modeBeforeFold.current); modeBeforeFold.current = null; }
+    setEditor(null);
+    setInvalid(false);
+  };
+  const openRotate = () => { if (points.length < 2) return; const t = trimNum(Math.round(rotation * 10) / 10); setEditor({ kind: "rotate", orig: t }); setDraft(t); };
+  // True when the draft was applied (or didn't need to be); false when it can't be read.
+  const commitDraft = () => {
+    if (!editor || draft.trim() === (editor.orig ?? "").trim()) return true; // nothing typed: leave the geometry exactly as it is
+    if (editor.kind === "length") return applyLength(editor.i, draft);
+    if (editor.kind === "angle") return applyAngle(editor.i, parseFloat(draft));
+    if (editor.kind === "rotate") { const deg = parseFloat(draft); if (!isFinite(deg)) return false; applyRotation(deg); }
+    return true;
+  };
+  const done = () => { if (commitDraft()) closeEditor(); else { setInvalid(true); inputRef.current?.focus(); } };
+  // ← → move to the previous / next leg or bend, keeping what was typed for this one.
+  // Lengths and inside angles elsewhere don't change when one leg or bend is edited, so
+  // the next draft can be read straight off the current points.
+  const stepRange = editor?.kind === "length" ? [1, points.length - 1] : editor?.kind === "angle" ? [1, points.length - 2] : null;
+  const step = (delta) => {
+    if (!stepRange) return;
+    if (!commitDraft()) { setInvalid(true); return; }
+    let j = editor.i + delta;
+    while (editor.kind === "angle" && j >= stepRange[0] && j <= stepRange[1] && !angleEditable(j)) j += delta;
+    if (j < stepRange[0] || j > stepRange[1]) return;
+    const t = editor.kind === "length" ? lengthDraft(j) : angleDraft(j);
+    setEditor({ ...editor, i: j, orig: t });
+    setDraft(t);
+  };
+  const onEditorKey = (e) => {
+    if (e.key === "Enter") { e.preventDefault(); done(); }
+    else if (e.key === "Escape") { e.preventDefault(); closeEditor(); }
+  };
+  const addFraction = (frac) => {
+    // "6.5" → "6 1/2", "6 1/4" → "6 1/2", "" → "1/2"
+    const whole = (draft.match(/^\s*(\d+)/) || [])[1];
+    setDraft(whole ? `${whole} ${frac}` : frac);
+    inputRef.current?.focus();
   };
 
   const dragStartRef = useRef(null); // { pointerX, pointerY, origPoint } — used to dampen drag sensitivity
@@ -1257,7 +1696,18 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     const dy = (uy - start.startUy) * DRAG_DAMPING;
     const x = snap(start.origPoint[0] + dx);
     const y = snap(start.origPoint[1] + dy);
-    setPoints((p) => p.map((pt, i) => (i === dragIdx ? [x, y] : pt)));
+    setPoints((p) => {
+      let next = p.map((pt, i) => (i === dragIdx ? keepFold(pt, [x, y]) : pt));
+      // A hem's return stays on its leg: the dragged fold point slides along the line, and
+      // moving either end of the leg carries the return with it.
+      const onLine = (pts, k) => {
+        const a = pts[k - 2], b = pts[k - 1], c = pts[k], d = unitVec(a, b);
+        const along = (c[0] - b[0]) * d[0] + (c[1] - b[1]) * d[1];
+        return keepFold(c, [b[0] + d[0] * along, b[1] + d[1] * along]);
+      };
+      next = next.map((pt, k) => (k > 1 && foldSide(pt) && (k === dragIdx || k - 1 === dragIdx || k - 2 === dragIdx) ? onLine(next, k) : pt));
+      return next;
+    });
   };
 
   // Auto-fit & recenter the view around whatever has been drawn so far,
@@ -1296,41 +1746,103 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     }
   }
 
-  const pathD = points.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0]} ${p[1]}`).join(" ");
+  // Hems drawn as legs are shown a small gap off their leg so both layers read; every
+  // position below comes from these display points, every number from the stored ones.
+  const { dp, d: pathD } = profileDisplay(points, 2.2 * unit);
+  dispRef.current = dp;
+  const folds = endFolds(dp, hemStart, hemEnd, unit);
+  const stop = (e) => e.stopPropagation();
+
+  // ---- Dimensions: small tags beside each leg and a bubble at each bend, placed so they
+  // cover no line and crowd nothing (see placeLabels). Sizes scale with the view. ----
+  const lenLabels = points.length > 1 ? points.slice(1).map((p, idx) => {
+    const label = formatLen(dist(points[idx], p)), fs = 2.9 * unit;
+    return { i: idx + 1, label, fs, w: label.length * fs * 0.62 + fs * 0.9, h: fs * 1.55 };
+  }) : [];
+  const angLabels = [];
+  for (let i = 1; i < points.length - 1; i++) {
+    if (foldSide(points[i + 1])) continue; // a hem's fold: always 180°, captioned "HEM" instead
+    const deg = insideAngle(points[i - 1], points[i], points[i + 1]);
+    const isRightAngle = Math.abs(deg - 90) < 0.5;
+    const isDiagonal = Math.abs(deg - 45) < 0.5 || Math.abs(deg - 135) < 0.5;
+    if (angleVisibility === "hide90" && isRightAngle) continue;
+    if (angleVisibility === "hideAll" && (isRightAngle || isDiagonal)) continue;
+    const label = fmtDeg(deg), fs = 2.6 * unit;
+    angLabels.push({ i, label, fs, w: label.length * fs * 0.62 + fs * 0.8, h: fs * 1.5 });
+  }
+  // Painted side: a slim arrow off the longest leg pointing at the face that shows.
+  let paintArrow = null;
+  if (points.length > 1) {
+    let best = 1;
+    for (let i = 2; i < points.length; i++) if (dist(points[i - 1], points[i]) > dist(points[best - 1], points[best])) best = i;
+    const a = dp[best - 1], b = dp[best], dir = unitVec(a, b), perp = sidePerp(dir, paintSide);
+    const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const at = (d) => [m[0] + perp[0] * d * unit, m[1] + perp[1] * d * unit];
+    paintArrow = { s: at(2.2), base: at(5.6), tip: at(8), dir, box: { x: at(5)[0], y: at(5)[1], w: 6.5 * unit, h: 6.5 * unit } };
+  }
+  const obstacles = [];
+  if (paintArrow) obstacles.push(paintArrow.box);
+  const capLabels = folds.map((f) => {
+    const xs = f.extent.map((q) => q[0]), ys = f.extent.map((q) => q[1]);
+    obstacles.push({ x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, w: Math.max(...xs) - Math.min(...xs) + unit, h: Math.max(...ys) - Math.min(...ys) + unit });
+    const label = foldType(f.type).label.toUpperCase(), fs = 2.1 * unit;
+    const at = f.which === "start" ? dp[0] : dp[dp.length - 1];
+    const out = f.which === "start" ? unitVec(dp[1], dp[0]) : unitVec(dp[dp.length - 2], dp[dp.length - 1]);
+    return { which: f.which, label, fs, w: label.length * fs * 0.62 + fs * 0.4, h: fs * 1.3, at, out };
+  });
+  for (let k = 2; k < points.length; k++) {
+    if (!foldSide(points[k])) continue;
+    const fs = 2.1 * unit;
+    capLabels.push({ which: `hem${k}`, label: "HEM", fs, w: 3 * fs * 0.62 + fs * 0.4, h: fs * 1.3, at: dp[k - 1], out: unitVec(dp[k - 2], dp[k - 1]) });
+  }
+  if (mode === "folds" && points.length > 1) for (const p of [dp[0], dp[dp.length - 1]]) obstacles.push({ x: p[0], y: p[1], w: 11 * unit, h: 11 * unit });
+  const layout = placeLabels(dp, unit, lenLabels, angLabels, capLabels, obstacles, { x: zVbX, y: zVbY, w: zVbW, h: zVbH });
+  const hiLeg = editor?.kind === "length" ? editor.i : null;   // leg being edited
+  const hiBend = editor?.kind === "angle" ? editor.i : null;   // bend being edited
+  const otherSide = paintSide === "left" ? "right" : "left";
+  const editorTitle = editor?.kind === "length" ? `LENGTH · leg ${editor.i} of ${points.length - 1}`
+    : editor?.kind === "angle" ? `ANGLE · bend ${editor.i} of ${points.length - 2} · inside angle`
+    : editor?.kind === "rotate" ? "ROTATE · degrees clockwise, 0 = as drawn"
+    : editor?.kind === "fold" ? `${editor.end === "start" ? "START" : "END"} FOLD` : "";
+  const btn = (active, extra = {}) => ({
+    padding: "6px 9px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", color: "#fff",
+    border: `1px solid ${active ? SAFETY : "rgba(255,255,255,0.25)"}`, background: active ? "rgba(212,175,55,0.22)" : "rgba(255,255,255,0.06)", ...extra,
+  });
+  const darkBtn = (extra = {}) => ({
+    height: 34, padding: "0 9px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: INK, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", ...extra,
+  });
 
   return (
     <div style={{ position: "relative", userSelect: "none", WebkitUserSelect: "none", MozUserSelect: "none" }}>
-      <div style={{ position: "absolute", top: 6, left: 6, zIndex: 2, display: "flex", flexDirection: "column", gap: 3 }}>
-        <button type="button" onClick={() => setZoom((z) => Math.max(0.35, +(z - 0.2).toFixed(2)))}
-          style={{ width: 24, height: 24, borderRadius: 5, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(10,43,65,0.85)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>
+      {/* Tools live above the drawing, not on top of it, so nothing sits over the profile. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 5 }}>
+        <div style={{ display: "flex", borderRadius: 6, overflow: "hidden", border: "1px solid rgba(255,255,255,0.18)" }}>
+          {[["draw", "Draw"], ["select", "Select"], ["folds", "Folds"]].map(([id, label]) => (
+            <button key={id} type="button" data-testid={`mode-${id}`}
+              onClick={() => { setMode(id); setSelectedIdx(null); modeBeforeFold.current = null; setPendingFold(null); if (id === "draw") setZoom(1); if (editor?.kind === "fold" && id !== "folds") setEditor(null); }}
+              style={{ padding: "5px 10px", fontSize: 10.5, fontWeight: 700, border: "none", cursor: "pointer",
+                background: mode === id ? SAFETY : INK, color: "#fff" }}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <span style={{ flex: 1 }} />
+        <button type="button" aria-label="Zoom in" onClick={() => setZoom((z) => Math.max(0.35, +(z - 0.2).toFixed(2)))}
+          style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: INK, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>
           +
         </button>
-        <button type="button" onClick={() => setZoom((z) => Math.min(3, +(z + 0.2).toFixed(2)))}
-          style={{ width: 24, height: 24, borderRadius: 5, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(10,43,65,0.85)", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>
+        <button type="button" aria-label="Zoom out" onClick={() => setZoom((z) => Math.min(3, +(z + 0.2).toFixed(2)))}
+          style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: INK, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>
           −
         </button>
-      </div>
-      <div style={{ position: "absolute", top: 6, right: 6, zIndex: 2, display: "flex", gap: 3 }}>
-        <div style={{ display: "flex", borderRadius: 5, overflow: "hidden", border: "1px solid rgba(255,255,255,0.4)" }}>
-          <button type="button" onClick={() => { setMode("draw"); setSelectedIdx(null); setZoom(1); }}
-            style={{ padding: "4px 8px", fontSize: 10, fontWeight: 700, border: "none", cursor: "pointer",
-              background: mode === "draw" ? SAFETY : "rgba(10,43,65,0.85)", color: "#fff" }}>
-            Draw
-          </button>
-          <button type="button" onClick={() => setMode("select")}
-            style={{ padding: "4px 8px", fontSize: 10, fontWeight: 700, border: "none", cursor: "pointer",
-              background: mode === "select" ? SAFETY : "rgba(10,43,65,0.85)", color: "#fff" }}>
-            Select
-          </button>
-        </div>
-        <button type="button" onClick={() => setShowSettings((s) => !s)}
-          style={{ width: 24, height: 24, borderRadius: 5, border: "1px solid rgba(255,255,255,0.4)", background: "rgba(10,43,65,0.85)", color: "#fff", fontSize: 12, cursor: "pointer", lineHeight: 1 }}>
+        <button type="button" aria-label="Canvas settings" onClick={() => setShowSettings((s) => !s)}
+          style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${showSettings ? SAFETY : "rgba(255,255,255,0.18)"}`, background: INK, color: "#fff", fontSize: 12, cursor: "pointer", lineHeight: 1 }}>
           ⚙
         </button>
       </div>
       {showSettings && (
         <div style={{
-          position: "absolute", top: 34, right: 6, zIndex: 3, width: 190, background: "#0F2C3F", border: "1px solid rgba(255,255,255,0.25)",
+          position: "absolute", top: 32, right: 0, zIndex: 3, width: 190, background: "#0F2C3F", border: "1px solid rgba(255,255,255,0.25)",
           borderRadius: 8, padding: 10, boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
         }}>
           <div style={{ fontSize: 10, color: "#8FB4C9", fontWeight: 700, marginBottom: 4 }}>UNITS</div>
@@ -1385,133 +1897,144 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
         onPointerCancel={endDrag}
         style={{
           width: "100%", height: "auto", aspectRatio: "416 / 220", background: INK, borderRadius: 4,
-          touchAction: "none", cursor: mode === "select" ? "default" : "crosshair", display: "block",
+          touchAction: "none", cursor: mode === "draw" ? "crosshair" : "default", display: "block",
           userSelect: "none", WebkitUserSelect: "none", MozUserSelect: "none", WebkitTouchCallout: "none",
         }}
       >
       {gridDots}
       {rotating && rotRef.current && rotRef.current.basePoints.length > 1 && (
         <path d={rotRef.current.basePoints.map((pt, i) => `${i === 0 ? "M" : "L"} ${pt[0]} ${pt[1]}`).join(" ")}
-          fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth={1.2 * unit} strokeDasharray={`${2 * unit} ${1.5 * unit}`}
+          fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" strokeDasharray={`${2 * unit} ${1.5 * unit}`}
           strokeLinejoin="round" strokeLinecap="round" />
       )}
       {points.length > 1 && (
-        <path d={pathD} fill="none" stroke="#fff" strokeWidth={1.75 * unit} strokeLinejoin="round" strokeLinecap="round" />
+        <path d={pathD} fill="none" stroke="#fff" strokeWidth={2} vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
       )}
-      {points.length > 1 && points.slice(1).map((p, idx) => {
+      {/* The leg (or both legs of the bend) being edited lights up so it's clear what the sheet changes. */}
+      {hiLeg !== null && dp[hiLeg] && (
+        <line x1={dp[hiLeg - 1][0]} y1={dp[hiLeg - 1][1]} x2={dp[hiLeg][0]} y2={dp[hiLeg][1]}
+          stroke={SAFETY} strokeWidth={4} vectorEffect="non-scaling-stroke" strokeLinecap="round" pointerEvents="none" />
+      )}
+      {hiBend !== null && dp[hiBend + 1] && (
+        <g pointerEvents="none">
+          <path d={`M ${dp[hiBend - 1][0]} ${dp[hiBend - 1][1]} L ${dp[hiBend][0]} ${dp[hiBend][1]} L ${dp[hiBend + 1][0]} ${dp[hiBend + 1][1]}`}
+            fill="none" stroke={SAFETY} strokeWidth={4} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" opacity={0.7} />
+          <circle cx={dp[hiBend][0]} cy={dp[hiBend][1]} r={3.5 * unit} fill="none" stroke={SAFETY} strokeWidth={1} vectorEffect="non-scaling-stroke" strokeDasharray={`${1.2 * unit} ${1 * unit}`} />
+        </g>
+      )}
+      {capLabels.filter((L) => L.which.startsWith("hem")).map((L) => {
+        const b = layout.cap.get(L.which);
+        return b ? (
+          <text key={L.which} x={b.x} y={b.y} fill={SAFETY} fontSize={L.fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
+            textAnchor="middle" dominantBaseline="central" pointerEvents="none">{L.label}</text>
+        ) : null;
+      })}
+      {folds.map((f) => {
+        const c = capLabels.find((L) => L.which === f.which), b = layout.cap.get(f.which);
+        return (
+          <g key={f.which} onPointerDown={stop} onClick={() => openFold(f.which)} style={{ cursor: "pointer" }}>
+            <path d={f.d} fill="none" stroke={SAFETY} strokeWidth={f.closed ? 2.5 : 1.5} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" />
+            {b && (
+              <text x={b.x} y={b.y} fill={SAFETY} fontSize={c.fs} fontWeight="700"
+                fontFamily="'IBM Plex Mono', monospace" textAnchor="middle" dominantBaseline="central">
+                {c.label}
+              </text>
+            )}
+          </g>
+        );
+      })}
+      {dp.length > 1 && dp.slice(1).map((p, idx) => {
         const i = idx + 1;
-        const prevPt = points[idx];
+        const prevPt = dp[idx];
         return (
           <line key={`hit${i}`} x1={prevPt[0]} y1={prevPt[1]} x2={p[0]} y2={p[1]}
             stroke="transparent" strokeWidth={6 * unit}
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={() => editSegmentLength(i)}
+            onPointerDown={stop}
+            onClick={(e) => legTap(i, e)}
             style={{ cursor: "pointer" }} />
         );
       })}
-      {/* Painted-side indicator: one small tag near the start, not a stripe down the whole path. */}
-      {points.length > 1 && (() => {
-        const prev = points[0], p = points[1];
-        const dir = unitVec(prev, p);
-        const sideMult = paintSide === "left" ? 1 : -1;
-        const perp = [-dir[1] * sideMult, dir[0] * sideMult];
-        const mx = prev[0] + dir[0] * Math.min(dist(prev, p) / 2, 3 * unit) + perp[0] * 4 * unit;
-        const my = prev[1] + dir[1] * Math.min(dist(prev, p) / 2, 3 * unit) + perp[1] * 4 * unit;
-        const r = 2.6 * unit;
+      {paintArrow && (() => {
+        const { s, base, tip, dir } = paintArrow, hw = 1.7 * unit;
+        const head = `M ${tip[0]} ${tip[1]} L ${base[0] + dir[0] * hw} ${base[1] + dir[1] * hw} L ${base[0] - dir[0] * hw} ${base[1] - dir[1] * hw} Z`;
         return (
-          <g onPointerDown={(e) => e.stopPropagation()}>
-            <circle cx={mx} cy={my} r={r} fill={colorHex} stroke="#fff" strokeWidth={0.5 * unit} />
-            <text x={mx} y={my} fill="#fff" fontSize={2.4 * unit} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
-              textAnchor="middle" dominantBaseline="central">P</text>
+          <g data-testid="paint-arrow" onPointerDown={stop} onClick={() => setPaintSide?.(otherSide)} style={{ cursor: "pointer" }}>
+            <title>Painted side — tap to switch</title>
+            <line x1={s[0]} y1={s[1]} x2={base[0]} y2={base[1]} stroke="#fff" strokeWidth={3} vectorEffect="non-scaling-stroke" strokeLinecap="round" />
+            <line x1={s[0]} y1={s[1]} x2={base[0]} y2={base[1]} stroke={colorHex} strokeWidth={1.5} vectorEffect="non-scaling-stroke" strokeLinecap="round" />
+            <path d={head} fill={colorHex} stroke="#fff" strokeWidth={1} vectorEffect="non-scaling-stroke" strokeLinejoin="round" />
           </g>
         );
       })()}
-      {points.map((p, i) => {
-        const prev = points[i - 1], next = points[i + 1];
+      {/* Length tags: white, beside the line, with a pointer to it. Tap to edit. */}
+      {lenLabels.map((L) => {
+        const b = layout.len.get(L.i), active = hiLeg === L.i;
+        const bg = active ? SAFETY : "#fff", fg = active ? "#fff" : INK_DEEP;
         return (
-          <g key={i}>
-            {prev && (() => {
-              const mx = (prev[0] + p[0]) / 2, my = (prev[1] + p[1]) / 2;
-              const segLen = dist(prev, p);
-              const label = formatLen(segLen);
-              const fs = 3.4 * unit;
-              const boxW = label.length * fs * 0.62 + fs * 0.9, boxH = fs * 1.6;
-              // Always sit off the line (never directly on top of it) — with a thin
-              // leader tick — so the actual line and its endpoints stay visible.
-              const segDir = unitVec(prev, p);
-              const perp = [-segDir[1], segDir[0]];
-              const offset = boxH * 0.9;
-              const lx = mx + perp[0] * offset, ly = my + perp[1] * offset;
-              return (
-                <g
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={() => editSegmentLength(i)}
-                  style={{ cursor: "pointer" }}
-                >
-                  <line x1={mx} y1={my} x2={lx} y2={ly} stroke="rgba(255,255,255,0.5)" strokeWidth={0.25 * unit} />
-                  <rect x={lx - boxW / 2} y={ly - boxH / 2} width={boxW} height={boxH} rx={boxH / 2}
-                    fill={SAFETY} stroke={INK} strokeWidth={0.3 * unit} />
-                  <text x={lx} y={ly} dy="0.35em" fill="#fff" fontSize={fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
-                    textAnchor="middle">
-                    {label}
-                  </text>
-                </g>
-              );
-            })()}
-            {prev && next && (() => {
-              const deg = bendAngle(prev, p, next);
-              const isRightAngle = Math.abs(deg - 90) < 0.5;
-              const isDiagonal = Math.abs(deg - 45) < 0.5 || Math.abs(deg - 135) < 0.5;
-              if (angleVisibility === "hide90" && isRightAngle) return null;
-              if (angleVisibility === "hideAll" && (isRightAngle || isDiagonal)) return null;
-              const label = `${deg}°`;
-              const fs = 2.8 * unit;
-              const boxW = label.length * fs * 0.62 + fs * 0.7, boxH = fs * 1.5;
-              const lx = p[0] + 8 * unit, ly = p[1] - 8 * unit;
-              return (
-                <g
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={() => editAngle(i)}
-                  style={{ cursor: "pointer" }}
-                >
-                  <rect x={lx - boxW / 2} y={ly - boxH / 2} width={boxW} height={boxH} rx={boxH / 2}
-                    fill={INK_DEEP} stroke={SAFETY} strokeWidth={0.25 * unit} />
-                  <text x={lx} y={ly} dy="0.35em" fill={SAFETY} fontSize={fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
-                    textAnchor="middle">
-                    {label}
-                  </text>
-                </g>
-              );
-            })()}
-            {(() => {
-              const isStart = i === 0;
-              const isEnd = points.length > 1 && i === points.length - 1;
-              const hasHem = (isStart && hemStart !== "none") || (isEnd && hemEnd !== "none");
-              const isSelected = mode === "select" && selectedIdx === i;
-              return (
-                <g>
-                  {isSelected && (
-                    <circle cx={p[0]} cy={p[1]} r={4.5 * unit} fill="none" stroke="#4EA8FF" strokeWidth={0.5 * unit}
-                      strokeDasharray={`${1.2 * unit} ${1 * unit}`} />
-                  )}
-                  {hasHem ? (
-                    <circle
-                      cx={p[0]} cy={p[1]} r={3 * unit}
-                      fill="transparent" stroke="none"
-                      onPointerDown={handlePointDown(i)}
-                      style={{ cursor: "grab", touchAction: "none" }}
-                    />
-                  ) : (
-                    <circle
-                      cx={p[0]} cy={p[1]} r={2.5 * unit}
-                      fill={i === 0 ? SAFETY : "#fff"} stroke={INK_DEEP} strokeWidth={0.5 * unit}
-                      onPointerDown={handlePointDown(i)}
-                      style={{ cursor: "grab", touchAction: "none" }}
-                    />
-                  )}
-                </g>
-              );
-            })()}
+          <g key={`len${L.i}`} data-testid={`len-${L.i}`} onPointerDown={stop} onClick={() => openLength(L.i)} style={{ cursor: "pointer" }}>
+            <path d={tagPointer(b, unit, 0)} fill={bg} />
+            <rect x={b.x - b.w / 2} y={b.y - b.h / 2} width={b.w} height={b.h} rx={b.h / 2} fill={bg} />
+            <text x={b.x} y={b.y} dy="0.35em" fill={fg} fontSize={L.fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace" textAnchor="middle">{L.label}</text>
+          </g>
+        );
+      })}
+      {/* Angle bubbles: gold, off the corner, pointing at the bend. Tap to edit. */}
+      {angLabels.map((L) => {
+        const b = layout.ang.get(L.i), active = hiBend === L.i;
+        const bg = active ? "#fff" : SAFETY, fg = active ? SAFETY : "#fff";
+        return (
+          <g key={`ang${L.i}`} data-testid={`ang-${L.i}`} onPointerDown={stop} onClick={() => openAngle(L.i)} style={{ cursor: "pointer" }}>
+            <path d={tagPointer(b, unit, 2.2 * unit)} fill={bg} />
+            <rect x={b.x - b.w / 2} y={b.y - b.h / 2} width={b.w} height={b.h} rx={b.h / 2} fill={bg} />
+            <text x={b.x} y={b.y} dy="0.35em" fill={fg} fontSize={L.fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace" textAnchor="middle">{L.label}</text>
+          </g>
+        );
+      })}
+      {/* Points: small crisp dots (gold at the start), with a wider invisible handle for dragging. */}
+      {dp.map((p, i) => (
+        <g key={i}>
+          {mode === "select" && selectedIdx === i && (
+            <circle cx={p[0]} cy={p[1]} r={3.6 * unit} fill="none" stroke="#4EA8FF" strokeWidth={1} vectorEffect="non-scaling-stroke"
+              strokeDasharray={`${1.2 * unit} ${1 * unit}`} />
+          )}
+          <circle cx={p[0]} cy={p[1]} r={1.6 * unit} fill={i === 0 ? SAFETY : "#fff"} stroke={INK_DEEP} strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+          <circle cx={p[0]} cy={p[1]} r={3.5 * unit} fill="transparent" stroke="none"
+            onPointerDown={handlePointDown(i)} style={{ cursor: "grab", touchAction: "none" }} />
+        </g>
+      ))}
+      {/* Folds mode: a ring on each end. Tap it to choose what that end does. */}
+      {/* A hem in the making: tap the ring on the side the leg folds back to. */}
+      {pendingFold && dp.length > 1 && (() => {
+        const a = dp[dp.length - 2], b = dp[dp.length - 1], dir = unitVec(a, b);
+        const m = [a[0] + (b[0] - a[0]) * pendingFold.t, a[1] + (b[1] - a[1]) * pendingFold.t];
+        return ["left", "right"].map((side) => {
+          const p = sidePerp(dir, side), c = [m[0] + p[0] * 7 * unit, m[1] + p[1] * 7 * unit];
+          return (
+            <g key={side} data-testid={`fold-back-${side}`} onPointerDown={stop} onClick={() => commitFoldBack(side)} style={{ cursor: "pointer" }}>
+              <circle cx={c[0]} cy={c[1]} r={5.5 * unit} fill="transparent" />
+              <circle cx={c[0]} cy={c[1]} r={4 * unit} fill="rgba(212,175,55,0.14)" stroke={SAFETY} strokeWidth={2} vectorEffect="non-scaling-stroke" />
+            </g>
+          );
+        });
+      })()}
+      {mode === "folds" && dp.length > 1 && ["start", "end"].map((end) => {
+        const i = end === "start" ? 0 : dp.length - 1;
+        const p = dp[i];
+        const h = parseHem(end === "start" ? hemStart : hemEnd);
+        const active = editor?.kind === "fold" && editor.end === end;
+        const out = end === "start" ? unitVec(dp[1], dp[0]) : unitVec(dp[dp.length - 2], dp[dp.length - 1]);
+        const badge = [p[0] + out[0] * 5 * unit, p[1] + out[1] * 5 * unit];
+        return (
+          <g key={end} data-testid={`ring-${end}`} onPointerDown={stop} onClick={() => openFold(end)} style={{ cursor: "pointer" }}>
+            <circle cx={p[0]} cy={p[1]} r={5 * unit} fill={active ? "rgba(212,175,55,0.22)" : "rgba(10,43,65,0.35)"}
+              stroke={SAFETY} strokeWidth={1.5} vectorEffect="non-scaling-stroke" strokeDasharray={h ? undefined : `${1.6 * unit} ${1.2 * unit}`} />
+            {h && (
+              <g>
+                <circle cx={badge[0]} cy={badge[1]} r={2.2 * unit} fill={SAFETY} stroke={INK_DEEP} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+                <text x={badge[0]} y={badge[1]} fill="#fff" fontSize={2.4 * unit} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
+                  textAnchor="middle" dominantBaseline="central">{foldType(h.type).short}</text>
+              </g>
+            )}
           </g>
         );
       })}
@@ -1520,43 +2043,149 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
           Tap to place the first point of your profile
         </text>
       )}
-      {points.length > 1 && hemStart !== "none" && (() => {
-        const h = parseHem(hemStart);
-        const dir = unitVec(points[1], points[0]); // continues the line back past the start
-        const closed = h.type === "closed";
-        // dir runs backward here, which mirrors hemGlyph's idea of "left" — pass the opposite
-        // side so "faces Left" lands on the same side of the profile as the end hem's "Left"
-        // and the painted-side tag (all relative to start→end travel along the profile).
-        const g = hemGlyph(points[0], dir, h.dir === "left" ? "right" : "left", !closed, unit);
-        return (
-          <g onPointerDown={(e) => e.stopPropagation()}>
-            <path d={g.d} fill={closed ? SAFETY : "none"} stroke={SAFETY}
-              strokeWidth={(closed ? 1.8 : 0.9) * unit} strokeLinecap="round" strokeLinejoin="round" />
-            <text x={g.labelPos[0]} y={g.labelPos[1]} fill={SAFETY} fontSize={3 * unit} fontWeight="700"
-              fontFamily="'IBM Plex Mono', monospace" textAnchor="middle" dominantBaseline="central">
-              {closed ? "CLOSED" : "OPEN"} {h.dir === "left" ? "L" : "R"}
-            </text>
-          </g>
-        );
-      })()}
-      {points.length > 1 && hemEnd !== "none" && (() => {
-        const h = parseHem(hemEnd);
-        const last = points.length - 1;
-        const dir = unitVec(points[last - 1], points[last]); // continues the line past the end
-        const closed = h.type === "closed";
-        const g = hemGlyph(points[last], dir, h.dir, !closed, unit);
-        return (
-          <g onPointerDown={(e) => e.stopPropagation()}>
-            <path d={g.d} fill={closed ? SAFETY : "none"} stroke={SAFETY}
-              strokeWidth={(closed ? 1.8 : 0.9) * unit} strokeLinecap="round" strokeLinejoin="round" />
-            <text x={g.labelPos[0]} y={g.labelPos[1]} fill={SAFETY} fontSize={3 * unit} fontWeight="700"
-              fontFamily="'IBM Plex Mono', monospace" textAnchor="middle" dominantBaseline="central">
-              {closed ? "CLOSED" : "OPEN"} {h.dir === "left" ? "L" : "R"}
-            </text>
-          </g>
-        );
-      })()}
+      {mode === "folds" && points.length > 1 && !editor && !pendingFold && (
+        <text x={zVbX + zVbW / 2} y={zVbY + zVbH - 3 * unit} fill="rgba(255,255,255,0.6)" fontSize={2.8 * unit} textAnchor="middle" fontFamily="Inter, sans-serif">
+          Tap a ring to add a hem, hook or kick to that end
+        </text>
+      )}
+      {pendingFold && (
+        <text x={zVbX + zVbW / 2} y={zVbY + zVbH - 3 * unit} fill="rgba(255,255,255,0.6)" fontSize={2.8 * unit} textAnchor="middle" fontFamily="Inter, sans-serif">
+          Hem: tap the ring on the side it folds back to
+        </text>
+      )}
     </svg>
+      {editor && (
+        <div data-testid="canvas-editor" style={{ marginTop: 6, background: "#0F2C3F", border: "1px solid rgba(255,255,255,0.18)", borderRadius: 8, padding: "8px 10px 10px", color: "#fff" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span className="mono" style={{ fontSize: 9, letterSpacing: "0.12em", color: SAFETY, fontWeight: 700 }}>{editorTitle}</span>
+            <span style={{ flex: 1 }} />
+            <button type="button" aria-label="Close" onClick={closeEditor}
+              style={{ width: 24, height: 24, borderRadius: 12, border: "1px solid rgba(255,255,255,0.25)", background: "transparent", color: "#fff", cursor: "pointer", fontSize: 12, lineHeight: 1 }}>✕</button>
+          </div>
+          {editor.kind === "fold" ? (() => {
+            const value = editor.end === "start" ? hemStart : hemEnd;
+            const setValue = editor.end === "start" ? setHemStart : setHemEnd;
+            const h = parseHem(value);
+            const other = editor.end === "start" ? "end" : "start";
+            return (
+              <div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 5, marginTop: 8 }}>
+                  {[{ id: "none", label: "None" }, ...FOLD_TYPES].map((t) => {
+                    const active = t.id === "none" ? !h : h?.type === t.id;
+                    return (
+                      <button key={t.id} type="button" data-testid={`fold-${t.id}`} title={t.hint || "No fold at this end"}
+                        onClick={() => setValue?.(t.id === "none" ? "none" : `${t.id}-${h ? h.dir : "left"}`)}
+                        style={{ ...btn(active, { padding: "6px 2px 5px", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, fontSize: 10, lineHeight: 1.1 }) }}>
+                        <FoldPicture type={t.id} active={active} />
+                        <span>{t.label}</span>
+                        {t.allowance ? <span style={{ fontSize: 9, color: "#8FB4C9" }}>+{fracIn(t.allowance)}</span> : <span style={{ fontSize: 9, color: "#8FB4C9" }}>&nbsp;</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 10.5, color: "#8FB4C9", fontWeight: 600 }}>Faces</span>
+                  {["left", "right"].map((side) => (
+                    <button key={side} type="button" data-testid={`fold-face-${side}`} disabled={!h}
+                      onClick={() => setValue?.(`${h.type}-${side}`)}
+                      style={{ ...btn(h?.dir === side), opacity: h ? 1 : 0.4, minWidth: 64 }}>
+                      {side === "left" ? "◀ Left" : "Right ▶"}
+                    </button>
+                  ))}
+                  {h && (
+                    <button type="button" data-testid="fold-flip" onClick={() => setValue?.(flipHem(value))} title="Fold toward the other side" style={btn(false)}>⇄ Flip</button>
+                  )}
+                  <span style={{ flex: 1 }} />
+                  <button type="button" onClick={() => setEditor({ kind: "fold", end: other })} style={btn(false)}>{other === "start" ? "← Start end" : "End end →"}</button>
+                </div>
+                <div style={{ fontSize: 10.5, color: "#8FB4C9", marginTop: 6 }}>
+                  {h ? `${foldType(h.type).hint}. Adds ${fracIn(foldType(h.type).allowance)} to the girth.` : "The fold is drawn on the profile and counted in the girth."}
+                </div>
+                <button type="button" data-testid="editor-done" onClick={closeEditor}
+                  style={{ width: "100%", marginTop: 8, padding: 9, borderRadius: 8, border: "none", background: SAFETY, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Done</button>
+              </div>
+            );
+          })() : (
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+                <input ref={inputRef} className="mono" type="text" inputMode="decimal" value={draft} onChange={(e) => { setDraft(e.target.value); setInvalid(false); }} onKeyDown={onEditorKey}
+                  aria-label={editor.kind === "length" ? "Length" : editor.kind === "angle" ? "Angle" : "Rotation"} aria-invalid={invalid || undefined}
+                  placeholder={editor.kind === "length" && unitSystem === "imperial" ? 'e.g. 6.5 or 6 1/2' : ""}
+                  style={{ flex: 1, minWidth: 0, fontSize: 20, fontWeight: 700, background: "transparent", border: "none", borderBottom: `2px solid ${invalid ? "#FF6B6B" : SAFETY}`, color: "#fff", padding: "4px 2px", outline: "none" }} />
+                <span className="mono" style={{ fontSize: 12, color: "#8FB4C9", fontWeight: 700, minWidth: 22 }}>
+                  {editor.kind === "length" ? (unitSystem === "metric" ? "mm" : "in") : "°"}
+                </span>
+                {stepRange && (
+                  <div style={{ display: "flex", gap: 4, borderLeft: "1px solid rgba(255,255,255,0.2)", paddingLeft: 8 }}>
+                    <button type="button" aria-label={editor.kind === "length" ? "Previous leg" : "Previous bend"} disabled={editor.i <= stepRange[0]} onClick={() => step(-1)}
+                      style={{ ...btn(false, { width: 36, height: 34, padding: 0, fontSize: 16, color: SAFETY }), opacity: editor.i <= stepRange[0] ? 0.35 : 1 }}>←</button>
+                    <button type="button" aria-label={editor.kind === "length" ? "Next leg" : "Next bend"} disabled={editor.i >= stepRange[1]} onClick={() => step(1)}
+                      style={{ ...btn(false, { width: 36, height: 34, padding: 0, fontSize: 16, color: SAFETY }), opacity: editor.i >= stepRange[1] ? 0.35 : 1 }}>→</button>
+                  </div>
+                )}
+              </div>
+              {invalid && (
+                <div role="alert" style={{ fontSize: 10.5, color: "#FF9B9B", marginTop: 5 }}>
+                  {editor.kind === "length" ? `Enter a length above 0${unitSystem === "imperial" ? ' — like 6.5, 6 1/2 or 3/8' : " in mm"}.`
+                    : editor.kind === "angle" ? "Enter an inside angle between 0 and 180 degrees." : "Enter the rotation in degrees."}
+                </div>
+              )}
+              {editor.kind === "length" && unitSystem === "imperial" && (
+                <div style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
+                  {FRACTION_CHIPS.map(([glyph, frac]) => (
+                    <button key={frac} type="button" onClick={() => addFraction(frac)} title={`${frac}"`} style={btn(false, { flex: 1, minWidth: 32, padding: "5px 0", fontSize: 13 })}>{glyph}</button>
+                  ))}
+                </div>
+              )}
+              {editor.kind === "angle" && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <button type="button" data-testid="pitch-toggle" onClick={() => setPitchOpen((o) => !o)} style={btn(pitchOpen)}>
+                      {pitchOpen ? "▾" : "▸"} Pitch
+                    </button>
+                    <span style={{ fontSize: 10.5, color: "#8FB4C9" }}>
+                      {pitchOpen ? "Pick the roof pitch, then the kind of bend" : "Set the bend from a roof pitch"}
+                    </span>
+                  </div>
+                  {pitchOpen && (() => {
+                    const th = (Math.atan(pitch / 12) * 180) / Math.PI;
+                    const cards = [
+                      { id: "internal", label: "Internal", value: 90 - th, hint: "Roof climbs away from the wall" },
+                      { id: "open", label: "Open", value: 90 + th, hint: "Headwall or apron — roof falls away from the wall" },
+                      { id: "ridge", label: "Ridge", value: 180 - 2 * th, hint: "Ridge or peak — both legs on the slope" },
+                    ];
+                    return (
+                      <div style={{ marginTop: 8 }}>
+                        <div className="mono" style={{ fontSize: 9, letterSpacing: "0.12em", color: SAFETY, fontWeight: 700 }}>
+                          PITCH <span style={{ color: "#fff" }}>{pitch}:12</span> <span style={{ color: "#8FB4C9" }}>· {fmtDeg(th)}</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 4, marginTop: 4 }}>
+                          {PITCH_CHIPS.map((r) => (
+                            <button key={r} type="button" data-testid={`pitch-${r}`} onClick={() => setPitch(r)} style={btn(pitch === r, { flex: "0 0 auto", padding: "5px 8px" })}>{r}:12</button>
+                          ))}
+                        </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginTop: 4 }}>
+                          {cards.map((c) => (
+                            <button key={c.id} type="button" data-testid={`pitch-${c.id}`} title={c.hint}
+                              onClick={() => { applyAngle(editor.i, c.value); const t = trimNum(Math.round(c.value * 10) / 10); setDraft(t); setEditor({ ...editor, orig: t }); }}
+                              style={btn(Math.abs(parseFloat(draft) - c.value) < 0.06, { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "6px 4px" })}>
+                              <PitchPicture kind={c.id} th={th} />
+                              <span className="mono" style={{ fontSize: 13, color: SAFETY }}>{fmtDeg(c.value)}</span>
+                              <span style={{ fontSize: 10.5 }}>{c.label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+              <button type="button" data-testid="editor-done" onClick={done}
+                style={{ width: "100%", marginTop: 8, padding: 9, borderRadius: 8, border: "none", background: SAFETY, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Done</button>
+            </div>
+          )}
+        </div>
+      )}
       {/* Rotate the whole profile: drag the ruler sideways (0.4° per pixel, settles on every
           15°), tap the degrees to type an exact angle, +90° for a quarter turn, ⟲ back to as drawn. */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
@@ -1576,17 +2205,36 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
           <div style={{ position: "absolute", left: "50%", top: 4, width: 4, height: 26, borderRadius: 2, background: SAFETY, transform: "translateX(-50%)", boxShadow: "0 0 0 1px rgba(0,0,0,0.35)" }} />
           <span className="mono" style={{ position: "absolute", left: 6, top: 9, padding: "2px 6px", borderRadius: 4, background: INK, fontSize: 9, lineHeight: "12px", letterSpacing: "0.12em", color: "#8FB4C9", pointerEvents: "none" }}>ROTATE</span>
         </div>
-        <button type="button" onClick={rotPrompt} className="mono" title="Type an exact rotation (degrees clockwise)" disabled={points.length < 2}
-          style={{ height: 34, minWidth: 54, padding: "0 8px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: INK, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: points.length < 2 ? 0.45 : 1 }}>
+        <button type="button" onClick={openRotate} className="mono" title="Type an exact rotation (degrees clockwise)" disabled={points.length < 2}
+          style={darkBtn({ minWidth: 54, padding: "0 8px", fontSize: 12, fontWeight: 600, opacity: points.length < 2 ? 0.45 : 1 })}>
           {fmtDeg(rotation)}
         </button>
         <button type="button" onClick={() => applyRotation(rotation + 90)} title="Quarter turn clockwise" disabled={points.length < 2}
-          style={{ height: 34, padding: "0 9px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: INK, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", opacity: points.length < 2 ? 0.45 : 1 }}>
+          style={darkBtn({ opacity: points.length < 2 ? 0.45 : 1 })}>
           +90°
         </button>
         <button type="button" onClick={() => applyRotation(0)} title="Back to the way it was drawn" disabled={rotation === 0}
-          style={{ height: 34, padding: "0 9px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: INK, color: "#fff", fontSize: 14, cursor: rotation === 0 ? "default" : "pointer", opacity: rotation === 0 ? 0.45 : 1 }}>
+          style={darkBtn({ fontSize: 14, fontWeight: 400, cursor: rotation === 0 ? "default" : "pointer", opacity: rotation === 0 ? 0.45 : 1 })}>
           ⟲
+        </button>
+      </div>
+      {/* What each end does, which face is painted, and a mirror for the opposite hand. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 5, flexWrap: "wrap" }}>
+        {[["start", hemStart], ["end", hemEnd]].map(([end, value]) => (
+          <button key={end} type="button" data-testid={`fold-chip-${end}`} onClick={() => openFold(end)} disabled={points.length < 2}
+            title={`Choose the fold at the ${end} of the profile`}
+            style={darkBtn({ flex: "1 1 120px", minWidth: 0, height: 30, fontSize: 10.5, fontWeight: 600, textAlign: "left", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", opacity: points.length < 2 ? 0.45 : 1, borderColor: parseHem(value) ? SAFETY : "rgba(255,255,255,0.15)" })}>
+            <span style={{ color: "#8FB4C9" }}>{end === "start" ? "Start" : "End"}: </span>{formatHem(value) || "No fold"}
+          </button>
+        ))}
+        <button type="button" data-testid="paint-chip" onClick={() => setPaintSide?.(otherSide)} disabled={points.length < 2} title="Which face is painted — tap to switch"
+          style={darkBtn({ height: 30, fontSize: 10.5, fontWeight: 600, opacity: points.length < 2 ? 0.45 : 1, display: "flex", alignItems: "center", gap: 5 })}>
+          <span style={{ width: 10, height: 10, borderRadius: 5, background: colorHex, border: "1px solid rgba(255,255,255,0.6)" }} />
+          <span><span style={{ color: "#8FB4C9" }}>Paint: </span>{paintSide === "left" ? "Left" : "Right"}</span>
+        </button>
+        <button type="button" data-testid="mirror" onClick={mirrorProfile} disabled={points.length < 2} title="Mirror left-to-right for the opposite hand"
+          style={darkBtn({ height: 30, fontSize: 10.5, fontWeight: 600, opacity: points.length < 2 ? 0.45 : 1 })}>
+          ⇋ Mirror
         </button>
       </div>
     </div>
@@ -2527,6 +3175,12 @@ export default function ShopOrderApp() {
   const matSaveChain = useRef(Promise.resolve()); // serializes board writes so rapid taps can't land out of order
   const [submitting, setSubmitting] = useState(false);
   const [basket, setBasket] = useState([]);
+  // Roof in a Box — the standard 24 ga standing seam trim set, drawn to pitch
+  const [roofBoxOpen, setRoofBoxOpen] = useState(false);
+  const [roofBoxPitch, setRoofBoxPitch] = useState(4);
+  const [roofBoxSeam, setRoofBoxSeam] = useState(1.5);
+  const [roofBoxLower, setRoofBoxLower] = useState(3);
+  const [roofBoxSel, setRoofBoxSel] = useState({}); // id -> qty (0 = not in the box)
   const [tabLoaded, setTabLoaded] = useState(false);
   // Job Vault — each member's saved trim/panel configs (Supabase vault_items, owner-only)
   const [vaultItems, setVaultItems] = useState([]);
@@ -2546,9 +3200,10 @@ export default function ShopOrderApp() {
   const openTool = useCallback((view) => {
     if (view === "color") { setTab("order"); setOrderStep("color"); }
     else if (view === "trim" || view === "panel") { setTab("order"); setShapeType(view); setOrderStep("details"); }
+    else if (view === "box") { setTab("order"); setShapeType("trim"); setOrderStep("details"); setRoofBoxOpen(true); }
   }, []);
   const deepLinkView = new URLSearchParams(window.location.search).get("view");
-  const deepLinked = ["color", "trim", "panel"].includes(deepLinkView);
+  const deepLinked = ["color", "trim", "panel", "box"].includes(deepLinkView);
   useEffect(() => {
     if (deepLinked) openTool(deepLinkView);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3256,7 +3911,7 @@ export default function ShopOrderApp() {
       const merged = { ...base, ...over };
       // Same math the real order form uses when a trim order is actually submitted,
       // so sample/seed data rolls up into Materials Needed the same way real orders do.
-      const girth = merged.points.reduce((s, p, i) => s + (i > 0 ? dist(merged.points[i - 1], p) : 0), 0);
+      const girth = profileGirth(merged.points, merged.hemStart, merged.hemEnd);
       const sheetWidth = merged.sheetWidth || 48;
       const partsPerSheet = girth > 0 ? Math.floor(sheetWidth / girth) : 0;
       const sheetsNeeded = partsPerSheet > 0 ? Math.ceil(merged.quantity / partsPerSheet) : 0;
@@ -3400,7 +4055,7 @@ export default function ShopOrderApp() {
     ? { type: "part3d", partType, partW, partD, partH, partCapH, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, quantity, gaugeId, paintId, brand, colorName }
     : { type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, brand, colorName };
   const estimate = computePrice(draft, priceList, coilWidthScale);
-  const girth = points.reduce((s, p, i) => s + (i > 0 ? dist(points[i - 1], p) : 0), 0);
+  const girth = profileGirth(points, hemStart, hemEnd); // legs plus the end folds — the width the shear cuts
   // Qty / sheet width are "" while a field is cleared for retyping — treat that as 0 so
   // this stays numeric (dropWidth.toFixed on "" used to white-screen the whole app).
   const sheetWidthNum = +sheetWidth || 0, quantityNum = +quantity || 0;
@@ -3447,6 +4102,54 @@ export default function ShopOrderApp() {
   };
 
   const removeBasketItem = (id) => setBasket((b) => b.filter((i) => i.id !== id));
+
+  /* ---------- Roof in a Box ---------- */
+  const roofKit = buildRoofKit({ pitch: roofBoxPitch, seamHeight: roofBoxSeam, lowerPitch: roofBoxLower });
+  // Opening the box (tile, button or ?view=box) starts it with the usual pieces ticked
+  // and puts the order on 24 gauge, which is what the kit is drawn for.
+  const roofBoxPitchRef = useRef(null);
+  useEffect(() => {
+    if (!roofBoxOpen) return;
+    setRoofBoxSel((sel) => (Object.keys(sel).length ? sel : { ...ROOF_KIT_DEFAULT_SEL }));
+    const onKey = (e) => { if (e.key === "Escape") setRoofBoxOpen(false); };
+    window.addEventListener("keydown", onKey);
+    const focusTimer = setTimeout(() => roofBoxPitchRef.current?.focus(), 0);
+    return () => { window.removeEventListener("keydown", onKey); clearTimeout(focusTimer); };
+  }, [roofBoxOpen]);
+  const openRoofBox = () => { setShapeType("trim"); setOrderStep("details"); setRoofBoxOpen(true); };
+  // The kit is drawn for 24 gauge, so its parts are priced and sent as 24 ga (copper keeps
+  // its weight) without changing the gauge of whatever is on the canvas.
+  const kitGaugeId = brand === "Copper" ? gaugeId : "24ga";
+  const roofBoxItem = (it, qty) => {
+    const g = profileGirth(it.points, it.hemStart, it.hemEnd);
+    const pps = g > 0 ? Math.floor(sheetWidthNum / g) : 0;
+    return {
+      id: uid(), name: it.name, kit: it.id,
+      points: it.points.map((pt) => [...pt]), hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide,
+      quantity: qty, lengthPerPiece, sheetWidth: sheetWidthNum,
+      girth: g, partsPerSheet: pps, sheetsNeeded: pps > 0 ? Math.ceil(qty / pps) : 0, dropWidth: pps > 0 ? Math.max(0, sheetWidthNum - pps * g) : sheetWidthNum,
+      photo: null, gaugeId: kitGaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
+      price: computePrice({ type: "trim", points: it.points, quantity: qty, lengthPerPiece, gaugeId: kitGaugeId, paintId, brand, colorName }, priceList, coilWidthScale),
+    };
+  };
+  const roofBoxPicked = roofKit.filter((it) => (roofBoxSel[it.id] || 0) > 0).map((it) => roofBoxItem(it, Math.max(1, Math.round(+roofBoxSel[it.id] || 1))));
+  const addRoofBoxToOrder = () => {
+    if (roofBoxPicked.length === 0) { setToast("Tick at least one trim to add the box to the order."); setTimeout(() => setToast(""), 3000); return; }
+    setBasket((b) => [...b, ...roofBoxPicked]);
+    clearDrawing(); // same as Add Part: the canvas draft must not ride along as an extra part
+    setPartPhoto(null);
+    setRoofBoxOpen(false);
+    const pcs = roofBoxPicked.reduce((sum, it) => sum + it.quantity, 0);
+    setToast(`Roof in a Box — ${roofBoxPicked.length} trim${roofBoxPicked.length === 1 ? "" : "s"}, ${pcs} piece${pcs === 1 ? "" : "s"} added to the order.`);
+    setTimeout(() => setToast(""), 4000);
+  };
+  // Load one kit piece into the canvas to tweak legs before adding it the usual way.
+  const drawRoofBoxItem = (it) => {
+    setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
+    setHemStart(it.hemStart); setHemEnd(it.hemEnd); setPaintSide(it.paintSide); setPartName(it.name);
+    setViewResetKey((k) => k + 1); setRoofBoxOpen(false);
+    setToast(`${it.name} is on the canvas — adjust any leg, then Add Part to Order.`); setTimeout(() => setToast(""), 3500);
+  };
 
   // Screws only sell in lots of 100 — the qty spinner steps by the lot size and any
   // typed amount rounds to the nearest full lot. Every other accessory counts by 1.
@@ -4220,12 +4923,13 @@ export default function ShopOrderApp() {
                 {[
                   { id: "panel", label: "Roof Panel", desc: "Formed standing-seam or snap-lock panels", icon: Square, accent: SAFETY },
                   { id: "trim", label: "Trim Profile", desc: "Custom-drawn flashing and trim pieces", icon: PenTool, accent: "#4F9A63" },
+                  { id: "box", label: "Roof in a Box", desc: "The standard trims for a 24 ga standing seam roof, drawn to your pitch — add them all at once", icon: Package, accent: "#A0602E" },
                   { id: "metal", label: "Unfabricated Metal", desc: "Raw coil or 4x10 flat sheet stock", icon: Layers, accent: "#3E7CB1" },
                   { id: "part3d", label: "3D Parts", desc: "Collector boxes, scuppers, chimney caps", icon: Box, accent: "#8A5FBF" },
                 ].map((t) => {
                   const Icon = t.icon;
                   return (
-                    <button key={t.id} onClick={() => { if (t.id === "part3d") setAccessories([]); setShapeType(t.id); setOrderStep("details"); }} className="mac-btn"
+                    <button key={t.id} onClick={() => { if (t.id === "box") { openRoofBox(); return; } if (t.id === "part3d") setAccessories([]); setShapeType(t.id); setOrderStep("details"); }} className="mac-btn"
                       style={{
                         display: "flex", alignItems: "center", gap: 14, padding: 16, borderRadius: 12, border: `1px solid ${t.accent}`,
                         background: `linear-gradient(180deg, ${t.accent}, ${t.accent}dd)`, color: "#fff", cursor: "pointer", textAlign: "left",
@@ -5007,6 +5711,13 @@ export default function ShopOrderApp() {
             ) : (
               <>
                 <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => setRoofBoxOpen(true)} title="The standard trims for a 24 ga standing seam roof, drawn to your pitch"
+                    style={{
+                      padding: "5px 11px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                      border: "1px solid #A0602E", background: "linear-gradient(180deg, #B8703A, #A0602E)", color: "#fff", display: "flex", alignItems: "center", gap: 5,
+                    }}>
+                    <Package size={12} /> Roof in a Box
+                  </button>
                   {Object.keys(TRIM_PRESETS).map((p) => (
                     <button key={p} onClick={() => { setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt])); setViewResetKey((k) => k + 1); }}
                       style={{
@@ -5054,14 +5765,109 @@ export default function ShopOrderApp() {
                 <div style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: -4, marginBottom: 6 }}>
                   AI reads a best-effort shape from the photo — always check and adjust points/lengths before using it.
                 </div>
-                <TrimCanvas points={points} setPoints={setPoints} colorHex={colorObj.hex} hemStart={hemStart} hemEnd={hemEnd} paintSide={paintSide} viewResetKey={viewResetKey} />
+                {roofBoxOpen && (() => {
+                  const selStyle = { padding: "6px 8px", borderRadius: 7, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, fontSize: 12, fontWeight: 600 };
+                  const totalPcs = roofBoxPicked.reduce((sum, it) => sum + it.quantity, 0);
+                  const totalSheets = roofBoxPicked.reduce((sum, it) => sum + it.sheetsNeeded, 0);
+                  const totalPrice = roofBoxPicked.reduce((sum, it) => sum + it.price, 0);
+                  const gaugeLabel = findGauge(kitGaugeId, brand)?.label || "24 Gauge";
+                  return (
+                    <div onClick={() => setRoofBoxOpen(false)} data-testid="roof-box"
+                      style={{ position: "fixed", inset: 0, zIndex: 400, background: "rgba(5,20,32,0.62)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+                      <div onClick={(e) => e.stopPropagation()} className="pop-in" role="dialog" aria-modal="true" aria-labelledby="roof-box-title"
+                        style={{ width: "100%", maxWidth: 760, maxHeight: "94vh", overflowY: "auto", background: theme.card, color: theme.text, borderRadius: 14, boxShadow: "0 30px 80px rgba(0,0,0,0.55)", padding: "16px 18px 14px" }}>
+                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                          <div>
+                            <div id="roof-box-title" className="disp" style={{ fontSize: 18, color: theme.text, display: "flex", alignItems: "center", gap: 8 }}><Package size={18} color="#A0602E" /> Roof in a Box</div>
+                            <div style={{ fontSize: 12, color: theme.textSecondary, marginTop: 3, lineHeight: 1.45 }}>
+                              The standard trims for a 24 ga standing seam roof in one place. Set the pitch and seam height, tick what the job needs, and add them all to the order — or open any one on the canvas to tweak a leg.
+                            </div>
+                          </div>
+                          <button type="button" onClick={() => setRoofBoxOpen(false)} aria-label="Close" style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 20, cursor: "pointer", lineHeight: 1 }}>✕</button>
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end", marginTop: 12 }}>
+                          <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", flexDirection: "column", gap: 3 }}>Roof pitch
+                            <select ref={roofBoxPitchRef} value={roofBoxPitch} className="mono" style={selStyle} data-testid="box-pitch"
+                              onChange={(e) => { const pch = +e.target.value; setRoofBoxPitch(pch); setRoofBoxLower((low) => (low < pch ? low : Math.max(ROOF_PITCHES[0], ...ROOF_PITCHES.filter((r) => r < pch)))); }}>
+                              {ROOF_PITCHES.map((r) => <option key={r} value={r}>{fmtPitch(r)}</option>)}
+                            </select>
+                          </label>
+                          <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", flexDirection: "column", gap: 3 }}>Seam height
+                            <select value={roofBoxSeam} onChange={(e) => setRoofBoxSeam(+e.target.value)} className="mono" style={selStyle}>
+                              {SEAM_HEIGHTS.map((h) => <option key={h} value={h}>{h}"</option>)}
+                            </select>
+                          </label>
+                          <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", flexDirection: "column", gap: 3 }}>Breaks to (transition)
+                            <select value={roofBoxLower} onChange={(e) => setRoofBoxLower(+e.target.value)} className="mono" style={selStyle} disabled={roofBoxPitch <= ROOF_PITCHES[0]}>
+                              {ROOF_PITCHES.filter((r) => r < roofBoxPitch).map((r) => <option key={r} value={r}>{fmtPitch(r)}</option>)}
+                              {roofBoxPitch <= ROOF_PITCHES[0] && <option value={roofBoxPitch}>— (roof is already {fmtPitch(roofBoxPitch)})</option>}
+                            </select>
+                          </label>
+                          <div className="mono" style={{ fontSize: 10.5, color: theme.textSecondary, marginLeft: "auto", textAlign: "right", lineHeight: 1.5 }}>
+                            {gaugeLabel} · {brand} · {colorName}<br />{lengthPerPiece} ft pieces · {sheetWidthNum}" sheets
+                          </div>
+                        </div>
+                        <div style={{ marginTop: 10 }}>
+                          {roofKit.map((it) => {
+                            const qty = roofBoxSel[it.id] || 0;
+                            const on = qty > 0;
+                            const g = profileGirth(it.points, it.hemStart, it.hemEnd);
+                            const pps = g > 0 ? Math.floor(sheetWidthNum / g) : 0;
+                            return (
+                              <div key={it.id} data-testid={`box-row-${it.id}`} style={{ display: "grid", gridTemplateColumns: "22px 54px 1fr auto", gap: 10, alignItems: "center", padding: "8px 0", borderTop: `1px solid ${theme.border}`, opacity: on ? 1 : 0.72 }}>
+                                <input type="checkbox" checked={on} aria-label={`Include ${it.name}`}
+                                  onChange={(e) => setRoofBoxSel((sel) => ({ ...sel, [it.id]: e.target.checked ? 1 : 0 }))} style={{ width: 16, height: 16, cursor: "pointer" }} />
+                                <div style={{ background: INK, borderRadius: 6, padding: 3, display: "flex" }}>
+                                  <ShapeThumb order={{ type: "trim", points: it.points, hemStart: it.hemStart, hemEnd: it.hemEnd, colorHex: colorObj.hex }} size={48} />
+                                </div>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{it.name} <span className="mono" style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 500 }}>{it.dims}</span></div>
+                                  <div style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 1.4 }}>{it.where}</div>
+                                  <div className="mono" style={{ fontSize: 10, color: theme.textSecondary, marginTop: 2 }}>
+                                    Girth {g.toFixed(2)}" · {Math.max(0, it.points.length - 2)} bend{it.points.length === 3 ? "" : "s"} · {pps} pcs/sheet · one {lengthPerPiece} ft piece per {lengthPerPiece} ft of {it.per}
+                                  </div>
+                                </div>
+                                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+                                  <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", alignItems: "center", gap: 4 }}>Qty
+                                    <input type="number" min={1} step={1} value={on ? qty : ""} disabled={!on} placeholder="—" aria-label={`${it.name} quantity`}
+                                      onChange={(e) => setRoofBoxSel((sel) => ({ ...sel, [it.id]: Math.max(1, Math.round(+e.target.value) || 1) }))}
+                                      className="mono" style={{ width: 52, padding: "5px 6px", border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: theme.inputBg, color: theme.text }} />
+                                  </label>
+                                  <button type="button" onClick={() => drawRoofBoxItem(it)} title="Open this trim on the drawing canvas"
+                                    style={{ fontSize: 10.5, fontWeight: 600, padding: "4px 8px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                    Open on canvas
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 12, paddingTop: 12, borderTop: `1px solid ${theme.border}` }}>
+                          <div className="mono" style={{ fontSize: 11.5, color: theme.text, fontWeight: 600 }} data-testid="box-totals">
+                            {roofBoxPicked.length} trim{roofBoxPicked.length === 1 ? "" : "s"} · {totalPcs} pcs · {totalSheets} sheet{totalSheets === 1 ? "" : "s"} · est. {money(totalPrice)}
+                          </div>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button type="button" onClick={() => setRoofBoxOpen(false)}
+                              style={{ padding: "9px 14px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Close</button>
+                            <button type="button" onClick={addRoofBoxToOrder} className="tap-bounce" data-testid="box-add"
+                              style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: SAFETY, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+                              <Package size={14} /> Add {roofBoxPicked.length ? `${roofBoxPicked.length} trim${roofBoxPicked.length === 1 ? "" : "s"}` : "to order"}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+                <TrimCanvas points={points} setPoints={setPoints} colorHex={colorObj.hex} hemStart={hemStart} hemEnd={hemEnd} paintSide={paintSide}
+                  setHemStart={setHemStart} setHemEnd={setHemEnd} setPaintSide={setPaintSide} viewResetKey={viewResetKey} />
                 <div style={{ display: "flex", alignItems: "center", marginTop: 8, gap: 8, flexWrap: "wrap" }}>
                   <button onClick={() => setPoints((p) => p.slice(0, -1))}
                     style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, padding: "5px 9px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, cursor: "pointer" }}>
                     <Undo2 size={12} /> Undo
                   </button>
                   <span className="mono" style={{ fontSize: 11, color: theme.text, fontWeight: 600 }}>
-                    Girth: {girth.toFixed(2)}" · {points.length} pts
+                    Girth: {girth.toFixed(2)}"{hemAllowance(hemStart) + hemAllowance(hemEnd) > 0 ? ` (incl. ${fracIn(hemAllowance(hemStart) + hemAllowance(hemEnd))} folds)` : ""} · {points.length} pts
                   </span>
                   <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, color: theme.text, fontWeight: 600 }}>
                     Qty
@@ -5077,7 +5883,7 @@ export default function ShopOrderApp() {
                       onBlur={(e) => { if (e.target.value === "") setSheetWidth(48); }}
                       className="mono" style={{ width: 48, padding: "5px 6px", border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12 }} />
                   </label>
-                  <button onClick={() => setPoints([])}
+                  <button onClick={() => { setPoints([]); setHemStart("none"); setHemEnd("none"); setPaintSide("left"); }} title="Start the drawing over — folds and painted side reset with it"
                     style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, padding: "5px 9px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, cursor: "pointer" }}>
                     <Trash2 size={12} /> Clear
                   </button>
@@ -5095,49 +5901,6 @@ export default function ShopOrderApp() {
                     Drop: {dropWidth.toFixed(2)}"
                   </span>
                 </div>
-                {/* Hems + painted side. Wraps to two columns on a phone so the option text
-                    ("Closed, faces Right") stays readable instead of being clipped. */}
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 10 }}>
-                  <label style={{ flex: "1 1 130px", minWidth: 0, fontSize: 9, color: theme.textSecondary }}>
-                    Start Hem
-                    <select value={hemStart} onChange={(e) => setHemStart(e.target.value)}
-                      style={{ width: "100%", padding: "6px 4px", marginTop: 3, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 11, background: theme.inputBg }}>
-                      <option value="none">None</option>
-                      <option value="open-left">Open, faces Left</option>
-                      <option value="open-right">Open, faces Right</option>
-                      <option value="closed-left">Closed, faces Left</option>
-                      <option value="closed-right">Closed, faces Right</option>
-                    </select>
-                  </label>
-                  <label style={{ flex: "1 1 130px", minWidth: 0, fontSize: 9, color: theme.textSecondary }}>
-                    End Hem
-                    <select value={hemEnd} onChange={(e) => setHemEnd(e.target.value)}
-                      style={{ width: "100%", padding: "6px 4px", marginTop: 3, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 11, background: theme.inputBg }}>
-                      <option value="none">None</option>
-                      <option value="open-left">Open, faces Left</option>
-                      <option value="open-right">Open, faces Right</option>
-                      <option value="closed-left">Closed, faces Left</option>
-                      <option value="closed-right">Closed, faces Right</option>
-                    </select>
-                  </label>
-                  <div style={{ flex: "1 1 130px", minWidth: 0, fontSize: 9, color: theme.textSecondary }}>
-                    Painted Side
-                    <div style={{ display: "flex", gap: 5, marginTop: 3 }}>
-                      {["left", "right"].map((side) => (
-                        <button key={side} type="button" onClick={() => setPaintSide(side)}
-                          style={{
-                            flex: 1, minWidth: 0, padding: "6px 2px", borderRadius: 6, fontSize: 10.5, cursor: "pointer",
-                            border: `1px solid ${paintSide === side ? SAFETY : "#D9D5C7"}`,
-                            background: paintSide === side ? SAFETY : "#fff", color: paintSide === side ? "#fff" : INK_DEEP, fontWeight: 600,
-                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                          }}>
-                          {side === "left" ? "Left" : "Right"}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
                 <label style={{ display: "block", fontSize: 10.5, color: theme.textSecondary, marginTop: 10 }}>
                   Part name (so you can tell parts apart)
                   <input value={partName} onChange={(e) => setPartName(e.target.value)} placeholder="e.g. Drip Edge — North Wall"
@@ -5190,7 +5953,7 @@ export default function ShopOrderApp() {
                       return (
                         <div key={it.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0", borderBottom: idx < basket.length - 1 ? "1px solid #F3F0E7" : "none" }}>
                           <div style={{ background: INK, borderRadius: 5, padding: 3, flexShrink: 0 }}>
-                            <ShapeThumb order={{ type: "trim", points: it.points, colorHex: it.colorHex }} size={28} />
+                            <ShapeThumb order={{ type: "trim", points: it.points, hemStart: it.hemStart, hemEnd: it.hemEnd, colorHex: it.colorHex }} size={28} />
                           </div>
                           {it.photo && (
                             <img src={it.photo} alt="Reference" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 5, border: `1px solid ${theme.border}`, flexShrink: 0 }} />
@@ -6350,11 +7113,11 @@ export default function ShopOrderApp() {
                                   📍 {o.jobSiteAddress}{o.jobSiteMiles ? ` · ${o.jobSiteMiles} mi one way${mileageCharge(o.jobSiteMiles) > 0 ? ` · mileage ${money(mileageCharge(o.jobSiteMiles))}` : ""}` : ""}
                                 </div>
                               )}
-                              {o.type === "trim" && (o.hemStart !== "none" || o.hemEnd !== "none") && (
+                              {o.type === "trim" && (parseHem(o.hemStart) || parseHem(o.hemEnd)) && (
                                 <div style={{ fontSize: 10.5, color: SAFETY, marginTop: 2 }}>
-                                  {o.hemStart !== "none" && `Start hem: ${formatHem(o.hemStart)}`}
-                                  {o.hemStart !== "none" && o.hemEnd !== "none" && " · "}
-                                  {o.hemEnd !== "none" && `End hem: ${formatHem(o.hemEnd)}`}
+                                  {parseHem(o.hemStart) && `Start fold: ${formatHem(o.hemStart)}`}
+                                  {parseHem(o.hemStart) && parseHem(o.hemEnd) && " · "}
+                                  {parseHem(o.hemEnd) && `End fold: ${formatHem(o.hemEnd)}`}
                                 </div>
                               )}
                               {o.type === "trim" && o.paintSide && (
