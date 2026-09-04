@@ -52,9 +52,9 @@ header.nav{position:sticky;top:0;z-index:50;background:rgba(11,30,44,.9);backdro
 .locpill select option{color:var(--ink-deep)}
 @media(max-width:640px){.locpill .lbl{display:none}}
 .view{display:none}.view.on{display:block}
-.hero{background:linear-gradient(180deg,var(--night),var(--ink) 90%);color:#fff;position:relative;overflow:hidden;padding-block:clamp(52px,7.5vw,96px)}
+.hero{background:linear-gradient(180deg,var(--night),var(--ink) 90%);color:#fff;position:relative;overflow:hidden;padding:clamp(22px,3.2vw,40px) 0 clamp(52px,7.5vw,96px)}
 .hero .horizon{position:absolute;left:-4%;right:-4%;bottom:-42px;height:210px;transform:rotate(-2.2deg);border-radius:24px 24px 0 0;box-shadow:0 -18px 60px rgba(0,0,0,.5);opacity:.9}
-.hero-in{position:relative;z-index:2;display:grid;grid-template-columns:1.08fr .92fr;gap:clamp(26px,4.5vw,58px);align-items:center;padding-bottom:120px}
+.hero-in{position:relative;z-index:2;display:grid;grid-template-columns:1.08fr .92fr;gap:clamp(26px,4.5vw,58px);align-items:start;padding-bottom:120px}
 @media(max-width:940px){.hero-in{grid-template-columns:1fr;padding-bottom:150px}}
 .hero h1{font-family:var(--disp);font-weight:700;margin:0 0 18px;font-size:clamp(34px,5.4vw,62px);text-transform:uppercase;line-height:1.03}
 .hero h1 em{font-style:normal;color:var(--gold);display:block}
