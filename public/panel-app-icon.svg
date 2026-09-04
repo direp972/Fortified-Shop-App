@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Panel Calculator app">
+  <defs><pattern id="g" width="12" height="12" patternUnits="userSpaceOnUse"><circle cx="6" cy="6" r="1.1" fill="#FFFFFF" fill-opacity="0.13"/></pattern></defs>
+  <rect width="128" height="128" rx="28" fill="#0F3D5C"/>
+  <rect width="128" height="128" rx="28" fill="url(#g)"/>
+  <g stroke="#A0602E" stroke-width="2.5" stroke-linecap="round" fill="none"><line x1="22" y1="26" x2="22" y2="42"/><line x1="106" y1="26" x2="106" y2="42"/><line x1="30" y1="34" x2="98" y2="34"/></g>
+  <path d="M22 34l8-4.5v9zM106 34l-8-4.5v9z" fill="#A0602E"/>
+  <path d="M34 58H22V96H106V58H94" fill="none" stroke="#D4AF37" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#F6F4EE" stroke="#0F3D5C" stroke-width="2.5"><circle cx="22" cy="96" r="5.5"/><circle cx="106" cy="96" r="5.5"/></g>
+</svg>

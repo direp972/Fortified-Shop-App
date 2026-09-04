@@ -35,13 +35,14 @@
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
 <style>
-.apptile{display:flex;gap:16px;align-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:var(--r);padding:14px 18px;margin-bottom:14px;text-decoration:none;color:#EAF1F6;box-shadow:var(--shadow-2);transition:transform .16s,border-color .16s,background .16s}
+.apptile{display:flex;gap:16px;align-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:var(--r);padding:12px 18px;margin-bottom:10px;text-decoration:none;color:#EAF1F6;box-shadow:var(--shadow-2);transition:transform .16s,border-color .16s,background .16s}
 .apptile:hover{transform:translateY(-2px);border-color:var(--gold);background:rgba(255,255,255,.08)}
 .apptile img{flex:none;display:block;border-radius:12px}
 .apptile-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
 .apptile-txt b{font-family:var(--disp);font-size:18px;font-weight:600;text-transform:uppercase;letter-spacing:.02em;color:#fff;line-height:1.1}
 .apptile-sub{font-size:13px;color:#C7D6E2;line-height:1.45}
 .apptile-go{font-size:12.5px;font-weight:600;color:var(--gold-soft);margin-top:3px}
+.apptile:last-of-type{margin-bottom:14px}
 </style>
 <script src="/auth.js" defer></script>
 <script defer src="/_vercel/insights/script.js"></script>
@@ -82,19 +83,30 @@
     </div>
     <div>
       <p style="font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#8FA9BC;margin:0 0 6px;text-align:center">Sign up for free</p>
-      <a class="btn" href="/app?view=color" style="display:flex;flex-direction:column;gap:1px;width:100%;box-sizing:border-box;margin-bottom:10px;padding:10px 22px">
-        <span>Color Lab</span>
-        <span style="font-family:var(--body);font-size:10.5px;font-weight:500;letter-spacing:.01em;text-transform:none;opacity:.8">Match and find colors from multiple manufacturers</span>
+      <a class="apptile" href="/members.html?app=papp" aria-label="Open the Panel Calculator app">
+        <img src="/panel-app-icon.svg" width="56" height="56" alt="">
+        <span class="apptile-txt">
+          <span class="mono" style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#8FA9BC">Free member tool</span>
+          <b>Panel Calculator</b>
+          <span class="apptile-sub">Cut list, lengths and quantities for a panel run.</span>
+          <span class="apptile-go">Open the app →</span>
+        </span>
       </a>
-      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-        <a class="btn" href="/members.html?app=papp" style="flex:1;white-space:nowrap">Try our panel calculator</a>
-      </div>
       <a class="apptile" href="/members.html?app=draw" aria-label="Open the Trim Drawing app">
         <img src="/trim-app-icon.svg" width="56" height="56" alt="">
         <span class="apptile-txt">
           <span class="mono" style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#8FA9BC">Free member tool</span>
           <b>Trim Drawing App</b>
           <span class="apptile-sub">Draw it, dimension it, get the stretch-out.</span>
+          <span class="apptile-go">Open the app →</span>
+        </span>
+      </a>
+      <a class="apptile" href="/app?view=color" aria-label="Open the Color Lab">
+        <img src="/color-lab-icon.svg" width="56" height="56" alt="">
+        <span class="apptile-txt">
+          <span class="mono" style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#8FA9BC">Free member tool</span>
+          <b>Color Lab</b>
+          <span class="apptile-sub">Match and find colors from multiple manufacturers.</span>
           <span class="apptile-go">Open the app →</span>
         </span>
       </a>

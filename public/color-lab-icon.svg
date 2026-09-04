@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Color Lab">
+  <defs><pattern id="g" width="12" height="12" patternUnits="userSpaceOnUse"><circle cx="6" cy="6" r="1.1" fill="#FFFFFF" fill-opacity="0.13"/></pattern></defs>
+  <rect width="128" height="128" rx="28" fill="#0F3D5C"/>
+  <rect width="128" height="128" rx="28" fill="url(#g)"/>
+  <g stroke="#F6F4EE" stroke-width="2.5" stroke-linejoin="round">
+    <rect x="-13" y="-74" width="26" height="66" rx="6" fill="#1F3D2E" transform="translate(64 100) rotate(-48)"/>
+    <rect x="-13" y="-74" width="26" height="66" rx="6" fill="#A0602E" transform="translate(64 100) rotate(-16)"/>
+    <rect x="-13" y="-74" width="26" height="66" rx="6" fill="#D4AF37" transform="translate(64 100) rotate(16)"/>
+    <rect x="-13" y="-74" width="26" height="66" rx="6" fill="#E3E1DC" transform="translate(64 100) rotate(48)"/>
+  </g>
+  <circle cx="64" cy="100" r="7" fill="#F6F4EE" stroke="#0F3D5C" stroke-width="2.5"/>
+</svg>
