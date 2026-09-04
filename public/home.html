@@ -34,6 +34,15 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
+<style>
+.apptile{display:flex;gap:16px;align-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:var(--r);padding:14px 18px;margin-bottom:14px;text-decoration:none;color:#EAF1F6;box-shadow:var(--shadow-2);transition:transform .16s,border-color .16s,background .16s}
+.apptile:hover{transform:translateY(-2px);border-color:var(--gold);background:rgba(255,255,255,.08)}
+.apptile img{flex:none;display:block;border-radius:12px}
+.apptile-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.apptile-txt b{font-family:var(--disp);font-size:18px;font-weight:600;text-transform:uppercase;letter-spacing:.02em;color:#fff;line-height:1.1}
+.apptile-sub{font-size:13px;color:#C7D6E2;line-height:1.45}
+.apptile-go{font-size:12.5px;font-weight:600;color:var(--gold-soft);margin-top:3px}
+</style>
 <script src="/auth.js" defer></script>
 <script defer src="/_vercel/insights/script.js"></script>
 </head>
@@ -119,13 +128,6 @@
     <a class="btn" href="/suppliers.html?ability=On-site%20gutter%20roll%20forming">Search gutter fabricators →</a>
   </div>
   <style>
-.apptile{display:flex;gap:16px;align-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:var(--r);padding:14px 18px;margin-bottom:14px;text-decoration:none;color:#EAF1F6;box-shadow:var(--shadow-2);transition:transform .16s,border-color .16s,background .16s}
-.apptile:hover{transform:translateY(-2px);border-color:var(--gold);background:rgba(255,255,255,.08)}
-.apptile img{flex:none;display:block;border-radius:12px}
-.apptile-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
-.apptile-txt b{font-family:var(--disp);font-size:18px;font-weight:600;text-transform:uppercase;letter-spacing:.02em;color:#fff;line-height:1.1}
-.apptile-sub{font-size:13px;color:#C7D6E2;line-height:1.45}
-.apptile-go{font-size:12.5px;font-weight:600;color:var(--gold-soft);margin-top:3px}
 
   .gutcall{display:flex;flex-wrap:wrap;gap:14px 24px;align-items:center;justify-content:space-between;background:var(--card);border:1px solid rgba(15,61,92,.1);border-left:4px solid var(--gold);border-radius:12px;padding:18px 22px;margin-top:18px;box-shadow:var(--shadow-1)}
   .gutcall h3{font-family:var(--disp);font-size:17px;text-transform:uppercase;font-weight:600;margin:0 0 4px;color:var(--ink-deep)}
