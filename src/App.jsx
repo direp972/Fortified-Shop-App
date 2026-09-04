@@ -826,8 +826,9 @@ function formatFeetInches(totalInches) {
 function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = "none") {
   if (!points || points.length < 2) return "";
   const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
-  const minX = Math.min(...xs), maxX = Math.max(...xs);
-  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const size = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 1);
+  const folds = endFolds(points, hemStart, hemEnd, size / 100);
+  const [minX, minY, maxX, maxY] = profileBounds(points, folds); // the folds have to fit on the sheet too
   const pad = 30, w = 480, h = 320;
   const spanX = Math.max(maxX - minX, 1), spanY = Math.max(maxY - minY, 1);
   const scale = Math.min((w - pad * 2) / spanX, (h - pad * 2) / spanY);
@@ -844,7 +845,7 @@ function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = 
   const dotSvg = pathPts.map((p) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${colorHex || "#333"}" />`).join("");
   // End folds are drawn in inches inside a scaled group so the same geometry the canvas
   // shows lands on the spec sheet, with a stroke that doesn't scale with it.
-  const foldSvg = endFolds(points, hemStart, hemEnd, Math.max(spanX, spanY) / 100)
+  const foldSvg = folds
     .map((f) => `<path d="${f.d}" fill="none" stroke="#B8860B" stroke-width="${f.closed ? 3.5 : 2.5}" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`).join("");
   return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="background:#fff;border:1px solid #ddd;border-radius:8px;">
     <path d="${pathD}" fill="none" stroke="${colorHex || "#333"}" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
@@ -1107,14 +1108,14 @@ function ShapeThumb({ order, size = 64 }) {
   }
   const pts = order.points || [[0, 0], [0, 1]];
   const xs = pts.map((p) => p[0]), ys = pts.map((p) => p[1]);
-  const minX = Math.min(...xs), maxX = Math.max(...xs);
-  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const extent = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 0.5);
+  const folds = pts.length > 1 ? endFolds(pts, order.hemStart, order.hemEnd, extent / 100) : [];
+  const [minX, minY, maxX, maxY] = profileBounds(pts, folds); // fit the folds in the thumbnail too
   const w = Math.max(0.5, maxX - minX), h = Math.max(0.5, maxY - minY);
   const s = Math.min((size - pad * 2) / w, (size - pad * 2) / h);
   const offX = (size - w * s) / 2 - minX * s;
   const offY = (size - h * s) / 2 - minY * s;
   const d = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0] * s + offX} ${p[1] * s + offY}`).join(" ");
-  const folds = endFolds(pts, order.hemStart, order.hemEnd, Math.max(w, h) / 100);
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
       <path d={d} fill="none" stroke={order.colorHex} strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
@@ -1178,14 +1179,23 @@ function foldGlyph(p, dir, side, type, unit) {
   if (type === "kick") {
     const k = L / Math.SQRT2;
     const tip = at(k, k);
-    return { d: `M ${p[0]} ${p[1]} L ${tip[0]} ${tip[1]}`, closed: false, labelPos: at(k + 1.5 * unit, k + 3.5 * unit) };
+    return { d: `M ${p[0]} ${p[1]} L ${tip[0]} ${tip[1]}`, closed: false, labelPos: at(k + 1.5 * unit, k + 3.5 * unit), extent: [p, tip] };
   }
   // The leg ends at p and folds 180° back over itself: closed sits tight against the leg,
   // open leaves a gap, a hook leaves a bigger one.
   const gap = type === "closed" ? 1.6 * unit : type === "open" ? Math.max(0.125, 3 * unit) : Math.max(0.25, 4.5 * unit);
   const a = at(0, gap), b = at(-L, gap);
   const sweep = side === "left" ? 1 : 0; // the arc must bulge past the end, whichever side the fold is on
-  return { d: `M ${p[0]} ${p[1]} A ${gap / 2} ${gap / 2} 0 0 ${sweep} ${a[0]} ${a[1]} L ${b[0]} ${b[1]}`, closed: type === "closed", labelPos: at(-L / 2, gap + 3.5 * unit) };
+  return {
+    d: `M ${p[0]} ${p[1]} A ${gap / 2} ${gap / 2} 0 0 ${sweep} ${a[0]} ${a[1]} L ${b[0]} ${b[1]}`, closed: type === "closed", labelPos: at(-L / 2, gap + 3.5 * unit),
+    extent: [p, a, b, at(gap / 2, 0), at(gap / 2, gap)], // points a bounding box must include (the arc's bulge too)
+  };
+}
+// Bounding box of a profile with its end folds, in inches: [minX, minY, maxX, maxY].
+function profileBounds(points, folds) {
+  const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
+  for (const f of folds) for (const q of f.extent) { xs.push(q[0]); ys.push(q[1]); }
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
 }
 // Both end folds of a profile, ready to draw. The start fold runs backward along the first
 // leg, so its side is mirrored — "left" stays on the same side of the profile as the end
@@ -1263,11 +1273,15 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
 
   // ---- In-place editors: tap a length pill, an angle pill, an end ring or the rotation
   // readout and a sheet opens under the canvas — no browser prompt. ----
-  const [editor, setEditor] = useState(null); // { kind: "length"|"angle", i } | { kind: "fold", end: "start"|"end" } | { kind: "rotate" }
+  // `orig` is the text the sheet opened with: Done only applies what was actually changed,
+  // so an untouched draft (rounded for display) never rewrites the geometry underneath.
+  const [editor, setEditor] = useState(null); // { kind: "length"|"angle", i, orig } | { kind: "fold", end: "start"|"end" } | { kind: "rotate", orig }
   const [draft, setDraft] = useState("");
   const [pitchOpen, setPitchOpen] = useState(false);
   const [pitch, setPitch] = useState(4);
+  const [invalid, setInvalid] = useState(false); // Done with a value that can't be applied keeps the sheet open and says so
   const inputRef = useRef(null);
+  const modeBeforeFold = useRef(null); // the fold chips borrow Folds mode; closing the sheet hands the old mode back
 
   // ---- Rotate the whole profile: a ruler under the canvas you drag sideways ----
   // A rigid turn about the drawing's centre, applied to the points themselves so the
@@ -1299,6 +1313,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     const target = normDeg(deg);
     setPoints(rotatePoints(base, origin, target - from));
     setRotation(target);
+    syncRotateSheet(target);
   };
   const rotDown = (e) => {
     if (points.length < 2) return;
@@ -1334,6 +1349,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     setHemEnd?.(flipHem(hemEnd));
     setPaintSide?.(paintSide === "left" ? "right" : "left");
     setRotation((r) => normDeg(-r));
+    syncRotateSheet(normDeg(-rotation));
   };
 
   // Formats a length in inches for display, switching to mm when metric is selected.
@@ -1345,13 +1361,13 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   useEffect(() => {
     setZoom(1);
     setRotation(0);
-    setEditor(null);
-  }, [viewResetKey]);
+    closeEditor();
+  }, [viewResetKey]); // eslint-disable-line react-hooks/exhaustive-deps
   // Points can be removed (Undo, a preset) while an editor is pointing at one of them.
   useEffect(() => {
     if (!editor) return;
     const n = points.length;
-    if ((editor.kind === "length" && editor.i > n - 1) || (editor.kind === "angle" && editor.i > n - 2) || n < 2) setEditor(null);
+    if ((editor.kind === "length" && editor.i > n - 1) || (editor.kind === "angle" && editor.i > n - 2) || n < 2) closeEditor();
   }, [points.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (editor && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); }
@@ -1369,7 +1385,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const lastAddRef = useRef(0);
   const handleBgDown = (e) => {
     if (dragIdx !== null) return;
-    if (editor) { setEditor(null); return; } // a tap on the drawing puts the sheet away, nothing more
+    if (editor) { closeEditor(); return; } // a tap on the drawing puts the sheet away, nothing more
     if (mode === "select") { setSelectedIdx(null); return; }
     if (mode !== "draw") return;
     const now = Date.now();
@@ -1403,7 +1419,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   // `desired` is the inside angle in degrees: 90 for a square corner, 170 for a shallow ridge.
   const applyAngle = (i, desired) => {
     if (i < 1 || i > points.length - 2) return false;
-    if (!isFinite(desired) || desired <= 0 || desired >= 180) return false;
+    if (!isFinite(desired) || desired <= 0 || desired > 180) return false;
     const prev = points[i - 1], cur = points[i], next = points[i + 1];
     const v1 = unitVec(cur, prev); // direction cur -> prev, held fixed
     const v2 = unitVec(cur, next); // direction cur -> next, to be swung
@@ -1420,34 +1436,54 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     }));
     return true;
   };
+  // Keep the ROTATE sheet showing the real rotation when the ruler, +90°, ⟲ or Mirror change it.
+  const syncRotateSheet = (deg) => {
+    if (editor?.kind !== "rotate") return;
+    const t = trimNum(Math.round(deg * 10) / 10);
+    setDraft(t);
+    setEditor({ kind: "rotate", orig: t });
+  };
   const lengthDraft = (i) => (unitSystem === "metric" ? String(Math.round(dist(points[i - 1], points[i]) * 25.4)) : trimNum(Math.round(dist(points[i - 1], points[i]) * 100) / 100));
   const angleDraft = (i) => trimNum(Math.round(insideAngle(points[i - 1], points[i], points[i + 1]) * 10) / 10);
-  const openLength = (i) => { if (i < 1 || i > points.length - 1) return; setEditor({ kind: "length", i }); setDraft(lengthDraft(i)); };
-  const openAngle = (i) => { if (i < 1 || i > points.length - 2) return; setEditor({ kind: "angle", i }); setDraft(angleDraft(i)); };
-  const openFold = (end) => { if (points.length < 2) return; setMode("folds"); setEditor({ kind: "fold", end }); };
-  const openRotate = () => { if (points.length < 2) return; setEditor({ kind: "rotate" }); setDraft(trimNum(Math.round(rotation * 10) / 10)); };
-  const commitDraft = () => {
-    if (!editor) return;
-    if (editor.kind === "length") applyLength(editor.i, draft);
-    else if (editor.kind === "angle") applyAngle(editor.i, parseFloat(draft));
-    else if (editor.kind === "rotate") { const deg = parseFloat(draft); if (isFinite(deg)) applyRotation(deg); }
+  const openLength = (i) => { if (i < 1 || i > points.length - 1) return; const t = lengthDraft(i); setEditor({ kind: "length", i, orig: t }); setDraft(t); };
+  const openAngle = (i) => { if (i < 1 || i > points.length - 2) return; const t = angleDraft(i); setEditor({ kind: "angle", i, orig: t }); setDraft(t); };
+  const openFold = (end) => {
+    if (points.length < 2) return;
+    if (mode !== "folds") modeBeforeFold.current = mode;
+    setMode("folds");
+    setEditor({ kind: "fold", end });
   };
-  const done = () => { commitDraft(); setEditor(null); };
+  const closeEditor = () => {
+    if (editor?.kind === "fold" && modeBeforeFold.current) { setMode(modeBeforeFold.current); modeBeforeFold.current = null; }
+    setEditor(null);
+    setInvalid(false);
+  };
+  const openRotate = () => { if (points.length < 2) return; const t = trimNum(Math.round(rotation * 10) / 10); setEditor({ kind: "rotate", orig: t }); setDraft(t); };
+  // True when the draft was applied (or didn't need to be); false when it can't be read.
+  const commitDraft = () => {
+    if (!editor || draft.trim() === (editor.orig ?? "").trim()) return true; // nothing typed: leave the geometry exactly as it is
+    if (editor.kind === "length") return applyLength(editor.i, draft);
+    if (editor.kind === "angle") return applyAngle(editor.i, parseFloat(draft));
+    if (editor.kind === "rotate") { const deg = parseFloat(draft); if (!isFinite(deg)) return false; applyRotation(deg); }
+    return true;
+  };
+  const done = () => { if (commitDraft()) closeEditor(); else { setInvalid(true); inputRef.current?.focus(); } };
   // ← → move to the previous / next leg or bend, keeping what was typed for this one.
   // Lengths and inside angles elsewhere don't change when one leg or bend is edited, so
   // the next draft can be read straight off the current points.
   const stepRange = editor?.kind === "length" ? [1, points.length - 1] : editor?.kind === "angle" ? [1, points.length - 2] : null;
   const step = (delta) => {
     if (!stepRange) return;
-    commitDraft();
+    if (!commitDraft()) { setInvalid(true); return; }
     const j = editor.i + delta;
     if (j < stepRange[0] || j > stepRange[1]) return;
-    setEditor({ ...editor, i: j });
-    setDraft(editor.kind === "length" ? lengthDraft(j) : angleDraft(j));
+    const t = editor.kind === "length" ? lengthDraft(j) : angleDraft(j);
+    setEditor({ ...editor, i: j, orig: t });
+    setDraft(t);
   };
   const onEditorKey = (e) => {
     if (e.key === "Enter") { e.preventDefault(); done(); }
-    else if (e.key === "Escape") { e.preventDefault(); setEditor(null); }
+    else if (e.key === "Escape") { e.preventDefault(); closeEditor(); }
   };
   const addFraction = (frac) => {
     // "6.5" → "6 1/2", "6 1/4" → "6 1/2", "" → "1/2"
@@ -1556,7 +1592,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
         <div style={{ display: "flex", borderRadius: 5, overflow: "hidden", border: "1px solid rgba(255,255,255,0.4)" }}>
           {[["draw", "Draw"], ["select", "Select"], ["folds", "Folds"]].map(([id, label]) => (
             <button key={id} type="button" data-testid={`mode-${id}`}
-              onClick={() => { setMode(id); setSelectedIdx(null); if (id === "draw") setZoom(1); if (editor?.kind === "fold" && id !== "folds") setEditor(null); }}
+              onClick={() => { setMode(id); setSelectedIdx(null); modeBeforeFold.current = null; if (id === "draw") setZoom(1); if (editor?.kind === "fold" && id !== "folds") setEditor(null); }}
               style={{ padding: "4px 8px", fontSize: 10, fontWeight: 700, border: "none", cursor: "pointer",
                 background: mode === id ? SAFETY : "rgba(10,43,65,0.85)", color: "#fff" }}>
               {label}
@@ -1818,7 +1854,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <span className="mono" style={{ fontSize: 9, letterSpacing: "0.12em", color: SAFETY, fontWeight: 700 }}>{editorTitle}</span>
             <span style={{ flex: 1 }} />
-            <button type="button" aria-label="Close" onClick={() => setEditor(null)}
+            <button type="button" aria-label="Close" onClick={closeEditor}
               style={{ width: 24, height: 24, borderRadius: 12, border: "1px solid rgba(255,255,255,0.25)", background: "transparent", color: "#fff", cursor: "pointer", fontSize: 12, lineHeight: 1 }}>✕</button>
           </div>
           {editor.kind === "fold" ? (() => {
@@ -1860,17 +1896,17 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
                 <div style={{ fontSize: 10.5, color: "#8FB4C9", marginTop: 6 }}>
                   {h ? `${foldType(h.type).hint}. Adds ${fracIn(foldType(h.type).allowance)} to the girth.` : "The fold is drawn on the profile and counted in the girth."}
                 </div>
-                <button type="button" data-testid="editor-done" onClick={() => setEditor(null)}
+                <button type="button" data-testid="editor-done" onClick={closeEditor}
                   style={{ width: "100%", marginTop: 8, padding: 9, borderRadius: 8, border: "none", background: SAFETY, color: "#fff", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Done</button>
               </div>
             );
           })() : (
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
-                <input ref={inputRef} className="mono" type="text" inputMode="decimal" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={onEditorKey}
-                  aria-label={editor.kind === "length" ? "Length" : editor.kind === "angle" ? "Angle" : "Rotation"}
+                <input ref={inputRef} className="mono" type="text" inputMode="decimal" value={draft} onChange={(e) => { setDraft(e.target.value); setInvalid(false); }} onKeyDown={onEditorKey}
+                  aria-label={editor.kind === "length" ? "Length" : editor.kind === "angle" ? "Angle" : "Rotation"} aria-invalid={invalid || undefined}
                   placeholder={editor.kind === "length" && unitSystem === "imperial" ? 'e.g. 6.5 or 6 1/2' : ""}
-                  style={{ flex: 1, minWidth: 0, fontSize: 20, fontWeight: 700, background: "transparent", border: "none", borderBottom: `2px solid ${SAFETY}`, color: "#fff", padding: "4px 2px", outline: "none" }} />
+                  style={{ flex: 1, minWidth: 0, fontSize: 20, fontWeight: 700, background: "transparent", border: "none", borderBottom: `2px solid ${invalid ? "#FF6B6B" : SAFETY}`, color: "#fff", padding: "4px 2px", outline: "none" }} />
                 <span className="mono" style={{ fontSize: 12, color: "#8FB4C9", fontWeight: 700, minWidth: 22 }}>
                   {editor.kind === "length" ? (unitSystem === "metric" ? "mm" : "in") : "°"}
                 </span>
@@ -1883,6 +1919,12 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
                   </div>
                 )}
               </div>
+              {invalid && (
+                <div role="alert" style={{ fontSize: 10.5, color: "#FF9B9B", marginTop: 5 }}>
+                  {editor.kind === "length" ? `Enter a length above 0${unitSystem === "imperial" ? ' — like 6.5, 6 1/2 or 3/8' : " in mm"}.`
+                    : editor.kind === "angle" ? "Enter an inside angle between 0 and 180 degrees." : "Enter the rotation in degrees."}
+                </div>
+              )}
               {editor.kind === "length" && unitSystem === "imperial" && (
                 <div style={{ display: "flex", gap: 4, marginTop: 8, flexWrap: "wrap" }}>
                   {FRACTION_CHIPS.map(([glyph, frac]) => (
@@ -1920,7 +1962,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginTop: 4 }}>
                           {cards.map((c) => (
                             <button key={c.id} type="button" data-testid={`pitch-${c.id}`} title={c.hint}
-                              onClick={() => { applyAngle(editor.i, c.value); setDraft(trimNum(Math.round(c.value * 10) / 10)); }}
+                              onClick={() => { applyAngle(editor.i, c.value); const t = trimNum(Math.round(c.value * 10) / 10); setDraft(t); setEditor({ ...editor, orig: t }); }}
                               style={btn(Math.abs(parseFloat(draft) - c.value) < 0.06, { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "6px 4px" })}>
                               <PitchPicture kind={c.id} th={th} />
                               <span className="mono" style={{ fontSize: 13, color: SAFETY }}>{fmtDeg(c.value)}</span>
@@ -6866,11 +6908,11 @@ export default function ShopOrderApp() {
                                   📍 {o.jobSiteAddress}{o.jobSiteMiles ? ` · ${o.jobSiteMiles} mi one way${mileageCharge(o.jobSiteMiles) > 0 ? ` · mileage ${money(mileageCharge(o.jobSiteMiles))}` : ""}` : ""}
                                 </div>
                               )}
-                              {o.type === "trim" && (o.hemStart !== "none" || o.hemEnd !== "none") && (
+                              {o.type === "trim" && (parseHem(o.hemStart) || parseHem(o.hemEnd)) && (
                                 <div style={{ fontSize: 10.5, color: SAFETY, marginTop: 2 }}>
-                                  {o.hemStart !== "none" && `Start hem: ${formatHem(o.hemStart)}`}
-                                  {o.hemStart !== "none" && o.hemEnd !== "none" && " · "}
-                                  {o.hemEnd !== "none" && `End hem: ${formatHem(o.hemEnd)}`}
+                                  {parseHem(o.hemStart) && `Start fold: ${formatHem(o.hemStart)}`}
+                                  {parseHem(o.hemStart) && parseHem(o.hemEnd) && " · "}
+                                  {parseHem(o.hemEnd) && `End fold: ${formatHem(o.hemEnd)}`}
                                 </div>
                               )}
                               {o.type === "trim" && o.paintSide && (
