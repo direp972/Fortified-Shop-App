@@ -92,7 +92,7 @@
         </a>
       </div>
       <dl class="spec-strip">
-        <div><dt>Listed shops</dt><dd>2 &amp; growing</dd></div>
+        <div><dt>Listed shops</dt><dd id="st-shops">Growing</dd></div>
         <div><dt>Abilities</dt><dd>43</dd></div>
         <div><dt>Colors</dt><dd>15+</dd></div>
         <div><dt>Ways to search</dt><dd>3</dd></div>
@@ -234,6 +234,12 @@
 </div></footer>
 <style>@media(max-width:860px){.sup3{grid-template-columns:1fr!important}}</style>
 <script>
+// Listed-shop count is live: every published directory listing counts, so it
+// climbs on its own as shops are approved. Falls back to the static text if the
+// table can't be reached.
+fetch("https://znueitseoqijhkkvdomc.supabase.co/rest/v1/directory_listings?select=id&status=eq.live",{headers:{apikey:"sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB",Prefer:"count=exact","Range-Unit":"items",Range:"0-0"}})
+  .then(r=>{const n=parseInt((r.headers.get("content-range")||"").split("/")[1],10);if(n>0)document.getElementById("st-shops").textContent=n+" & growing"})
+  .catch(()=>{});
 const COLORS=[["Regal White","#E3E1DC"],["Almond","#D9C9AE"],["Ash Gray","#9C9088"],["Slate Gray","#706A66"],["Burnished Slate","#565B5E"],["Charcoal","#55504C"],["Medium Bronze","#4A3E36"],["Dark Bronze","#3A322C"],["Matte Black","#26262A"],["Evergreen","#1F3D2E"],["Copper Metallic","#A0602E"],["Galvalume","#D8D6D0"],["Texas Silver","#B0B4B7"],["Bare Copper","#B87333"],["Bonderized","#7E837F"]];
 const $=s=>document.querySelector(s);
 document.getElementById("lab-chips").innerHTML=COLORS.map(c=>`<button style="background:${c[1]}" data-c="${c[0]}" title="${c[0]}" aria-label="${c[0]}"></button>`).join("");
