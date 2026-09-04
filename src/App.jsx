@@ -1719,7 +1719,9 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     setDraft(t);
     setEditor({ kind: "rotate", orig: t });
   };
-  const lengthDraft = (i) => (unitSystem === "metric" ? String(Math.round(dist(points[i - 1], points[i]) * 25.4)) : trimNum(Math.round(dist(points[i - 1], points[i]) * 100) / 100));
+  // The sheet opens on the number as its tag reads it — sub-inch without the leading zero
+  // (parseLength takes ".5" the same as "0.5", so what's typed back still reads fine).
+  const lengthDraft = (i) => (unitSystem === "metric" ? String(Math.round(dist(points[i - 1], points[i]) * 25.4)) : trimNum(Math.round(dist(points[i - 1], points[i]) * 100) / 100).replace(/^0\./, "."));
   const angleDraft = (i) => trimNum(Math.round(insideAngle(points[i - 1], points[i], points[i + 1]) * 10) / 10);
   const openLength = (i) => { if (i < 1 || i > points.length - 1) return; const t = lengthDraft(i); setEditor({ kind: "length", i, orig: t }); setDraft(t); };
   // A hem's fold is a fixed 180°, not a bend to edit — the angle sheet skips it.
