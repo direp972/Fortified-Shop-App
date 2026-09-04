@@ -1595,7 +1595,8 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   };
 
   // Formats a length in inches for display, switching to mm when metric is selected.
-  const formatLen = (inches) => (unitSystem === "metric" ? `${Math.round(inches * 25.4)}mm` : `${inches.toFixed(2)}"`);
+  // Under an inch the leading zero comes off — .50" the way it's called out on a drawing.
+  const formatLen = (inches) => (unitSystem === "metric" ? `${Math.round(inches * 25.4)}mm` : `${inches.toFixed(2).replace(/^0\./, ".")}"`);
 
   // When a preset is loaded, reset to a neutral zoom. Sizing itself is now handled by
   // the proportional margin above (scales with each shape's own size), so every preset
