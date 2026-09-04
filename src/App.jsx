@@ -1256,7 +1256,7 @@ function profileDisplay(points, gap) {
 }
 
 // ---- Label placement: length tags, angle bubbles and fold captions that keep clear of the drawing ----
-const boxesOverlap = (a, b, gap) => Math.abs(a.x - b.x) < (a.w + b.w) / 2 + gap && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + gap;
+const boxesOverlap = (a, b, gap) => { const g = b.gap ?? a.gap ?? gap; return Math.abs(a.x - b.x) < (a.w + b.w) / 2 + g && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + g; };
 // Half-extent of a w×h box along direction n — how far its edge reaches from its centre that way.
 const extentAlong = (w, h, n) => (w / 2) * Math.abs(n[0]) + (h / 2) * Math.abs(n[1]);
 // Every tag tries a few spots — beside its line, outside or inside its corner, a little
@@ -1264,10 +1264,17 @@ const extentAlong = (w, h, n) => (w / 2) * Math.abs(n[0]) + (h / 2) * Math.abs(n
 // the canvas and sits away from the body of the drawing. Length tags go first (they have
 // the fewest options), then angle bubbles, then fold captions fit in around them.
 // `obstacles` are things already drawn (paint arrow, folds, end rings) that tags avoid.
-function placeLabels(points, unit, lenLabels, angLabels, capLabels, obstacles = [], view = null) {
+// Do two segments cross (properly, not just touch at an end)?
+function segmentsCross(p1, p2, q1, q2) {
+  const o = (a, b, c) => Math.sign((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]));
+  const o1 = o(p1, p2, q1), o2 = o(p1, p2, q2), o3 = o(q1, q2, p1), o4 = o(q1, q2, p2);
+  return o1 !== 0 && o2 !== 0 && o3 !== 0 && o4 !== 0 && o1 !== o2 && o3 !== o4;
+}
+function placeLabels(points, unit, lenLabels, angLabels, capLabels, obstacles = [], view = null, extraLegs = [], debug = null) {
   const n = points.length;
   const legs = [];
   for (let i = 1; i < n; i++) legs.push([points[i - 1], points[i]]);
+  for (const s of extraLegs) legs.push(s); // folds and the paint arrow count as lines too
   const cx = points.reduce((s, p) => s + p[0], 0) / (n || 1), cy = points.reduce((s, p) => s + p[1], 0) / (n || 1);
   const placed = obstacles.slice();
   // How deep (in units) the box, padded a little, cuts into any leg: the line is walked in
@@ -1276,7 +1283,7 @@ function placeLabels(points, unit, lenLabels, angLabels, capLabels, obstacles = 
     const hw = box.w / 2 + 0.8 * unit, hh = box.h / 2 + 0.8 * unit, step = Math.min(hw, hh) / 2;
     let worst = 0;
     for (const [a, b] of legs) {
-      const k = Math.min(200, Math.max(2, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step)));
+      const k = Math.min(60, Math.max(2, Math.ceil(Math.hypot(b[0] - a[0], b[1] - a[1]) / step)));
       for (let s = 0; s <= k; s++) {
         const t = s / k, qx = a[0] + (b[0] - a[0]) * t, qy = a[1] + (b[1] - a[1]) * t;
         const ox = hw - Math.abs(qx - box.x), oy = hh - Math.abs(qy - box.y);
@@ -1287,50 +1294,94 @@ function placeLabels(points, unit, lenLabels, angLabels, capLabels, obstacles = 
   };
   const overflow = (box) => {
     if (!view) return 0;
-    const l = Math.max(0, view.x - (box.x - box.w / 2)), r = Math.max(0, box.x + box.w / 2 - (view.x + view.w));
-    const t = Math.max(0, view.y - (box.y - box.h / 2)), b = Math.max(0, box.y + box.h / 2 - (view.y + view.h));
+    const m = unit; // keep a unit of air inside the edge — a box on the edge reads as clipped
+    const l = Math.max(0, view.x + m - (box.x - box.w / 2)), r = Math.max(0, box.x + box.w / 2 - (view.x + view.w - m));
+    const t = Math.max(0, view.y + m - (box.y - box.h / 2)), b = Math.max(0, box.y + box.h / 2 - (view.y + view.h - m));
     return (l + r + t + b) / unit;
   };
-  // A tag's pointer must not cut through another tag either.
+  // A tag's pointer must not cut through another tag, or across a line.
   const pointerCrosses = (box, o) => {
     const a = box.anchor, b = [box.x, box.y];
+    if (Math.abs(a[0] - o.x) < o.w / 2 && Math.abs(a[1] - o.y) < o.h / 2) return false; // the target itself sits in this box
     for (let s = 0; s <= 12; s++) {
       const x = a[0] + (b[0] - a[0]) * s / 12, y = a[1] + (b[1] - a[1]) * s / 12;
       if (Math.abs(x - o.x) < o.w / 2 && Math.abs(y - o.y) < o.h / 2) return true;
     }
     return false;
   };
-  const cost = (box, ox, oy) => {
-    const cut = intrusion(box);
-    let c = (cut > 0 ? 30 + 10 * cut : 0) + 8 * overflow(box); // covering a line is the one thing a tag must not do
-    for (const o of placed) { if (boxesOverlap(box, o, 1.2 * unit)) c += 40; else if (box.anchor && pointerCrosses(box, o)) c += 25; }
-    const ax = box.x - cx, ay = box.y - cy, m = Math.hypot(ax, ay) || 1;
-    return c - 1.5 * ((ox * ax + oy * ay) / m); // away from the centroid reads as "out of the way"
+  const pointerCutsLine = (box) => {
+    const a = box.anchor, b = [box.x, box.y], m = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1;
+    const p1 = [a[0] + ((b[0] - a[0]) / m) * 2 * unit, a[1] + ((b[1] - a[1]) / m) * 2 * unit]; // the pointer ends on its own target
+    for (const [q1, q2] of legs) if (segmentsCross(p1, b, q1, q2)) return true;
+    return false;
   };
-  const pick = (cands, w, h) => {
+  const cost = (box, ox, oy) => {
+    const cut = intrusion(box), over = overflow(box);
+    let overlaps = 0, ptrBox = 0;
+    for (const o of placed) { if (boxesOverlap(box, o, 1.2 * unit)) overlaps++; else if (box.anchor && !o.dot && pointerCrosses(box, o)) ptrBox++; } // pointers end at dots — those don't count
+    const ptrLine = box.anchor && pointerCutsLine(box) ? 1 : 0;
+    const ax = box.x - cx, ay = box.y - cy, m = Math.hypot(ax, ay) || 1;
+    const away = (ox * ax + oy * ay) / m; // away from the centroid reads as "out of the way"
+    // covering a line is the one thing a tag must not do; then not touching another tag
+    // leaving the canvas is nearly as bad as covering a line: a hair over costs a little, more costs a lot
+    // (a hair into the padding around a line is priced gently; a visible cut costs the flat 30)
+    const total = (cut > 0.3 ? 30 + 10 * cut : 40 * cut) + (over > 0.5 ? 60 + 20 * over : 30 * over) + 40 * overlaps + 25 * ptrBox + 25 * ptrLine - 1.5 * away;
+    return { total, cut, over, overlaps, ptrBox, ptrLine, away };
+  };
+  const pick = (cands, w, h, key) => {
     let best = null;
+    const trace = debug ? [] : null;
     cands.forEach((c, k) => {
       const box = { x: c.x, y: c.y, w, h, anchor: c.anchor };
-      const s = cost(box, c.ox, c.oy) + 0.3 * k; // earlier candidates are the preferred spots
+      const parts = cost(box, c.ox, c.oy);
+      const s = parts.total + 0.3 * k + (c.bias || 0); // earlier and nearer candidates are the preferred spots
+      if (trace) trace.push({ k, x: c.x, y: c.y, s, bias: c.bias || 0, ...parts });
       if (!best || s < best.s) best = { ...box, s };
     });
+    if (debug) debug.push({ key, best, cands: trace });
     placed.push(best);
     return best;
   };
   const len = new Map(), ang = new Map(), cap = new Map();
+  // Fold captions first: small, few places to go, and they mark the fold itself; then the
+  // length tags (which must stay beside their leg), then the angle bubbles fit in around them.
+  for (const L of capLabels) {
+    const p = L.at, out = L.out, cands = [];
+    for (const [extra, bias] of [[2.5 * unit, 0], [6 * unit, 3]]) {
+      for (const d of [[-out[1], out[0]], [out[1], -out[0]], out]) {
+        const off = extentAlong(L.w, L.h, d) + extra;
+        const back = d === out ? 0 : 2 * unit; // captions beside the fold sit a touch back along the leg
+        cands.push({ x: p[0] + d[0] * off - out[0] * back, y: p[1] + d[1] * off - out[1] * back, ox: d[0], oy: d[1], anchor: p, bias });
+      }
+    }
+    cap.set(L.which, pick(cands, L.w, L.h, L.which));
+  }
   for (const L of lenLabels) {
     const a = points[L.i - 1], b = points[L.i], d = unitVec(a, b);
     const cands = [];
-    for (const extra of [1.3 * unit, 6 * unit]) {
-      for (const t of [0.5, 0.32, 0.68]) {
+    const ts = L.avoidMid ? [0.32, 0.68, 0.5] : [0.5, 0.32, 0.68]; // not on top of the paint arrow's tail
+    // Beside the leg first (close, then a little further out), then off the corners and
+    // straight off either end — the spots a short leg or a hemmed leg needs.
+    for (const [extra, bias] of [[1.3 * unit, 0], [4 * unit, 3], [7.5 * unit, 6], [11 * unit, 8], [16 * unit, 11]]) { // further out costs more, but beats covering or crowding
+      for (const t of ts) {
         const m = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
         for (const p of [[-d[1], d[0]], [d[1], -d[0]]]) {
           const off = extentAlong(L.w, L.h, p) + extra; // clear of the line whichever way the leg runs
-          cands.push({ x: m[0] + p[0] * off, y: m[1] + p[1] * off, ox: p[0], oy: p[1], anchor: m });
+          cands.push({ x: m[0] + p[0] * off, y: m[1] + p[1] * off, ox: p[0], oy: p[1], anchor: m, bias });
         }
       }
     }
-    len.set(L.i, pick(cands, L.w, L.h));
+    const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    for (const sx of [1, -1]) for (const sy of [1, -1]) {
+      const q = [(d[0] * sx - d[1] * sy) / Math.SQRT2, (d[1] * sx + d[0] * sy) / Math.SQRT2];
+      const off = extentAlong(L.w, L.h, q) + 1.5 * unit;
+      cands.push({ x: m[0] + q[0] * off, y: m[1] + q[1] * off, ox: q[0], oy: q[1], anchor: m, bias: 2 });
+    }
+    for (const [e, q] of [[b, d], [a, [-d[0], -d[1]]]]) {
+      const off = extentAlong(L.w, L.h, q) + 3.5 * unit; // past the end point's dot and its clearance
+      cands.push({ x: e[0] + q[0] * off, y: e[1] + q[1] * off, ox: q[0], oy: q[1], anchor: e, bias: 8 });
+    }
+    len.set(L.i, pick(cands, L.w, L.h, `len${L.i}`));
   }
   for (const L of angLabels) {
     const v = points[L.i], v1 = unitVec(v, points[L.i - 1]), v2 = unitVec(v, points[L.i + 1]);
@@ -1343,22 +1394,17 @@ function placeLabels(points, unit, lenLabels, angLabels, capLabels, obstacles = 
     const dirs = [];
     for (const [x, y] of base) for (const a of [0, 0.61, -0.61, 1.13, -1.13]) dirs.push([x * Math.cos(a) - y * Math.sin(a), x * Math.sin(a) + y * Math.cos(a)]);
     const cands = [];
-    for (const extra of [4.5 * unit, 8 * unit, 12 * unit]) for (const d of dirs) {
+    // Further rings cost more, and a spot nearer some other bend than its own is wrong —
+    // so two bends close together (a valley's W) each keep their own side.
+    const others = points.filter((_, k) => k !== L.i && k > 0 && k < n - 1);
+    for (const [extra, bias] of [[4.5 * unit, 0], [8 * unit, 3], [12 * unit, 6], [16 * unit, 9]]) for (const d of dirs) {
       const off = extentAlong(L.w, L.h, d) + extra;
-      cands.push({ x: v[0] + d[0] * off, y: v[1] + d[1] * off, ox: d[0], oy: d[1], anchor: v });
+      const x = v[0] + d[0] * off, y = v[1] + d[1] * off;
+      const own = Math.hypot(x - v[0], y - v[1]);
+      const stray = others.some((o) => Math.hypot(x - o[0], y - o[1]) < own) ? 6 : 0;
+      cands.push({ x, y, ox: d[0], oy: d[1], anchor: v, bias: bias + stray });
     }
-    ang.set(L.i, pick(cands, L.w, L.h));
-  }
-  for (const L of capLabels) {
-    const p = L.at, out = L.out, cands = [];
-    for (const extra of [2.5 * unit, 6 * unit]) {
-      for (const d of [[-out[1], out[0]], [out[1], -out[0]], out]) {
-        const off = extentAlong(L.w, L.h, d) + extra;
-        const back = d === out ? 0 : 2 * unit; // captions beside the fold sit a touch back along the leg
-        cands.push({ x: p[0] + d[0] * off - out[0] * back, y: p[1] + d[1] * off - out[1] * back, ox: d[0], oy: d[1], anchor: p });
-      }
-    }
-    cap.set(L.which, pick(cands, L.w, L.h));
+    ang.set(L.i, pick(cands, L.w, L.h, `ang${L.i}`));
   }
   return { len, ang, cap };
 }
@@ -1366,9 +1412,15 @@ function placeLabels(points, unit, lenLabels, angLabels, capLabels, obstacles = 
 function tagPointer(box, unit, gap) {
   const dx = box.anchor[0] - box.x, dy = box.anchor[1] - box.y, m = Math.hypot(dx, dy) || 1;
   const ux = dx / m, uy = dy / m;
-  const tip = [box.anchor[0] - ux * gap, box.anchor[1] - uy * gap];
-  const w = 1.3 * unit;
-  return `M ${box.x - uy * w} ${box.y + ux * w} L ${tip[0]} ${tip[1]} L ${box.x + uy * w} ${box.y - ux * w} Z`;
+  const edge = extentAlong(box.w, box.h, [ux, uy]) * 0.9; // a touch inside the pill, so the wedge's base is hidden
+  const reach = m - gap - edge;                            // how far the pointer has to go to touch its target
+  if (reach <= 0.3 * unit) return { wedge: null, hair: null };
+  const len = Math.min(0.55 * box.h, reach), w = 0.9 * unit;
+  const s = [box.x + ux * edge, box.y + uy * edge], tip = [s[0] + ux * len, s[1] + uy * len];
+  return {
+    wedge: `M ${s[0] - uy * w} ${s[1] + ux * w} L ${tip[0]} ${tip[1]} L ${s[0] + uy * w} ${s[1] - ux * w} Z`,
+    hair: reach > len + 0.5 * unit ? [tip[0], tip[1], box.anchor[0] - ux * gap, box.anchor[1] - uy * gap] : null, // a thin line finishes the trip
+  };
 }
 
 const PITCH_CHIPS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18];
@@ -1422,7 +1474,8 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const [zoom, setZoom] = useState(1); // 1 = the auto-fit view; smaller zooms in, larger zooms out
   const [mode, setMode] = useState("draw"); // "draw" | "select" | "folds"
   const [selectedIdx, setSelectedIdx] = useState(null);
-  const [gridSpacing, setGridSpacing] = useState(3); // inches between dots
+  const [gridSpacing, setGridSpacing] = useState("auto"); // inches between dots, or "auto" for the drawing's scale
+  const [svgW, setSvgW] = useState(416); // rendered width, so text never drops below a readable size on a phone
   const [angleVisibility, setAngleVisibility] = useState("all"); // "all" | "hide90" | "hideAll"
   const [showSettings, setShowSettings] = useState(false);
   const [unitSystem, setUnitSystem] = useState("imperial"); // "imperial" | "metric" — display only, data always stays in inches
@@ -1535,6 +1588,13 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     if (editor && inputRef.current) { inputRef.current.focus(); inputRef.current.select(); }
   }, [editor?.kind, editor?.i]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver((entries) => { const w = entries[0]?.contentRect?.width; if (w) setSvgW(w); });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const toUser = useCallback((clientX, clientY) => {
     const svg = svgRef.current;
     const pt = svg.createSVGPoint();
@@ -1714,7 +1774,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
       // moving either end of the leg carries the return with it.
       const onLine = (pts, k) => {
         const a = pts[k - 2], b = pts[k - 1], c = pts[k], d = unitVec(a, b);
-        const along = (c[0] - b[0]) * d[0] + (c[1] - b[1]) * d[1];
+        const along = Math.max(-dist(a, b), Math.min(-0.05, (c[0] - b[0]) * d[0] + (c[1] - b[1]) * d[1])); // behind the fold, never past the leg's start
         return keepFold(c, [b[0] + d[0] * along, b[1] + d[1] * along]);
       };
       next = next.map((pt, k) => (k > 1 && foldSide(pt) && (k === dragIdx || k - 1 === dragIdx || k - 2 === dragIdx) ? onLine(next, k) : pt));
@@ -1732,29 +1792,47 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   let minX = Math.min(...xs), maxX = Math.max(...xs);
   let minY = Math.min(...ys), maxY = Math.max(...ys);
   const contentSize = Math.max(maxX - minX, maxY - minY, 0.5);
-  const PAD = Math.max(0.6, contentSize * 0.18);
-  const MIN_W = Math.max(2.5, contentSize * 0.25), MIN_H = Math.max(1.8, contentSize * 0.25);
+  // A tiny drawing still gets a view at least 2.5" wide (and the matching height for the
+  // canvas's shape) so the first legs don't fill the screen and tags stay in proportion.
+  const MIN_W = Math.max(2.5, contentSize * 0.25), MIN_H = MIN_W / (416 / 220);
   if (maxX - minX < MIN_W) { const c = (minX + maxX) / 2; minX = c - MIN_W / 2; maxX = c + MIN_W / 2; }
   if (maxY - minY < MIN_H) { const c = (minY + maxY) / 2; minY = c - MIN_H / 2; maxY = c + MIN_H / 2; }
+  // The margin has to hold the tags, which are sized from the on-screen width (see ASPECT
+  // below). A wide profile fills the width, so 20% of its size is plenty; a tall or square
+  // one is fitted by height and then widened, so its margin must be a bigger share of its
+  // height (0.36 keeps ≥ 11% of the on-screen width clear top and bottom).
+  let PAD = Math.max(0.6, contentSize * 0.2);
+  if (((maxX - minX) + PAD * 2) / ((maxY - minY) + PAD * 2) < 416 / 220) PAD = Math.max(PAD, (maxY - minY) * 0.36);
   const vbX = minX - PAD, vbY = minY - PAD, vbW = (maxX - minX) + PAD * 2, vbH = (maxY - minY) + PAD * 2;
   // While a point is being dragged, the view stays frozen at its pre-drag fit so the
   // canvas never re-centers or resizes under the finger — it re-fits (zooms out to
   // show everything) the moment the drag ends.
   lastViewRef.current = { vbX, vbY, vbW, vbH };
   const fv = dragIdx !== null && dragViewRef.current ? dragViewRef.current : rotViewRef.current || { vbX, vbY, vbW, vbH };
+  // The canvas is 416:220. A fit box of another shape would be letterboxed inside it, so
+  // grow the box to the canvas's shape first — then a "unit" is really 1% of what is on
+  // screen, and tags, dots and the grid are the same size on a tall Z-bar as on a wide cap.
+  const ASPECT = 416 / 220;
+  let fvW = fv.vbW, fvH = fv.vbH;
+  if (fvW / fvH < ASPECT) fvW = fvH * ASPECT; else fvH = fvW / ASPECT;
   // Manual zoom scales the view around its own center, on top of the auto-fit box.
   const cx = fv.vbX + fv.vbW / 2, cy = fv.vbY + fv.vbH / 2;
-  const zVbW = fv.vbW * zoom, zVbH = fv.vbH * zoom;
+  const zVbW = fvW * zoom, zVbH = fvH * zoom;
   const zVbX = cx - zVbW / 2, zVbY = cy - zVbH / 2;
   const unit = zVbW / 100; // scales strokes/points/text relative to current zoom
+  // Text sizes in units, but never below a readable size in CSS pixels on a narrow phone.
+  const pxPerUnit = svgW / 100;
+  const fsFor = (units, minPx) => Math.max(units, minPx / pxPerUnit) * unit;
 
-  // Dot grid — reads as graph paper without the line clutter.
+  // Dot grid — reads as graph paper without the line clutter. "Auto" picks the coarsest
+  // spacing that still gives a few dots across the drawing.
+  const gridStep = gridSpacing === "auto" ? ([0.5, 1, 2, 3, 6, 12].filter((s) => zVbW / s >= 6).pop() || 0.5) : gridSpacing;
   const gridDots = [];
-  const gStartX = Math.floor(zVbX / gridSpacing) * gridSpacing, gEndX = Math.ceil((zVbX + zVbW) / gridSpacing) * gridSpacing;
-  const gStartY = Math.floor(zVbY / gridSpacing) * gridSpacing, gEndY = Math.ceil((zVbY + zVbH) / gridSpacing) * gridSpacing;
-  for (let x = gStartX; x <= gEndX; x += gridSpacing) {
-    for (let y = gStartY; y <= gEndY; y += gridSpacing) {
-      gridDots.push(<circle key={`d${x}-${y}`} cx={x} cy={y} r={0.45 * unit} fill="rgba(255,255,255,0.45)" />);
+  const gStartX = Math.floor(zVbX / gridStep) * gridStep, gEndX = Math.ceil((zVbX + zVbW) / gridStep) * gridStep;
+  const gStartY = Math.floor(zVbY / gridStep) * gridStep, gEndY = Math.ceil((zVbY + zVbH) / gridStep) * gridStep;
+  for (let x = gStartX; x <= gEndX; x += gridStep) {
+    for (let y = gStartY; y <= gEndY; y += gridStep) {
+      gridDots.push(<circle key={`d${x}-${y}`} cx={x} cy={y} r={0.55 * unit} fill="rgba(255,255,255,0.3)" />);
     }
   }
 
@@ -1768,7 +1846,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   // ---- Dimensions: small tags beside each leg and a bubble at each bend, placed so they
   // cover no line and crowd nothing (see placeLabels). Sizes scale with the view. ----
   const lenLabels = points.length > 1 ? points.slice(1).map((p, idx) => {
-    const label = formatLen(dist(points[idx], p)), fs = 2.9 * unit;
+    const label = formatLen(dist(points[idx], p)), fs = fsFor(2.9, 11);
     return { i: idx + 1, label, fs, w: label.length * fs * 0.62 + fs * 0.9, h: fs * 1.55 };
   }) : [];
   const angLabels = [];
@@ -1779,7 +1857,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     const isDiagonal = Math.abs(deg - 45) < 0.5 || Math.abs(deg - 135) < 0.5;
     if (angleVisibility === "hide90" && isRightAngle) continue;
     if (angleVisibility === "hideAll" && (isRightAngle || isDiagonal)) continue;
-    const label = fmtDeg(deg), fs = 2.6 * unit;
+    const label = fmtDeg(deg), fs = fsFor(2.6, 10);
     angLabels.push({ i, label, fs, w: label.length * fs * 0.62 + fs * 0.8, h: fs * 1.5 });
   }
   // Painted side: a slim arrow off the longest leg pointing at the face that shows.
@@ -1790,25 +1868,37 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     const a = dp[best - 1], b = dp[best], dir = unitVec(a, b), perp = sidePerp(dir, paintSide);
     const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
     const at = (d) => [m[0] + perp[0] * d * unit, m[1] + perp[1] * d * unit];
-    paintArrow = { s: at(2.2), base: at(5.6), tip: at(8), dir, box: { x: at(5)[0], y: at(5)[1], w: 6.5 * unit, h: 6.5 * unit } };
+    paintArrow = { s: at(2.2), base: at(5.6), tip: at(8), dir, leg: best, box: { x: at(5)[0], y: at(5)[1], w: 6.5 * unit, h: 6.5 * unit } };
+    lenLabels[best - 1].avoidMid = true; // the arrow's tail is at the midpoint of this leg
   }
-  const obstacles = [];
-  if (paintArrow) obstacles.push(paintArrow.box);
+  const obstacles = [], extraLegs = [];
+  if (paintArrow) { obstacles.push(paintArrow.box); extraLegs.push([paintArrow.s, paintArrow.tip]); }
+  for (const p of dp) obstacles.push({ x: p[0], y: p[1], w: 2.2 * unit, h: 2.2 * unit, gap: 0, dot: true }); // the dots themselves, no clearance
   const capLabels = folds.map((f) => {
-    const xs = f.extent.map((q) => q[0]), ys = f.extent.map((q) => q[1]);
-    obstacles.push({ x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, w: Math.max(...xs) - Math.min(...xs) + unit, h: Math.max(...ys) - Math.min(...ys) + unit });
-    const label = foldType(f.type).label.toUpperCase(), fs = 2.1 * unit;
+    // The fold's own drawing is a line to keep off, and a box to keep tags out of; the box
+    // is built without the end point so it never spills across the leg to the free side.
+    const ext = f.extent.slice(1), xs = ext.map((q) => q[0]), ys = ext.map((q) => q[1]);
+    obstacles.push({ x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2, w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) });
+    extraLegs.push(f.type === "kick" ? [f.extent[0], f.extent[1]] : [f.extent[1], f.extent[2]]);
+    const label = foldType(f.type).label.toUpperCase(), fs = fsFor(2.1, 8.5);
     const at = f.which === "start" ? dp[0] : dp[dp.length - 1];
     const out = f.which === "start" ? unitVec(dp[1], dp[0]) : unitVec(dp[dp.length - 2], dp[dp.length - 1]);
     return { which: f.which, label, fs, w: label.length * fs * 0.62 + fs * 0.4, h: fs * 1.3, at, out };
   });
   for (let k = 2; k < points.length; k++) {
     if (!foldSide(points[k])) continue;
-    const fs = 2.1 * unit;
+    const fs = fsFor(2.1, 8.5);
     capLabels.push({ which: `hem${k}`, label: "HEM", fs, w: 3 * fs * 0.62 + fs * 0.4, h: fs * 1.3, at: dp[k - 1], out: unitVec(dp[k - 2], dp[k - 1]) });
   }
   if (mode === "folds" && points.length > 1) for (const p of [dp[0], dp[dp.length - 1]]) obstacles.push({ x: p[0], y: p[1], w: 11 * unit, h: 11 * unit });
-  const layout = placeLabels(dp, unit, lenLabels, angLabels, capLabels, obstacles, { x: zVbX, y: zVbY, w: zVbW, h: zVbH });
+  let foldRings = null;
+  if (pendingFold && dp.length > 1) {
+    const a = dp[dp.length - 2], b = dp[dp.length - 1], dir = unitVec(a, b);
+    const m = [a[0] + (b[0] - a[0]) * pendingFold.t, a[1] + (b[1] - a[1]) * pendingFold.t];
+    foldRings = ["left", "right"].map((side) => { const p = sidePerp(dir, side); return { side, c: [m[0] + p[0] * 7 * unit, m[1] + p[1] * 7 * unit] }; });
+    for (const r of foldRings) obstacles.push({ x: r.c[0], y: r.c[1], w: 9 * unit, h: 9 * unit });
+  }
+  const layout = placeLabels(dp, unit, lenLabels, angLabels, capLabels, obstacles, { x: zVbX, y: zVbY, w: zVbW, h: zVbH }, extraLegs);
   const hiLeg = editor?.kind === "length" ? editor.i : null;   // leg being edited
   const hiBend = editor?.kind === "angle" ? editor.i : null;   // bend being edited
   const otherSide = paintSide === "left" ? "right" : "left";
@@ -1872,14 +1962,14 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
           </div>
           <div style={{ fontSize: 10, color: "#8FB4C9", fontWeight: 700, marginBottom: 4 }}>GRID SPACING</div>
           <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
-            {[1, 3, 6, 12].map((g) => (
+            {["auto", 1, 3, 6, 12].map((g) => (
               <button key={g} type="button" onClick={() => setGridSpacing(g)}
                 style={{
                   flex: 1, padding: "5px 0", borderRadius: 5, fontSize: 10.5, cursor: "pointer",
                   border: `1px solid ${gridSpacing === g ? SAFETY : "rgba(255,255,255,0.3)"}`,
                   background: gridSpacing === g ? SAFETY : "transparent", color: "#fff", fontWeight: 600,
                 }}>
-                {g}"
+                {g === "auto" ? "Auto" : `${g}"`}
               </button>
             ))}
           </div>
@@ -1916,7 +2006,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
       {gridDots}
       {rotating && rotRef.current && rotRef.current.basePoints.length > 1 && (
         <path d={rotRef.current.basePoints.map((pt, i) => `${i === 0 ? "M" : "L"} ${pt[0]} ${pt[1]}`).join(" ")}
-          fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" strokeDasharray={`${2 * unit} ${1.5 * unit}`}
+          fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" strokeDasharray="6 4"
           strokeLinejoin="round" strokeLinecap="round" />
       )}
       {points.length > 1 && (
@@ -1928,11 +2018,8 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
           stroke={SAFETY} strokeWidth={4} vectorEffect="non-scaling-stroke" strokeLinecap="round" pointerEvents="none" />
       )}
       {hiBend !== null && dp[hiBend + 1] && (
-        <g pointerEvents="none">
-          <path d={`M ${dp[hiBend - 1][0]} ${dp[hiBend - 1][1]} L ${dp[hiBend][0]} ${dp[hiBend][1]} L ${dp[hiBend + 1][0]} ${dp[hiBend + 1][1]}`}
-            fill="none" stroke={SAFETY} strokeWidth={4} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" opacity={0.7} />
-          <circle cx={dp[hiBend][0]} cy={dp[hiBend][1]} r={3.5 * unit} fill="none" stroke={SAFETY} strokeWidth={1} vectorEffect="non-scaling-stroke" strokeDasharray={`${1.2 * unit} ${1 * unit}`} />
-        </g>
+        <path d={`M ${dp[hiBend - 1][0]} ${dp[hiBend - 1][1]} L ${dp[hiBend][0]} ${dp[hiBend][1]} L ${dp[hiBend + 1][0]} ${dp[hiBend + 1][1]}`}
+          fill="none" stroke={SAFETY} strokeWidth={4} vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round" opacity={0.7} pointerEvents="none" />
       )}
       {capLabels.filter((L) => L.which.startsWith("hem")).map((L) => {
         const b = layout.cap.get(L.which);
@@ -1978,57 +2065,58 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
           </g>
         );
       })()}
-      {/* Length tags: white, beside the line, with a pointer to it. Tap to edit. */}
-      {lenLabels.map((L) => {
-        const b = layout.len.get(L.i), active = hiLeg === L.i;
-        const bg = active ? SAFETY : "#fff", fg = active ? "#fff" : INK_DEEP;
-        return (
-          <g key={`len${L.i}`} data-testid={`len-${L.i}`} onPointerDown={stop} onClick={() => openLength(L.i)} style={{ cursor: "pointer" }}>
-            <path d={tagPointer(b, unit, 0)} fill={bg} />
-            <rect x={b.x - b.w / 2} y={b.y - b.h / 2} width={b.w} height={b.h} rx={b.h / 2} fill={bg} />
-            <text x={b.x} y={b.y} dy="0.35em" fill={fg} fontSize={L.fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace" textAnchor="middle">{L.label}</text>
-          </g>
-        );
-      })}
-      {/* Angle bubbles: gold, off the corner, pointing at the bend. Tap to edit. */}
-      {angLabels.map((L) => {
-        const b = layout.ang.get(L.i), active = hiBend === L.i;
-        const bg = active ? "#fff" : SAFETY, fg = active ? SAFETY : "#fff";
-        return (
-          <g key={`ang${L.i}`} data-testid={`ang-${L.i}`} onPointerDown={stop} onClick={() => openAngle(L.i)} style={{ cursor: "pointer" }}>
-            <path d={tagPointer(b, unit, 2.2 * unit)} fill={bg} />
-            <rect x={b.x - b.w / 2} y={b.y - b.h / 2} width={b.w} height={b.h} rx={b.h / 2} fill={bg} />
-            <text x={b.x} y={b.y} dy="0.35em" fill={fg} fontSize={L.fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace" textAnchor="middle">{L.label}</text>
-          </g>
-        );
-      })}
-      {/* Points: small crisp dots (gold at the start), with a wider invisible handle for dragging. */}
+      {/* Points: small crisp dots (gold at the start, gold while its bend is being edited), with a
+          wider invisible handle for dragging. Drawn under the tags so a tag near a dot still opens. */}
       {dp.map((p, i) => (
         <g key={i}>
           {mode === "select" && selectedIdx === i && (
-            <circle cx={p[0]} cy={p[1]} r={3.6 * unit} fill="none" stroke="#4EA8FF" strokeWidth={1} vectorEffect="non-scaling-stroke"
-              strokeDasharray={`${1.2 * unit} ${1 * unit}`} />
+            <circle cx={p[0]} cy={p[1]} r={3.2 * unit} fill="none" stroke={SAFETY} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
           )}
-          <circle cx={p[0]} cy={p[1]} r={1.6 * unit} fill={i === 0 ? SAFETY : "#fff"} stroke={INK_DEEP} strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
-          <circle cx={p[0]} cy={p[1]} r={3.5 * unit} fill="transparent" stroke="none"
+          <circle cx={p[0]} cy={p[1]} r={1.05 * unit} fill={i === 0 || i === hiBend ? SAFETY : "#fff"}
+            stroke={i === 0 || i === hiBend ? INK_DEEP : "none"} strokeWidth={1} vectorEffect="non-scaling-stroke" pointerEvents="none" />
+          <circle cx={p[0]} cy={p[1]} r={4.5 * unit} fill="transparent" stroke="none"
             onPointerDown={handlePointDown(i)} style={{ cursor: "grab", touchAction: "none" }} />
         </g>
       ))}
+      {/* Length tags: white, beside the line, with a pointer to it. Tap to edit — in Select mode an
+          invisible halo around each tag is the finger target; in Draw mode taps near a tag still draw. */}
+      {lenLabels.map((L) => {
+        const b = layout.len.get(L.i), active = hiLeg === L.i, ptr = tagPointer(b, unit, 0);
+        const bg = active ? SAFETY : "#fff";
+        return (
+          <g key={`len${L.i}`} data-testid={`len-${L.i}`} onPointerDown={stop} onClick={() => openLength(L.i)} style={{ cursor: "pointer" }}>
+            {mode === "select" && <rect x={b.x - b.w / 2 - 3.5 * unit} y={b.y - b.h / 2 - 3.5 * unit} width={b.w + 7 * unit} height={b.h + 7 * unit} fill="transparent" />}
+            {ptr.hair && <line x1={ptr.hair[0]} y1={ptr.hair[1]} x2={ptr.hair[2]} y2={ptr.hair[3]} stroke={bg} strokeWidth={1} vectorEffect="non-scaling-stroke" opacity={0.7} />}
+            {ptr.wedge && <path d={ptr.wedge} fill={bg} />}
+            <rect x={b.x - b.w / 2} y={b.y - b.h / 2} width={b.w} height={b.h} rx={b.h / 2} fill={bg}
+              stroke={active ? "#fff" : "none"} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+            <text x={b.x} y={b.y} dy="0.35em" fill={INK_DEEP} fontSize={L.fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace" textAnchor="middle">{L.label}</text>
+          </g>
+        );
+      })}
+      {/* Angle bubbles: gold with dark text, off the corner, pointing at the bend. Tap to edit. */}
+      {angLabels.map((L) => {
+        const b = layout.ang.get(L.i), active = hiBend === L.i, ptr = tagPointer(b, unit, 2.2 * unit);
+        const bg = active ? INK_DEEP : SAFETY, fg = active ? SAFETY : INK_DEEP;
+        return (
+          <g key={`ang${L.i}`} data-testid={`ang-${L.i}`} onPointerDown={stop} onClick={() => openAngle(L.i)} style={{ cursor: "pointer" }}>
+            {mode === "select" && <rect x={b.x - b.w / 2 - 3.5 * unit} y={b.y - b.h / 2 - 3.5 * unit} width={b.w + 7 * unit} height={b.h + 7 * unit} fill="transparent" />}
+            {ptr.hair && <line x1={ptr.hair[0]} y1={ptr.hair[1]} x2={ptr.hair[2]} y2={ptr.hair[3]} stroke={SAFETY} strokeWidth={1} vectorEffect="non-scaling-stroke" opacity={0.7} />}
+            {ptr.wedge && <path d={ptr.wedge} fill={bg} />}
+            <rect x={b.x - b.w / 2} y={b.y - b.h / 2} width={b.w} height={b.h} rx={b.h / 2} fill={bg}
+              stroke={active ? "#fff" : "none"} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+            <text x={b.x} y={b.y} dy="0.35em" fill={fg} fontSize={L.fs} fontWeight="700" fontFamily="'IBM Plex Mono', monospace" textAnchor="middle">{L.label}</text>
+          </g>
+        );
+      })}
       {/* Folds mode: a ring on each end. Tap it to choose what that end does. */}
       {/* A hem in the making: tap the ring on the side the leg folds back to. */}
-      {pendingFold && dp.length > 1 && (() => {
-        const a = dp[dp.length - 2], b = dp[dp.length - 1], dir = unitVec(a, b);
-        const m = [a[0] + (b[0] - a[0]) * pendingFold.t, a[1] + (b[1] - a[1]) * pendingFold.t];
-        return ["left", "right"].map((side) => {
-          const p = sidePerp(dir, side), c = [m[0] + p[0] * 7 * unit, m[1] + p[1] * 7 * unit];
-          return (
-            <g key={side} data-testid={`fold-back-${side}`} onPointerDown={stop} onClick={() => commitFoldBack(side)} style={{ cursor: "pointer" }}>
-              <circle cx={c[0]} cy={c[1]} r={5.5 * unit} fill="transparent" />
-              <circle cx={c[0]} cy={c[1]} r={4 * unit} fill="rgba(212,175,55,0.14)" stroke={SAFETY} strokeWidth={2} vectorEffect="non-scaling-stroke" />
-            </g>
-          );
-        });
-      })()}
+      {foldRings && foldRings.map(({ side, c }) => (
+        <g key={side} data-testid={`fold-back-${side}`} onPointerDown={stop} onClick={() => commitFoldBack(side)} style={{ cursor: "pointer" }}>
+          <circle cx={c[0]} cy={c[1]} r={5.5 * unit} fill="transparent" />
+          <circle cx={c[0]} cy={c[1]} r={4 * unit} fill="rgba(212,175,55,0.14)" stroke={SAFETY} strokeWidth={2} vectorEffect="non-scaling-stroke" />
+        </g>
+      ))}
       {mode === "folds" && dp.length > 1 && ["start", "end"].map((end) => {
         const i = end === "start" ? 0 : dp.length - 1;
         const p = dp[i];
@@ -2039,11 +2127,11 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
         return (
           <g key={end} data-testid={`ring-${end}`} onPointerDown={stop} onClick={() => openFold(end)} style={{ cursor: "pointer" }}>
             <circle cx={p[0]} cy={p[1]} r={5 * unit} fill={active ? "rgba(212,175,55,0.22)" : "rgba(10,43,65,0.35)"}
-              stroke={SAFETY} strokeWidth={1.5} vectorEffect="non-scaling-stroke" strokeDasharray={h ? undefined : `${1.6 * unit} ${1.2 * unit}`} />
+              stroke={SAFETY} strokeOpacity={h ? 1 : 0.55} strokeWidth={h ? 2 : 1.5} vectorEffect="non-scaling-stroke" />
             {h && (
               <g>
-                <circle cx={badge[0]} cy={badge[1]} r={2.2 * unit} fill={SAFETY} stroke={INK_DEEP} strokeWidth={1} vectorEffect="non-scaling-stroke" />
-                <text x={badge[0]} y={badge[1]} fill="#fff" fontSize={2.4 * unit} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
+                <circle cx={badge[0]} cy={badge[1]} r={2.4 * unit} fill={SAFETY} stroke={INK_DEEP} strokeWidth={1} vectorEffect="non-scaling-stroke" />
+                <text x={badge[0]} y={badge[1]} fill={INK_DEEP} fontSize={fsFor(2.4, 9)} fontWeight="700" fontFamily="'IBM Plex Mono', monospace"
                   textAnchor="middle" dominantBaseline="central">{foldType(h.type).short}</text>
               </g>
             )}
