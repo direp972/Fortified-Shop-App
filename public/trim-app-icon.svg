@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Trim Drawing app">
+  <defs><pattern id="g" width="12" height="12" patternUnits="userSpaceOnUse"><circle cx="6" cy="6" r="1.1" fill="#FFFFFF" fill-opacity="0.13"/></pattern></defs>
+  <rect width="128" height="128" rx="28" fill="#0F3D5C"/>
+  <rect width="128" height="128" rx="28" fill="url(#g)"/>
+  <g stroke="#A0602E" stroke-width="2.5" stroke-linecap="round" fill="none"><line x1="87" y1="36" x2="106" y2="36"/><line x1="87" y1="84" x2="106" y2="84"/><line x1="101" y1="42" x2="101" y2="78"/></g>
+  <path d="M101 36l-4.5 8h9zM101 84l-4.5-8h9z" fill="#A0602E"/>
+  <path d="M26 36H80V84L60 97" fill="none" stroke="#D4AF37" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#F6F4EE" stroke="#0F3D5C" stroke-width="2.5"><circle cx="26" cy="36" r="5.5"/><circle cx="80" cy="36" r="5.5"/><circle cx="80" cy="84" r="5.5"/><circle cx="60" cy="97" r="5.5"/></g>
+</svg>

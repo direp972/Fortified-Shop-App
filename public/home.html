@@ -81,6 +81,15 @@
         <a class="btn" href="/members.html?app=papp" style="flex:1;white-space:nowrap">Try our panel calculator</a>
         <a class="btn ghost" href="/members.html?app=draw" style="flex:1;white-space:nowrap">Try our trim drawing</a>
       </div>
+      <a class="apptile" href="/members.html?app=draw" aria-label="Open the Trim Drawing app">
+        <img src="/trim-app-icon.svg" width="56" height="56" alt="">
+        <span class="apptile-txt">
+          <span class="mono" style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#8FA9BC">Free member tool</span>
+          <b>Trim Drawing App</b>
+          <span class="apptile-sub">Draw it, dimension it, get the stretch-out.</span>
+          <span class="apptile-go">Open the app →</span>
+        </span>
+      </a>
       <div class="lab">
         <div class="seam lab-vis" id="lab-vis" style="--c:#26262A"></div>
         <h4><span>Color lab</span><b id="lab-name">Matte Black</b></h4>
@@ -110,6 +119,14 @@
     <a class="btn" href="/suppliers.html?ability=On-site%20gutter%20roll%20forming">Search gutter fabricators →</a>
   </div>
   <style>
+.apptile{display:flex;gap:16px;align-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:var(--r);padding:14px 18px;margin-bottom:14px;text-decoration:none;color:#EAF1F6;box-shadow:var(--shadow-2);transition:transform .16s,border-color .16s,background .16s}
+.apptile:hover{transform:translateY(-2px);border-color:var(--gold);background:rgba(255,255,255,.08)}
+.apptile img{flex:none;display:block;border-radius:12px}
+.apptile-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
+.apptile-txt b{font-family:var(--disp);font-size:18px;font-weight:600;text-transform:uppercase;letter-spacing:.02em;color:#fff;line-height:1.1}
+.apptile-sub{font-size:13px;color:#C7D6E2;line-height:1.45}
+.apptile-go{font-size:12.5px;font-weight:600;color:var(--gold-soft);margin-top:3px}
+
   .gutcall{display:flex;flex-wrap:wrap;gap:14px 24px;align-items:center;justify-content:space-between;background:var(--card);border:1px solid rgba(15,61,92,.1);border-left:4px solid var(--gold);border-radius:12px;padding:18px 22px;margin-top:18px;box-shadow:var(--shadow-1)}
   .gutcall h3{font-family:var(--disp);font-size:17px;text-transform:uppercase;font-weight:600;margin:0 0 4px;color:var(--ink-deep)}
   .gutcall p{margin:0;font-size:13.5px;color:#4E6273;line-height:1.6;max-width:64ch}
