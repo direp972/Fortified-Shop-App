@@ -54,7 +54,6 @@
 </div></header>
 
 <div class="hero">
-  <div class="seam horizon" id="hero-roof" style="--c:#26262A"></div>
   <div class="wrap hero-in">
     <div>
       <p class="eyebrow" style="color:#8FA9BC">RoofCoil.com · The search engine for sheet metal</p>
@@ -219,7 +218,9 @@
     <span class="mono" style="letter-spacing:.12em;text-transform:uppercase">Search by ability · color · location</span>
   </div>
 </div></footer>
-<style>@media(max-width:860px){.sup3{grid-template-columns:1fr!important}}</style>
+<style>@media(max-width:860px){.sup3{grid-template-columns:1fr!important}}
+/* no roof strip on this page, so the hero keeps only its own breathing room */
+.hero-in{padding-bottom:0}.hero{padding-bottom:clamp(36px,5vw,64px)}</style>
 <script>
 // Listed-shop count is live: every published directory listing counts, so it
 // climbs on its own as shops are approved. Falls back to the static text if the
@@ -233,7 +234,7 @@ document.getElementById("lab-chips").innerHTML=COLORS.map(c=>`<button style="bac
 document.querySelectorAll("#lab-chips button").forEach(b=>b.onclick=()=>{
   document.querySelectorAll("#lab-chips button").forEach(x=>x.classList.toggle("sel",x===b));
   const hex=COLORS.find(c=>c[0]===b.dataset.c)[1];
-  $("#lab-vis").style.setProperty("--c",hex);$("#hero-roof").style.setProperty("--c",hex);
+  $("#lab-vis").style.setProperty("--c",hex);
   $("#lab-name").textContent=b.dataset.c});
 document.querySelectorAll("#lab-chips button")[8].classList.add("sel");
 </script>
