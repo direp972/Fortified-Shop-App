@@ -34,6 +34,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
+<link rel="preload" as="image" type="image/webp" imagesrcset="/img/coil-floor-1200.webp 1200w,/img/coil-floor.webp 2000w" imagesizes="100vw" media="(min-width:941px)">
+<link rel="preload" as="image" type="image/webp" imagesrcset="/img/coil-hero-phone-600.webp 600w,/img/coil-hero-phone-900.webp 900w" imagesizes="100vw" media="(max-width:940px)">
 <script src="/auth.js" defer></script>
 <script defer src="/_vercel/insights/script.js"></script>
 </head>
@@ -53,7 +55,15 @@
   <a class="nav-phone" href="tel:+19729447963">972-944-7963</a><span data-auth-slot></span>
 </div></header>
 
-<div class="hero">
+<div class="hero photo">
+  <picture class="hero-ph" aria-hidden="true">
+    <source media="(max-width:940px)" type="image/webp" srcset="/img/coil-hero-phone-600.webp 600w,/img/coil-hero-phone-900.webp 900w" sizes="100vw">
+    <source media="(max-width:940px)" srcset="/img/coil-hero-phone-600.jpg 600w,/img/coil-hero-phone-900.jpg 900w" sizes="100vw">
+    <source type="image/webp" srcset="/img/coil-floor-1200.webp 1200w,/img/coil-floor.webp 2000w" sizes="100vw">
+    <img src="/img/coil-floor.jpg" srcset="/img/coil-floor-1200.jpg 1200w,/img/coil-floor.jpg 2000w" sizes="100vw" width="2000" height="783" alt="" fetchpriority="high" decoding="async">
+  </picture>
+  <div class="hero-tint" aria-hidden="true"></div>
+  <div class="hero-scrim" aria-hidden="true"></div>
   <div class="wrap hero-in">
     <div>
       <p class="eyebrow" style="color:#8FA9BC">RoofCoil.com · The search engine for sheet metal</p>
@@ -152,10 +162,14 @@
   </style>
 </div>
 
-<div class="dhero" id="brands" style="min-height:0">
+<div class="dhero" id="brands">
   <div class="seam dseam" style="--c:#A0602E"></div>
+  <picture class="wall-ph">
+    <source type="image/webp" srcset="/img/coil-wall-1200.webp 1200w,/img/coil-wall-2400.webp 2400w" sizes="100vw">
+    <img src="/img/coil-wall-2400.jpg" srcset="/img/coil-wall-1200.jpg 1200w,/img/coil-wall-2400.jpg 2400w" sizes="100vw" width="2400" height="746" alt="Rows of shrink-wrapped painted steel coils stacked on pallets in a supplier's warehouse" loading="lazy" decoding="async">
+  </picture>
   <div class="scrim"></div>
-  <div class="wrap" style="padding-block:clamp(38px,5vw,60px)">
+  <div class="wrap">
     <p class="eyebrow" style="color:#C7D6E2">The network · Growing</p>
     <h2 class="sec" style="color:#fff;text-shadow:0 2px 14px rgba(0,0,0,.5)">A growing network of suppliers, fabricators &amp; contractors</h2>
     <p style="color:#D5E2EC;max-width:60ch;font-size:15.5px;text-shadow:0 1px 8px rgba(0,0,0,.5);margin:0 0 20px">Every listing shows what the shop actually runs — seam systems, gauges, finishes, colors and plant locations — so you know their capabilities before the first phone call. Filter by what the job needs and pick the shop closest to the project — anywhere in North America.</p>
@@ -191,8 +205,15 @@
 .faq-d p{margin:0;padding:12px 18px 16px;color:#4E6273;font-size:14.5px;line-height:1.65}
 </style>
 
+<div class="aisle" aria-hidden="true">
+  <picture>
+    <source type="image/webp" srcset="/img/coil-aisle-900.webp 900w,/img/coil-aisle-1800.webp 1800w" sizes="130vw">
+    <img src="/img/coil-aisle-1800.jpg" srcset="/img/coil-aisle-900.jpg 900w,/img/coil-aisle-1800.jpg 1800w" sizes="130vw" width="1800" height="183" alt="" loading="lazy" decoding="async">
+  </picture>
+</div>
+
 <div class="wrap" id="getlisted" style="padding-block:clamp(34px,5vw,56px)">
-  <div style="display:flex;flex-wrap:wrap;gap:24px;align-items:center;justify-content:space-between;padding:26px 28px;background:var(--night);color:#fff;border-radius:var(--r);box-shadow:var(--shadow-2)">
+  <div class="dock" style="display:flex;flex-wrap:wrap;gap:24px;align-items:center;justify-content:space-between;padding:26px 28px;background:var(--night);color:#fff;border-radius:var(--r);box-shadow:var(--shadow-2)">
     <div>
       <p class="eyebrow" style="color:#8FA9BC;margin-bottom:8px">For suppliers, fabricators &amp; contractors</p>
       <h3 class="disp" style="font-size:22px;margin:0 0 8px;font-weight:600">Are you a supplier, fabricator or contractor that wants to be listed?</h3>
@@ -219,8 +240,62 @@
   </div>
 </div></footer>
 <style>@media(max-width:860px){.sup3{grid-template-columns:1fr!important}}
-/* no roof strip on this page, so the hero keeps only its own breathing room */
-.hero-in{padding-bottom:0}.hero{padding-bottom:clamp(36px,5vw,64px)}</style>
+.hero-in{padding-bottom:0}
+
+/* The shop-floor photo, one building seen four ways: behind the hero, as the
+   coil wall in the network band, as a thin banner after the FAQ, and as the
+   forklift corner on the closing card. Everything is scoped to this page —
+   .hero, .dhero and .scrim are shared with the other pages. */
+
+/* hero: night-graded, the floor shows in a text-free band along the bottom */
+.hero.photo{isolation:isolate;padding-bottom:clamp(72px,8vw,120px)}
+.hero.photo .hero-ph,.hero.photo .hero-tint,.hero.photo .hero-scrim{position:absolute;inset:0;pointer-events:none}
+.hero.photo .hero-ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 100%;display:block}
+.hero.photo .hero-tint{background:var(--ink);mix-blend-mode:multiply;opacity:.18}
+.hero.photo .hero-scrim{background:linear-gradient(180deg,rgba(11,30,44,.86) 0%,rgba(11,30,44,.72) 30%,rgba(11,30,44,.52) 62%,rgba(11,30,44,.26) 100%),linear-gradient(90deg,rgba(11,30,44,.6) 0%,rgba(11,30,44,.34) 40%,rgba(11,30,44,0) 66%)}
+.hero.photo .apptile{background:rgba(11,30,44,.48)}
+.hero.photo .apptile:hover{background:rgba(11,30,44,.6)}
+.hero.photo .apptile.primary{background:linear-gradient(rgba(212,175,55,.16),rgba(212,175,55,.16)),rgba(11,30,44,.55)}
+.hero.photo .apptile.primary:hover{background:linear-gradient(rgba(212,175,55,.24),rgba(212,175,55,.24)),rgba(11,30,44,.6)}
+.hero.photo .lab{background:rgba(11,30,44,.55)}
+.hero.photo .spec-strip dt,.hero.photo .lab h4{color:#9FB6C6}
+@media(max-width:940px){
+  /* phone: a portrait cut of the colour stacks sits behind the headline and fades into the navy */
+  .hero.photo{padding-bottom:clamp(36px,5vw,64px)}
+  .hero.photo .hero-ph,.hero.photo .hero-tint,.hero.photo .hero-scrim{bottom:auto;height:min(70vh,560px);-webkit-mask-image:linear-gradient(180deg,#000 55%,transparent 100%);mask-image:linear-gradient(180deg,#000 55%,transparent 100%)}
+  .hero.photo .hero-ph img{object-position:50% 40%}
+  .hero.photo .hero-scrim{background:linear-gradient(180deg,rgba(11,30,44,.86) 0%,rgba(11,30,44,.72) 50%,rgba(11,30,44,.6) 100%)}
+  .hero.photo .lab{backdrop-filter:none}
+}
+
+/* network band: the coil wall, honest colour on the right, scrimmed under the copy on the left */
+#brands{display:grid;align-items:center;min-height:clamp(380px,36vw,560px);isolation:isolate;border-top:6px solid var(--copper)}
+#brands .wall-ph{position:absolute;inset:0}
+#brands .wall-ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:62% 55%;display:block}
+#brands .scrim{background:linear-gradient(90deg,rgba(11,30,44,.9) 0%,rgba(11,30,44,.84) 36%,rgba(11,30,44,.45) 62%,rgba(11,30,44,.18) 100%),linear-gradient(180deg,rgba(11,30,44,.5),rgba(11,30,44,.08) 40%,rgba(11,30,44,.3))}
+#brands .wrap{padding-block:clamp(38px,5vw,60px)}
+@media(max-width:640px){
+  #brands{min-height:0}
+  #brands .wrap{padding-bottom:150px}
+  #brands .scrim{background:linear-gradient(180deg,rgba(11,30,44,.9) 0%,rgba(11,30,44,.86) 58%,rgba(11,30,44,.3) 100%)}
+  #brands .wall-ph img{object-position:60% 50%}
+}
+
+/* aisle: a gold-edged banner of the coil rows that drifts at walking pace */
+.aisle{position:relative;height:clamp(120px,11vw,220px);margin-top:clamp(34px,5vw,56px);overflow:hidden;background:var(--night);box-shadow:inset 0 1px 0 var(--gold),inset 0 -1px 0 var(--gold)}
+.aisle img{position:absolute;top:0;left:0;display:block;height:100%;width:130%;object-fit:cover;object-position:50% 40%;transform:translateX(-11.54%)}
+.aisle::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(11,30,44,.5),transparent 18%,transparent 82%,rgba(11,30,44,.5))}
+@media(prefers-reduced-motion:no-preference){.aisle img{animation:aisle-drift 60s ease-in-out infinite alternate}}
+@keyframes aisle-drift{from{transform:translateX(0)}to{transform:translateX(-23.08%)}}
+@media(max-width:640px){.aisle{height:84px}}
+
+/* closing card: the forklift and the yellow rail in the corner */
+.dock{position:relative;overflow:hidden;isolation:isolate}
+.dock::before{content:"";position:absolute;top:0;bottom:0;right:0;width:44%;z-index:-1;background:linear-gradient(rgba(11,30,44,.45),rgba(11,30,44,.45)),url(/img/coil-forklift-480.webp) 60% 40%/cover no-repeat;opacity:.75;-webkit-mask-image:linear-gradient(90deg,transparent,#000 45%);mask-image:linear-gradient(90deg,transparent,#000 45%);transition:opacity .3s}
+.dock:hover::before{opacity:.95}
+@media(min-width:900px){.dock>div{max-width:60%}}
+@media(max-width:640px){.dock::before{top:auto;left:0;right:0;bottom:0;width:100%;height:36%;background-position:50% 70%;-webkit-mask-image:linear-gradient(180deg,transparent,#000 60%);mask-image:linear-gradient(180deg,transparent,#000 60%)}}
+</style>
 <script>
 // Listed-shop count is live: every published directory listing counts, so it
 // climbs on its own as shops are approved. Falls back to the static text if the
