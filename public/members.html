@@ -30,10 +30,10 @@
   <a class="brand" href="/"><b>Roof<i>Coil</i></b><span>Member tools</span></a>
   <nav class="nav-links">
     <a data-nav="home" class="on">Colors &amp; lines</a>
-    <a data-nav="apps">Shop apps</a>
+    <a data-nav="apps" class="app"><img src="/trim-app-icon.svg" width="20" height="20" alt="">Shop apps</a>
   </nav>
   <button class="locpill" id="locpill" title="Find your nearest location"><span class="dot"></span><span class="lbl" id="loc-lbl">Find nearest location</span></button>
-  <a class="btn" data-nav="apps" data-app="papp" style="cursor:pointer">Start an order</a>
+  <a class="btn go" data-nav="apps" data-app="papp" style="cursor:pointer"><img src="/panel-app-icon.svg" width="22" height="22" alt="">Start an order<i>&rarr;</i></a>
   <a class="nav-phone" href="tel:+19729447963">972-944-7963</a><span data-auth-slot></span>
 </div></header>
 
@@ -46,8 +46,22 @@
         <h1>Specialized tools for sheet metal.<em>One free account.</em></h1>
         <p class="lede">Panel lines from listed manufacturers — lineups, data sheets and colors in one place. Try any color on the panel below, then build the order in the Panel &amp; Trim app and it goes straight to the listed shop that will run it.</p>
         <div style="display:flex;flex-wrap:wrap;gap:12px;margin-bottom:28px">
-          <a class="btn" data-nav="apps" data-app="papp" style="cursor:pointer">Start an order</a>
-          <a class="btn ghost" href="#brands">See lines &amp; locations</a>
+          <a class="apptile cta primary" data-nav="apps" data-app="papp" style="cursor:pointer" aria-label="Start an order">
+            <img src="/panel-app-icon.svg" width="56" height="56" alt="">
+            <span class="apptile-txt">
+              <b>Start an order</b>
+              <span class="apptile-sub">Build the panel or trim order and send it to the shop that runs it.</span>
+              <span class="apptile-go">Open the order app <i>&rarr;</i></span>
+            </span>
+          </a>
+          <a class="apptile cta" href="#brands" aria-label="See lines and locations">
+            <img src="/search-icon.svg" width="56" height="56" alt="">
+            <span class="apptile-txt">
+              <b>Lines &amp; locations</b>
+              <span class="apptile-sub">Every listed panel line, its colors and its closest plant.</span>
+              <span class="apptile-go">See the lines <i>&rarr;</i></span>
+            </span>
+          </a>
         </div>
         <dl class="spec-strip">
           <div><dt>Panel lines</dt><dd>2 &amp; growing</dd></div>
@@ -57,10 +71,24 @@
         </dl>
       </div>
       <div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
-          <a class="btn" data-nav="apps" data-app="papp" style="cursor:pointer;flex:1;white-space:nowrap">Try our panel calculator</a>
-          <a class="btn ghost" data-nav="apps" data-app="draw" style="cursor:pointer;flex:1;white-space:nowrap">Try our trim drawing</a>
-        </div>
+        <a class="apptile" data-nav="apps" data-app="papp" style="cursor:pointer" aria-label="Open the Panel Calculator">
+          <img src="/panel-app-icon.svg" width="56" height="56" alt="">
+          <span class="apptile-txt">
+            <span class="mono" style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#8FA9BC">Free member tool</span>
+            <b>Panel Calculator</b>
+            <span class="apptile-sub">Cut list, lengths and quantities for a panel run.</span>
+            <span class="apptile-go">Open the app <i>&rarr;</i></span>
+          </span>
+        </a>
+        <a class="apptile" data-nav="apps" data-app="draw" style="cursor:pointer" aria-label="Open the Trim Drawing app">
+          <img src="/trim-app-icon.svg" width="56" height="56" alt="">
+          <span class="apptile-txt">
+            <span class="mono" style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:#8FA9BC">Free member tool</span>
+            <b>Trim Drawing App</b>
+            <span class="apptile-sub">Draw it, dimension it, get the stretch-out.</span>
+            <span class="apptile-go">Open the app <i>&rarr;</i></span>
+          </span>
+        </a>
         <div class="lab">
           <div class="seam lab-vis" id="lab-vis" style="--c:#26262A"></div>
           <h4><span>Color lab</span><b id="lab-name">Matte Black</b></h4>
