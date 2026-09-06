@@ -44,7 +44,8 @@
 
 /* hero: night-graded, the floor shows in a text-free band along the bottom */
 .hero.photo{isolation:isolate;padding-bottom:clamp(72px,8vw,120px)}
-.hero.photo .hero-ph,.hero.photo .hero-tint,.hero.photo .hero-scrim{position:absolute;inset:0;pointer-events:none}
+.hero.photo .hero-panes,.hero.photo .hero-ph,.hero.photo .hero-tint,.hero.photo .hero-scrim{position:absolute;inset:0;pointer-events:none}
+.hero.photo .pane{display:none}
 .hero.photo .hero-ph img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 100%;display:block}
 .hero.photo .hero-tint{background:var(--ink);mix-blend-mode:multiply;opacity:.1}
 .hero.photo .hero-scrim{background:linear-gradient(180deg,rgba(11,30,44,.78) 0%,rgba(11,30,44,.62) 30%,rgba(11,30,44,.42) 62%,rgba(11,30,44,.18) 100%),linear-gradient(90deg,rgba(11,30,44,.55) 0%,rgba(11,30,44,.28) 40%,rgba(11,30,44,0) 66%)}
@@ -57,10 +58,12 @@
 .hero.photo .spec-strip dt{color:#C7D6E2}
 .hero.photo .signup-lbl{color:#C7D6E2!important;text-shadow:0 1px 6px rgba(11,30,44,.9)}
 @media(max-width:940px){
-  /* one column: a tall cut runs behind the whole hero — trusses behind the headline, stacks behind the tiles, floor behind the lab */
+  /* one column: four separate pictures of the stacks run down the hero like a photo strip; two-by-two on a tablet */
   .hero.photo{padding-bottom:clamp(36px,5vw,64px)}
   .hero.photo .hero-tint{display:none}
-  .hero.photo .hero-ph img{object-position:50% 50%}
+  .hero.photo .hero-panes{display:grid;grid-template-columns:1fr 1fr;grid-auto-rows:1fr;gap:6px;background:var(--night)}
+  .hero.photo .hero-ph,.hero.photo .pane{display:block;position:relative;inset:auto;min-height:0;overflow:hidden}
+  .hero.photo .pane img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:50% 50%;display:block}
   .hero.photo .hero-scrim{background:linear-gradient(180deg,rgba(11,30,44,.7) 0%,rgba(11,30,44,.5) 30%,rgba(11,30,44,.42) 65%,rgba(11,30,44,.5) 100%)}
   .hero.photo .lab{backdrop-filter:none}
 }
@@ -89,7 +92,7 @@
 .aisle::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(11,30,44,.5),transparent 18%,transparent 82%,rgba(11,30,44,.5))}
 @media(prefers-reduced-motion:no-preference){.aisle img{animation:aisle-drift 60s ease-in-out infinite alternate}}
 @keyframes aisle-drift{from{object-position:0% 55%}to{object-position:100% 55%}}
-@media(max-width:640px){.aisle{height:180px}}
+@media(max-width:640px){.aisle{height:180px}.hero.photo .hero-panes{grid-template-columns:1fr}}
 
 /* closing card: the forklift and the yellow rail in the corner */
 .dock{position:relative;overflow:hidden;isolation:isolate}
@@ -99,7 +102,7 @@
 @media(max-width:899px){.dock::before{top:auto;left:0;right:0;bottom:0;width:100%;height:36%;background-position:50% 70%;-webkit-mask-image:linear-gradient(180deg,transparent,#000 60%);mask-image:linear-gradient(180deg,transparent,#000 60%)}}
 </style>
 <link rel="preload" as="image" fetchpriority="high" type="image/webp" href="/img/coil-floor.webp" media="not all and (max-width:940px)">
-<link rel="preload" as="image" fetchpriority="high" type="image/webp" imagesrcset="/img/coil-hero-tall-1000.webp 1000w,/img/coil-hero-tall-1500.webp 1500w" imagesizes="(max-width:640px) 340vw,130vw" media="(max-width:940px)">
+<link rel="preload" as="image" fetchpriority="high" type="image/webp" imagesrcset="/img/coil-pane-1-900.webp 900w,/img/coil-pane-1-1400.webp 1400w" imagesizes="(max-width:640px) 115vw,75vw" media="(max-width:940px)">
 <script src="/auth.js" defer></script>
 <script defer src="/_vercel/insights/script.js"></script>
 </head>
@@ -120,12 +123,26 @@
 </div></header>
 
 <div class="hero photo">
-  <picture class="hero-ph" aria-hidden="true">
-    <source media="(max-width:940px)" type="image/webp" srcset="/img/coil-hero-tall-1000.webp 1000w,/img/coil-hero-tall-1500.webp 1500w" sizes="(max-width:640px) 340vw,130vw">
-    <source media="(max-width:940px)" srcset="/img/coil-hero-tall-1000.jpg 1000w,/img/coil-hero-tall-1500.jpg 1500w" sizes="(max-width:640px) 340vw,130vw">
-    <source type="image/webp" srcset="/img/coil-floor.webp">
-    <img src="/img/coil-floor.jpg" width="2000" height="783" alt="" fetchpriority="high" decoding="async">
-  </picture>
+  <div class="hero-panes" aria-hidden="true">
+    <picture class="hero-ph">
+      <source media="(max-width:940px)" type="image/webp" srcset="/img/coil-pane-1-900.webp 900w,/img/coil-pane-1-1400.webp 1400w" sizes="(max-width:640px) 115vw,75vw">
+      <source media="(max-width:940px)" srcset="/img/coil-pane-1-900.jpg 900w,/img/coil-pane-1-1400.jpg 1400w" sizes="(max-width:640px) 115vw,75vw">
+      <source type="image/webp" srcset="/img/coil-floor.webp">
+      <img src="/img/coil-floor.jpg" width="2000" height="783" alt="" fetchpriority="high" decoding="async">
+    </picture>
+    <picture class="pane">
+      <source type="image/webp" srcset="/img/coil-pane-2-900.webp 900w,/img/coil-pane-2-1400.webp 1400w" sizes="(max-width:640px) 115vw,75vw">
+      <img src="/img/coil-pane-2-1400.jpg" srcset="/img/coil-pane-2-900.jpg 900w,/img/coil-pane-2-1400.jpg 1400w" sizes="(max-width:640px) 115vw,75vw" width="1400" height="1700" alt="" loading="lazy" decoding="async">
+    </picture>
+    <picture class="pane">
+      <source type="image/webp" srcset="/img/coil-pane-3-900.webp 900w,/img/coil-pane-3-1400.webp 1400w" sizes="(max-width:640px) 115vw,75vw">
+      <img src="/img/coil-pane-3-1400.jpg" srcset="/img/coil-pane-3-900.jpg 900w,/img/coil-pane-3-1400.jpg 1400w" sizes="(max-width:640px) 115vw,75vw" width="1400" height="1700" alt="" loading="lazy" decoding="async">
+    </picture>
+    <picture class="pane">
+      <source type="image/webp" srcset="/img/coil-pane-4-900.webp 900w,/img/coil-pane-4-1400.webp 1400w" sizes="(max-width:640px) 115vw,75vw">
+      <img src="/img/coil-pane-4-1400.jpg" srcset="/img/coil-pane-4-900.jpg 900w,/img/coil-pane-4-1400.jpg 1400w" sizes="(max-width:640px) 115vw,75vw" width="1400" height="1700" alt="" loading="lazy" decoding="async">
+    </picture>
+  </div>
   <div class="hero-tint" aria-hidden="true"></div>
   <div class="hero-scrim" aria-hidden="true"></div>
   <div class="wrap hero-in">
