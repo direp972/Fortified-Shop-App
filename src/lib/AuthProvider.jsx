@@ -37,12 +37,15 @@ export function AuthProvider({ children }) {
     } else {
       const name = sessionUser.user_metadata?.name || "";
       const phone = sessionUser.user_metadata?.phone || "";
-      const { data: created, error } = await supabase
+      let { data: created, error } = await supabase
         .from("customers")
         .insert({ id: userId, email: sessionUser.email, name, phone, tier: "tier2" })
         .select()
         .maybeSingle();
-      if (error) console.error("customer row creation error", error);
+      if (error && error.code === "23505") {
+        // Another load won the insert (first render runs this twice; another tab can too) — read that row.
+        ({ data: created } = await supabase.from("customers").select("*").eq("id", userId).maybeSingle());
+      } else if (error) console.error("customer row creation error", error);
       setCustomer(created || null);
     }
     setIsStaff(!!staffRow);
@@ -60,37 +63,55 @@ export function AuthProvider({ children }) {
     return () => listener.subscription.unsubscribe();
   }, [loadCustomer]);
 
+  const friendly = (m) => {
+    m = typeof m === "string" ? m : (m && m.message) || "";
+    if (/rate limit/i.test(m)) return "We're getting a lot of sign-ups right now — try again in a few minutes, or call 972-944-7963 and we'll set you up.";
+    if (/not confirmed/i.test(m)) return "That email has an account that was never confirmed. Call 972-944-7963 and we'll fix it in a minute.";
+    return m;
+  };
+
   const signUp = async (email, password, name, phone) => {
     // Sign-up goes through the signup-direct Edge Function, which creates the account
-    // already confirmed and hands back a session — no confirmation email, so Supabase's
-    // built-in mailer limit (a couple of emails an hour) can't lock people out. The name
-    // and phone ride along as user metadata; loadCustomer picks them up from the session.
-    // If the function is unreachable, supabase.auth.signUp is the fallback.
+    // already confirmed — no confirmation email, so Supabase's built-in mailer limit (a
+    // couple of emails an hour) can't lock people out — and then signs in with the ordinary
+    // password grant from this browser. The name and phone ride along as user metadata;
+    // loadCustomer picks them up from the session. If the function can't be reached,
+    // supabase.auth.signUp (confirmation email) is the fallback.
     const url = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
     let r = null, j = null;
     try {
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 15000);
       r = await fetch(url + "/functions/v1/signup-direct", {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: anonKey },
-        body: JSON.stringify({ email, password, name, phone }),
+        body: JSON.stringify({ email, password, name, company: "", phone }),
+        signal: ctl.signal,
       });
+      clearTimeout(timer);
       j = await r.json();
-    } catch (e) { r = null; }
-    if (!r || r.status >= 500) {
-      const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name, phone } } });
-      if (error && /rate limit/i.test(error.message || "")) {
-        return { data, error: { message: "We're getting a lot of sign-ups right now — try again in a few minutes, or call 972-944-7963 and we'll set you up." } };
+    } catch (e) { r = null; j = null; }
+    // Only a reply the function itself wrote counts; anything else falls back below.
+    const fromFn = j && (j.created === true || typeof j.error === "string");
+    if (r && fromFn) {
+      if (!r.ok) return { data: null, error: { message: friendly(j.error) || "Sign up failed — please try again." } };
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        const m = /invalid login/i.test(error.message || "")
+          ? "Couldn't sign in with that password. If this email already has an account, use its password — or call 972-944-7963."
+          : friendly(error);
+        return { data, error: { message: m } };
       }
-      return { data, error };
+      return { data, error: null };
     }
-    if (!r.ok) return { data: null, error: { message: (j && j.error) || "Sign up failed — try a different email." } };
-    if (j && j.access_token) {
-      // setSession fires onAuthStateChange, which loads the customer row like any sign-in.
-      const { data, error } = await supabase.auth.setSession({ access_token: j.access_token, refresh_token: j.refresh_token });
+    try {
+      const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name, phone } } });
+      if (error) return { data, error: { message: friendly(error) || "Sign up failed — please try again." } };
       return { data, error };
+    } catch (e) {
+      return { data: null, error: { message: "Couldn't reach the server — check your connection and try again." } };
     }
-    return { data: { session: null }, error: null }; // account made, session not returned — sign in
   };
 
   const signIn = async (email, password) => {

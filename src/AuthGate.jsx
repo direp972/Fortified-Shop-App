@@ -65,6 +65,8 @@ export default function AuthGate({ children }) {
         const { error } = await signIn(email, password);
         if (error) { setError(error.message); return; }
       }
+    } catch (e) {
+      setError("Couldn't reach the server — check your connection and try again.");
     } finally {
       setSubmitting(false);
     }

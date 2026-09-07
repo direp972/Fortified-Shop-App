@@ -20,7 +20,7 @@
       access_token: j.access_token,
       token_type: j.token_type || "bearer",
       expires_in: j.expires_in,
-      expires_at: j.expires_at || Math.floor(Date.now() / 1000) + (j.expires_in || 3600),
+      expires_at: Number(j.expires_at) || Math.floor(Date.now() / 1000) + (Number(j.expires_in) || 3600),
       refresh_token: j.refresh_token,
       user: j.user,
     };
@@ -58,32 +58,17 @@
   }
 
   // Sign-up goes through the signup-direct Edge Function, which creates the account already
-  // confirmed and returns a session — no confirmation email, so Supabase's built-in mailer
-  // limit (a couple of emails an hour) can't lock people out. If the function is unreachable
-  // the old /auth/v1/signup path is the fallback.
+  // confirmed — no confirmation email, so Supabase's built-in mailer limit (a couple of
+  // emails an hour) can't lock people out — and then signs in through the ordinary password
+  // grant from this browser. If the function can't be reached, the old /auth/v1/signup path
+  // (confirmation email) is the fallback.
   function friendly(m) {
-    if (/rate limit/i.test(m || "")) return "We're getting a lot of sign-ups right now — try again in a few minutes, or call 972-944-7963 and we'll set you up.";
+    m = typeof m === "string" ? m : (m && m.message) || "";
+    if (/rate limit/i.test(m)) return "We're getting a lot of sign-ups right now — try again in a few minutes, or call 972-944-7963 and we'll set you up.";
+    if (/not confirmed/i.test(m)) return "That email has an account that was never confirmed. Call 972-944-7963 and we'll fix it in a minute.";
     return m;
   }
-  async function signUp(name, company, phone, email, password) {
-    let r, j;
-    try {
-      r = await fetch(SUPA + "/functions/v1/signup-direct", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: KEY },
-        body: JSON.stringify({ email, password, name, company, phone }),
-      });
-      j = await r.json();
-    } catch (e) { r = null; }
-    if (!r || r.status >= 500) {
-      r = await fetch(SUPA + "/auth/v1/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: KEY },
-        body: JSON.stringify({ email, password, data: { name, company, phone } }),
-      });
-      j = await r.json();
-    }
-    if (!r.ok) return { error: friendly(j.error || j.error_description || j.msg) || "Sign up failed — try a different email." };
+  function lead(name, company, phone, email) {
     // Keep the shop's lead list flowing (fire-and-forget).
     try {
       fetch(SUPA + "/rest/v1/leads", {
@@ -92,7 +77,43 @@
         body: JSON.stringify({ name, company, phone, email, source: "signup" }),
       }).catch(function () {});
     } catch (e) {}
-    if (j.access_token) { writeSession(sessionFromTokenResponse(j)); return { session: readSession() }; }
+  }
+  async function signUp(name, company, phone, email, password) {
+    let r = null, j = null;
+    try {
+      const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timer = ctl ? setTimeout(function () { ctl.abort(); }, 15000) : null;
+      r = await fetch(SUPA + "/functions/v1/signup-direct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: KEY },
+        body: JSON.stringify({ email, password, name, company, phone }),
+        signal: ctl ? ctl.signal : undefined,
+      });
+      if (timer) clearTimeout(timer);
+      j = await r.json();
+    } catch (e) { r = null; j = null; }
+    // Only a reply the function itself wrote counts; anything else (unreachable, a gateway
+    // page, a non-JSON body) falls back to the confirmation-email path below.
+    const fromFn = j && (j.created === true || typeof j.error === "string");
+    if (r && fromFn) {
+      if (!r.ok) return { error: friendly(j.error) || "Sign up failed — please try again." };
+      lead(name, company, phone, email);
+      let s;
+      try { s = await signIn(email, password); } catch (e) { return { error: "Couldn't reach the server — check your connection and try again." }; }
+      if (s.error) return { error: /invalid login/i.test(s.error) ? "Couldn't sign in with that password. If this email already has an account, use its password — or call 972-944-7963." : friendly(s.error) };
+      return s;
+    }
+    try {
+      r = await fetch(SUPA + "/auth/v1/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: KEY },
+        body: JSON.stringify({ email, password, data: { name, company, phone } }),
+      });
+      j = await r.json();
+    } catch (e) { return { error: "Couldn't reach the server — check your connection and try again." }; }
+    if (!r.ok) return { error: friendly(j.error_description || j.msg) || "Sign up failed — please try again." };
+    lead(name, company, phone, email);
+    if (j.access_token && j.refresh_token && j.user) { writeSession(sessionFromTokenResponse(j)); return { session: readSession() }; }
     return { confirm: true }; // email confirmation required before first sign-in
   }
 
