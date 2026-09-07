@@ -1896,7 +1896,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   // a short way off the face that shows — the way a shop drawing calls out the paint side.
   let paintShadow = null;
   if (dp.length > 1) {
-    const sp = shadowLine(poly, paintSide, 3.4 * unit);
+    const sp = shadowLine(poly, paintSide, 1.7 * unit);
     const segs = [];
     for (let i = 1; i < sp.length; i++) segs.push([sp[i - 1], sp[i]]);
     paintShadow = { d: sp.map((p, i) => `${i === 0 ? "M" : "L"} ${p[0]} ${p[1]}`).join(" "), segs };
@@ -2049,7 +2049,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
           <title>Painted side — tap to switch</title>
           <path d={paintShadow.d} fill="none" stroke="#fff" strokeWidth={2.5} opacity={0.35} vectorEffect="non-scaling-stroke" strokeDasharray="8 5" strokeLinejoin="round" strokeLinecap="butt" />
           <path d={paintShadow.d} fill="none" stroke={colorHex} strokeWidth={1} vectorEffect="non-scaling-stroke" strokeDasharray="8 5" strokeLinejoin="round" strokeLinecap="butt" />
-          <path d={paintShadow.d} fill="none" stroke="transparent" strokeWidth={4 * unit} />
+          <path d={paintShadow.d} fill="none" stroke="transparent" strokeWidth={2.4 * unit} />
         </g>
       )}
       {points.length > 1 && (
