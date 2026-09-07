@@ -122,9 +122,13 @@ button press exchanges the code for a session and sends the person back to the p
 started from, signed in. The page exists because mail scanners such as Outlook Safe Links
 open links before the person does and would burn a one-time code. Both sign-up forms (the site modal in `public/auth.js` and
 the drawing app) use it, and a sign-in that fails with "not confirmed" offers a
-**Send a new link** button. To keep bots from burning through the Resend quota, the
-function allows, per hour, 3 emails to one address, 6 from one connection and 40 overall
-(`LIMITS` at the top of the function); every send is logged in `public.signup_requests`.
+**Send a new link** button. To keep bots from burning through the Resend quota, every
+request takes a slot in `public.signup_requests` before anything else happens, and the
+function allows 3 requests an hour for one inbox, 5 an hour from one connection, 30 an
+hour and 80 a day overall (`LIMITS` at the top of the function). A pending account keeps
+its password and details until its owner confirms, so asking for a link can never take one
+over. When the function is redeployed, ship `public/confirm.html` first: every email links
+to it. A CAPTCHA in front of the forms is the next step if bots ever become a problem.
 
 ## Notes on how access works
 

@@ -75,10 +75,10 @@ export function AuthProvider({ children }) {
   const callSignupEmail = async (payload) => {
     const url = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    let r = null, j = null;
+    let r = null, j = null, slow = false;
     try {
       const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), 15000);
+      const timer = setTimeout(() => { slow = true; ctl.abort(); }, 20000);
       r = await fetch(url + "/functions/v1/signup-email", {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: anonKey },
@@ -88,6 +88,9 @@ export function AuthProvider({ children }) {
       clearTimeout(timer);
       j = await r.json();
     } catch (e) { r = null; j = null; }
+    // A request we gave up on may still have gone through and sent the email, so it is not
+    // retried through the fallback: the person is told to look for the email first.
+    if (slow) return { ok: false, j: { error: "This is taking longer than usual. If a confirmation email shows up in the next minute, use it — otherwise try again." } };
     const fromFn = j && (j.sent === true || typeof j.error === "string");
     return r && fromFn ? { ok: r.ok, j } : null;
   };

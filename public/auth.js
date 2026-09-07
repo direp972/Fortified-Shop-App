@@ -73,10 +73,10 @@
   // Returns {ok, j} for a reply the function itself wrote, or null for anything else
   // (unreachable, a gateway page, a non-JSON body) so the caller can fall back.
   async function callSignupEmail(payload) {
-    let r = null, j = null;
+    let r = null, j = null, slow = false;
     try {
       const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
-      const timer = ctl ? setTimeout(function () { ctl.abort(); }, 15000) : null;
+      const timer = ctl ? setTimeout(function () { slow = true; ctl.abort(); }, 20000) : null;
       r = await fetch(SUPA + "/functions/v1/signup-email", {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: KEY },
@@ -86,6 +86,9 @@
       if (timer) clearTimeout(timer);
       j = await r.json();
     } catch (e) { r = null; j = null; }
+    // A request we gave up on may still have gone through and sent the email, so it is not
+    // retried through the fallback: the person is told to look for the email first.
+    if (slow) return { ok: false, j: { error: "This is taking longer than usual. If a confirmation email shows up in the next minute, use it — otherwise try again." } };
     const fromFn = j && (j.sent === true || typeof j.error === "string");
     return r && fromFn ? { ok: r.ok, j: j } : null;
   }
@@ -226,7 +229,7 @@
     </div>
     <label>Email</label><input id="rc-em" type="email" autocomplete="email" placeholder="you@company.com">
     <label>Password</label><input id="rc-pw" type="password" autocomplete="current-password" placeholder="••••••••">
-    <div class="err" id="rc-err"></div>
+    <div class="err" id="rc-err" role="alert"></div>
     <button class="btn" style="width:100%" id="rc-go">Sign in</button>
     <div class="swap" id="rc-swap">New here? <button type="button" data-mode="up">Create a free account</button></div>
   </div>`;
@@ -295,10 +298,13 @@
     location.reload();
   };
   function showConfirmSent(em) {
-    modal.querySelector("#rc-title").textContent = "Check your email";
-    modal.querySelector("#rc-sub").textContent = "We sent a confirmation link to " + em + ". Click it and you'll be signed in right here. If it doesn't show up in a minute, check your spam folder.";
+    var title = modal.querySelector("#rc-title");
+    title.textContent = "Check your email";
+    modal.querySelector("#rc-sub").textContent = "We sent an email to " + em + ". If you're new, it has a link that confirms your account and signs you in right here. If you already have an account, it tells you how to sign in. Check your spam folder if it doesn't show up in a minute.";
     hideErr();
     setModeAfterConfirm();
+    title.setAttribute("tabindex", "-1");
+    title.focus();
   }
   function setModeAfterConfirm() {
     modal.querySelector("#rc-name-co").style.display = "none";
@@ -315,10 +321,14 @@
     b.onclick = async function () {
       b.disabled = true; b.textContent = "Sending…";
       const r = await resendLink(em, pw);
-      if (r.error) { showErr(r.error); return; }
+      if (r.error) { showErr(r.error); offerResend(em, pw); return; }
       showConfirmSent(em);
     };
     err.appendChild(b);
+  }
+  // Anything from a user record that lands in innerHTML goes through this first.
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
   }
 
   /* ---------- Google sign-in ---------- */
@@ -386,7 +396,7 @@
     modal.classList.remove("dismissable");
     card.innerHTML =
       '<p style="font-family:var(--mono,monospace);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#8A94A6;margin:0 0 10px">RoofCoil · One last thing</p>' +
-      '<h2>Welcome' + (session.user.user_metadata && session.user.user_metadata.name ? ", " + session.user.user_metadata.name.split(" ")[0] : "") + '</h2>' +
+      '<h2>Welcome' + (session.user.user_metadata && session.user.user_metadata.name ? ", " + esc(session.user.user_metadata.name.split(" ")[0]) : "") + '</h2>' +
       '<p class="sub">Add a phone number so the shop can reach you about orders.</p>' +
       '<label>Phone</label><input id="rc-ph2" type="tel" autocomplete="tel" inputmode="tel" placeholder="(555) 555-5555">' +
       '<div class="err" id="rc-err2"></div>' +
@@ -414,6 +424,10 @@
   async function boot() {
     document.body.appendChild(modal);
     const fromHash = await consumeHashSession();
+    // #signin / #signup on arrival (from the confirmation emails and the confirm page) opens
+    // the box straight away for a signed-out visitor.
+    const marker = /^#(signin|signup)$/.exec(location.hash || "");
+    if (marker) cleanHash();
     const session = await refreshIfNeeded();
     const slot = document.querySelector("[data-auth-slot]");
     if (fromHash && fromHash.fresh && session && !(session.user.user_metadata && session.user.user_metadata.phone)) {
@@ -422,7 +436,7 @@
     if (session) {
       const who = (session.user.user_metadata && session.user.user_metadata.name) || session.user.email;
       if (slot) {
-        slot.innerHTML = '<span class="rc-chip" title="' + session.user.email + '"><span class="rc-who">👤 ' + who + '</span><a class="rc-admin" id="rc-admin" href="/directory-admin.html" style="display:none">Admin</a><button id="rc-out">Sign out</button></span>';
+        slot.innerHTML = '<span class="rc-chip" title="' + esc(session.user.email) + '"><span class="rc-who">👤 ' + esc(who) + '</span><a class="rc-admin" id="rc-admin" href="/directory-admin.html" style="display:none">Admin</a><button id="rc-out">Sign out</button></span>';
         slot.querySelector("#rc-out").onclick = signOut;
         // Staff-only shortcut to the directory admin. RLS on the staff table means
         // non-staff accounts get an empty result, so the link never renders for them.
@@ -446,6 +460,7 @@
         el.addEventListener("click", function (e) { e.preventDefault(); openModal({ mode: el.dataset.authOpen || "up" }); });
       });
       if (document.body.hasAttribute("data-auth-required")) openModal({ blocking: true });
+      else if (marker) openModal({ mode: marker[1] === "signup" ? "up" : "in" });
       if (fromHash && fromHash.error) { openModal({}); showErr(fromHash.error); }
     }
     document.dispatchEvent(new CustomEvent("rc:auth", { detail: { session: session } }));

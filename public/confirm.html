@@ -44,6 +44,7 @@
   var KEY = "sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
   var HOSTS = ["roofcoil.com", "www.roofcoil.com", "shop.roofcoil.com", "fortifiedmetals.com", "www.fortifiedmetals.com", "localhost"];
   var PHONE = "972-944-7963";
+  var HOME = "https://www.roofcoil.com/";
 
   var q = new URLSearchParams(location.search);
   var tokenHash = q.get("token_hash") || "";
@@ -57,18 +58,21 @@
   document.title = "Confirm your email — " + brand;
   if (onFortified) $("foot").innerHTML = 'Powered by <a href="https://www.roofcoil.com">RoofCoil.com</a>';
 
+  // Only an https page on one of our own hosts, never this page itself; otherwise the home page.
   function safeNext(raw) {
     try {
-      var u = new URL(raw || "", location.href);
+      if (!raw) return HOME;
+      var u = new URL(raw, location.href);
       var local = u.protocol === "http:" && u.hostname === "localhost";
-      if ((u.protocol === "https:" || local) && HOSTS.indexOf(u.hostname) !== -1) { u.hash = ""; return u.toString(); }
+      if ((u.protocol === "https:" || local) && HOSTS.indexOf(u.hostname) !== -1 && !/\/confirm\.html$/i.test(u.pathname)) { u.hash = ""; return u.toString(); }
     } catch (e) {}
-    return "https://www.roofcoil.com/";
+    return HOME;
   }
   function showErr(m) { var e = $("err"); e.textContent = m; e.style.display = "block"; }
+  // The #signin marker makes auth.js open the sign-in box on arrival.
   function offerSignIn(label) {
     var a = document.createElement("a");
-    a.className = "btn alt"; a.href = next; a.textContent = label || "Go to sign in";
+    a.className = "btn alt"; a.href = next + "#signin"; a.textContent = label || "Go to sign in";
     var old = $("go"); old.parentNode.replaceChild(a, old); a.id = "go";
   }
   function done(title, sub) { $("title").textContent = title; $("sub").textContent = sub; }

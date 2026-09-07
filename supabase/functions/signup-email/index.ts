@@ -3,26 +3,33 @@
 // Supabase Auth's built-in mailer allows two confirmation emails an hour, and the site
 // requires confirmation before first sign-in, so one busy afternoon locked people out with
 // "email rate limit exceeded". This function creates the account unconfirmed with the
-// service-role key, asks Supabase Auth for the very same confirmation link its own mailer
-// would have sent (auth.admin.generateLink), and sends that link through Resend from the
-// verified roofcoil.com domain. Clicking it confirms the account and lands the person back
-// on the page they signed up from, signed in, exactly as the standard flow does.
+// service-role key, asks Supabase Auth for the confirmation code its own mailer would have
+// sent (auth.admin.generateLink), and emails a link through Resend from the verified
+// roofcoil.com domain. The link opens public/confirm.html, which exchanges the code for a
+// session on a button press and lands the person back on the page they signed up from.
 //
-// Every address gets the same answer, so this endpoint never reveals who is registered:
-//   {sent:true}  — a confirmation link went out, or the address already has a confirmed
-//                  account and was emailed "you already have an account" instead
+// Every address gets the same answer and roughly the same work, so this endpoint never
+// reveals who is registered:
+//   {sent:true}  — a confirmation link went out; or the address already has a confirmed
+//                  account and was emailed "you already have an account"; or a "send a new
+//                  link" request named an address with no account and was emailed that
 //   {error:"…"}  — the request itself was bad (400) or over the limits (429)
-// A sign-up that was never confirmed is only a pending request: signing up again (or the
-// "send a new link" button, which knows only email and password) starts it over with a
-// fresh link, keeping the name and phone from the first attempt when the new one has none.
+// An account that was never confirmed is only a pending request. Signing up again, or the
+// "send a new link" button (which knows only email and password), gets it a fresh code;
+// its password and details are never changed by a request that hasn't proven it owns the
+// inbox, so nobody can take over a pending account by asking for a link.
 //
 // Settings (environment first, then Vault through public.get_secret):
 //   RESEND_API_KEY     — required
-//   SIGNUP_EMAIL_FROM  — default "RoofCoil.com <no-reply@roofcoil.com>"
+//   SIGNUP_EMAIL_FROM  — default "<brand> <no-reply@roofcoil.com>"
 //
-// Limits live in public.signup_requests so they hold across instances: per hour, 3 emails
-// to one address, 6 from one connection, 40 overall. Over the limit answers 429 with a
-// message that carries the shop's phone number.
+// Limits: every request, accepted or not, takes a slot in public.signup_requests inside one
+// locked statement before anything else happens, so bursts can't slip under them and a
+// caller that keeps asking locks itself out. Per hour: 3 requests for one inbox (plus-tags
+// and Gmail dots count as the same inbox), 5 from one connection, 30 overall; 80 a day
+// overall, well under the Resend quota that order alerts share. Over a limit answers 429
+// with a message that carries the shop's phone number. A CAPTCHA in front of the forms
+// would stop a distributed bot at the source; these limits only bound the damage.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -35,14 +42,15 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const PHONE = "972-944-7963";
-const LIMITS = { perEmail: 3, perIp: 6, overall: 40 }; // per hour
+const LIMITS = { perInbox: 3, perIp: 5, perHour: 30, perDay: 80 };
 // Pages the person may be sent back to after confirming. Anything else lands on the home page.
 const ALLOWED_HOSTS = ["roofcoil.com", "www.roofcoil.com", "shop.roofcoil.com", "fortifiedmetals.com", "www.fortifiedmetals.com", "localhost"];
 // public/confirm.html in this repo, on the domain Vercel deploys straight from main. It
 // exchanges the hashed code for a session on a button press, then sends the person on to
-// whichever page they signed up from.
+// whichever page they signed up from. Ship the page before pointing emails at it.
 const CONFIRM_PAGE = "https://shop.roofcoil.com/confirm.html";
 const BUSY = `We're getting a lot of sign-ups right now — try again in a few minutes, or call ${PHONE} and we'll set you up.`;
+const INBOX_BUSY = `We've already sent ${LIMITS.perInbox} emails to that address in the last hour — check your spam folder, or call ${PHONE} and we'll set you up.`;
 
 const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -70,14 +78,32 @@ function safeRedirect(raw: unknown): string | undefined {
     const local = u.protocol === "http:" && u.hostname === "localhost";
     if (u.protocol !== "https:" && !local) return undefined;
     if (!ALLOWED_HOSTS.includes(u.hostname)) return undefined;
+    if (/\/confirm\.html$/i.test(u.pathname)) return undefined;
     u.hash = "";
     return u.toString();
   } catch { return undefined; }
 }
 
+// The address as one inbox, for the limits: a plus-tag or, on Gmail, dots don't make a new one.
+function inboxKey(email: string): string {
+  const at = email.lastIndexOf("@");
+  const domain = email.slice(at + 1);
+  let local = email.slice(0, at).split("+")[0];
+  if (domain === "gmail.com" || domain === "googlemail.com") local = local.replace(/\./g, "");
+  return `${local}@${domain}`;
+}
+
 const digits = (s: string) => s.replace(/\D/g, "").length;
 const mask = (email: string) => email.replace(/^(.).*?(@.*)$/, "$1…$2");
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+// Only a plain first name reaches the email: a caller can type anything into the form, and
+// the message is signed for roofcoil.com, so nothing that looks like a link or a pitch may ride along.
+function greeting(name: string): string {
+  const first = (name || "").trim().split(/\s+/)[0] || "";
+  const clean = first.replace(/[^\p{L}\p{M}'’.-]/gu, "").slice(0, 30);
+  return clean ? `Hi ${clean},` : "Hi there,";
+}
+const footer = (brand: string) => brand === "Fortified Metals" ? `Fortified Metals · ${PHONE}` : `${brand} · Fortified Metals · ${PHONE}`;
 
 type Mail = { subject: string; text: string; html: string };
 
@@ -87,64 +113,90 @@ function shell(brand: string, inner: string): string {
     <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#8A94A6;margin-bottom:14px">${esc(brand)}</div>
     ${inner}
     <div style="margin-top:26px;padding-top:14px;border-top:1px solid #E7E2D6;font-size:12px;color:#8A94A6;line-height:1.5">
-      ${esc(brand)} · Fortified Metals · ${PHONE}
+      ${esc(footer(brand))}
     </div>
   </div>
 </div>`;
 }
+const button = (href: string, label: string, bg: string, fg: string) =>
+  `<p style="margin:0 0 20px"><a href="${esc(href)}" style="display:inline-block;background:${bg};color:${fg};font-weight:700;font-size:15px;text-decoration:none;padding:13px 22px;border-radius:9px">${esc(label)}</a></p>`;
+const small = (text: string) => `<p style="font-size:12.5px;line-height:1.5;color:#4E6273;margin:0 0 6px">${esc(text)}</p>`;
 
-function confirmationMail(name: string, link: string, brand: string): Mail {
-  const first = (name || "").trim().split(/\s+/)[0] || "";
-  const hi = first ? `Hi ${first},` : "Hi,";
+function confirmationMail(name: string, link: string, brand: string, note: string): Mail {
+  const hi = greeting(name);
+  const tail = `The link expires in about an hour. If you didn't create an account, you can ignore this email.`;
   return {
     subject: `Confirm your ${brand} account`,
-    text: `${hi}\n\nClick the link below to confirm your email and finish creating your ${brand} account:\n\n${link}\n\nThe link expires in about an hour. If you didn't create an account, you can ignore this email.\n\n${brand} · Fortified Metals · ${PHONE}`,
+    text: `${hi}\n\nClick the link below to confirm your email and finish creating your ${brand} account:\n\n${link}\n\n${note ? note + "\n\n" : ""}${tail}\n\n${footer(brand)}`,
     html: shell(brand, `
     <h1 style="font-size:22px;margin:0 0 10px;color:#0A2B41">${esc(hi)}</h1>
     <p style="font-size:15px;line-height:1.55;margin:0 0 20px">Click the button below to confirm your email and finish creating your ${esc(brand)} account.</p>
-    <p style="margin:0 0 20px"><a href="${esc(link)}" style="display:inline-block;background:#D4AF37;color:#0B1E2C;font-weight:700;font-size:15px;text-decoration:none;padding:13px 22px;border-radius:9px">Confirm my email</a></p>
-    <p style="font-size:12.5px;line-height:1.5;color:#4E6273;margin:0 0 6px">If the button doesn't work, copy this link into your browser:</p>
+    ${button(link, "Confirm my email", "#D4AF37", "#0B1E2C")}
+    ${small("If the button doesn't work, copy this link into your browser:")}
     <p style="font-size:12px;line-height:1.5;word-break:break-all;margin:0 0 18px"><a href="${esc(link)}" style="color:#0F3D5C">${esc(link)}</a></p>
-    <p style="font-size:12.5px;line-height:1.5;color:#4E6273;margin:0">The link expires in about an hour. If you didn't create an account, you can ignore this email.</p>`),
+    ${note ? small(note) : ""}
+    ${small(tail)}`),
   };
 }
 
-function existingAccountMail(brand: string, site: string): Mail {
+function existingAccountMail(brand: string, signIn: string): Mail {
+  const help = `If you signed up with Google, use "Continue with Google". Forgot your password, or wasn't you? Call ${PHONE} and we'll sort it out.`;
   return {
     subject: `You already have a ${brand} account`,
-    text: `Someone — probably you — just tried to create a ${brand} account with this email address, but it already has one.\n\nSign in here with your password: ${site}\n\nIf you signed up with Google, use "Continue with Google". Forgot your password, or wasn't you? Call ${PHONE} and we'll sort it out.\n\n${brand} · Fortified Metals · ${PHONE}`,
+    text: `Someone — probably you — just tried to create a ${brand} account with this email address, but it already has one.\n\nSign in here with your password: ${signIn}\n\n${help}\n\n${footer(brand)}`,
     html: shell(brand, `
     <h1 style="font-size:22px;margin:0 0 10px;color:#0A2B41">You already have an account</h1>
     <p style="font-size:15px;line-height:1.55;margin:0 0 20px">Someone, probably you, just tried to create a ${esc(brand)} account with this email address, but it already has one.</p>
-    <p style="margin:0 0 20px"><a href="${esc(site)}" style="display:inline-block;background:#0F3D5C;color:#fff;font-weight:700;font-size:15px;text-decoration:none;padding:13px 22px;border-radius:9px">Sign in</a></p>
-    <p style="font-size:12.5px;line-height:1.5;color:#4E6273;margin:0">If you signed up with Google, use "Continue with Google". Forgot your password, or wasn't you? Call ${PHONE} and we'll sort it out.</p>`),
+    ${button(signIn, "Sign in", "#0F3D5C", "#fff")}
+    ${small(help)}`),
   };
 }
 
-async function sendMail(to: string, mail: Mail): Promise<void> {
+function noAccountMail(brand: string, signUp: string): Mail {
+  const help = `If that wasn't you, you can ignore this email. Questions? Call ${PHONE}.`;
+  return {
+    subject: `No ${brand} account for this email yet`,
+    text: `Someone — probably you — asked us to resend a sign-in link for this email address, but it doesn't have a ${brand} account yet.\n\nCreate one here: ${signUp}\n\n${help}\n\n${footer(brand)}`,
+    html: shell(brand, `
+    <h1 style="font-size:22px;margin:0 0 10px;color:#0A2B41">No account for this email yet</h1>
+    <p style="font-size:15px;line-height:1.55;margin:0 0 20px">Someone, probably you, asked us to resend a sign-in link for this email address, but it doesn't have a ${esc(brand)} account yet.</p>
+    ${button(signUp, "Create an account", "#D4AF37", "#0B1E2C")}
+    ${small(help)}`),
+  };
+}
+
+async function sendMail(to: string, mail: Mail, brand: string): Promise<void> {
   const key = await setting("RESEND_API_KEY");
   if (!key) throw new Error("RESEND_API_KEY not set");
-  const from = (await setting("SIGNUP_EMAIL_FROM")) ?? "RoofCoil.com <no-reply@roofcoil.com>";
+  const from = (await setting("SIGNUP_EMAIL_FROM")) ?? `${brand} <no-reply@roofcoil.com>`;
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
     body: JSON.stringify({ from, to: [to], subject: mail.subject, text: mail.text, html: mail.html }),
   });
-  if (!res.ok) throw new Error(`resend ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    const err = new Error(`resend ${res.status}: ${await res.text()}`) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
 }
 
-// Emails sent in the last hour to this address, from this connection and overall, in one
-// database call. A hiccup is retried once; if it fails again the sign-up goes through,
-// since turning a real person away costs more than one extra email from a bot.
-async function overLimit(email: string, ip: string): Promise<boolean> {
+// Takes this request's slot and reads the counts, including it, in one locked database
+// call. The row stays whatever happens next, so retries and rejected requests count too.
+// A hiccup is retried once; if it fails again the sign-up goes through, since turning a
+// real person away costs more than one extra email from a bot.
+async function reserve(inbox: string, ip: string): Promise<{ id: number | null; over: "inbox" | "load" | null }> {
   for (let attempt = 0; attempt < 2; attempt++) {
-    const { data, error } = await admin.rpc("signup_email_counts", { p_email: email, p_ip: ip });
+    const { data, error } = await admin.rpc("signup_request_reserve", { p_email: inbox, p_ip: ip });
     if (!error && data) {
-      return Number(data.by_email) >= LIMITS.perEmail || Number(data.by_ip) >= LIMITS.perIp || Number(data.total) >= LIMITS.overall;
+      const over = Number(data.by_email) > LIMITS.perInbox ? "inbox"
+        : (Number(data.by_ip) > LIMITS.perIp || Number(data.total) > LIMITS.perHour || Number(data.day) > LIMITS.perDay) ? "load"
+        : null;
+      return { id: Number(data.id), over };
     }
-    console.error("signup_email_counts", attempt, error?.message || "no data");
+    console.error("signup_request_reserve", attempt, error?.message || "no data");
   }
-  return false;
+  return { id: null, over: null };
 }
 
 Deno.serve(async (req: Request) => {
@@ -169,62 +221,78 @@ Deno.serve(async (req: Request) => {
     if (digits(phone) < 10) return json({ error: "A phone number is required so the shop can reach you about orders." }, 400);
   }
 
-  const ip = clientIp(req);
-  if (await overLimit(email, ip)) return json({ error: BUSY }, 429);
+  const slot = await reserve(inboxKey(email), clientIp(req));
+  if (slot.over) return json({ error: slot.over === "inbox" ? INBOX_BUSY : BUSY }, 429);
 
   const { data: state, error: stateErr } = await admin.rpc("signup_state", { p_email: email });
   if (stateErr) { console.error("signup_state", stateErr.message); return json({ error: "Sign up failed — please try again." }, 400); }
 
   const onFortified = !!redirectTo && /fortifiedmetals\.com/.test(redirectTo);
   const brand = onFortified ? "Fortified Metals" : "RoofCoil.com";
-  const site = onFortified ? "https://fortifiedmetals.com/app" : "https://www.roofcoil.com";
+  const home = onFortified ? "https://fortifiedmetals.com/app" : "https://www.roofcoil.com/";
+  // Where the emails' buttons point: the page the person came from, with a marker that
+  // public/auth.js turns into an open sign-in or sign-up box.
+  const signIn = (redirectTo || home) + "#signin";
+  const signUp = (redirectTo || home) + "#signup";
 
   let kind: "confirm" | "existing" | "none" = "confirm";
   try {
     if (state?.state === "confirmed") {
-      await sendMail(email, existingAccountMail(brand, site));
+      await sendMail(email, existingAccountMail(brand, signIn), brand);
       kind = "existing";
+    } else if (state?.state !== "unconfirmed" && resend) {
+      await sendMail(email, noAccountMail(brand, signUp), brand);
+      kind = "none";
     } else {
+      // For a pending account Supabase Auth issues a fresh code and leaves the password as it
+      // was; its own name and phone win over anything sent now, so a stranger asking for a
+      // link can neither take the account over nor rewrite its details.
       let data = { name, company, phone };
+      let note = "";
       if (state?.state === "unconfirmed") {
         const { data: old } = await admin.auth.admin.getUserById(state.id);
         const m = (old?.user?.user_metadata ?? {}) as Record<string, string>;
-        data = { name: name || m.name || "", company: company || m.company || "", phone: phone || m.phone || "" };
-        const { error: delErr } = await admin.auth.admin.deleteUser(state.id);
-        if (delErr) throw delErr;
-      } else if (resend) {
-        kind = "none"; // nothing to resend for an address with no account; answer like everyone else
+        data = { name: m.name || name, company: m.company || company, phone: m.phone || phone };
+        note = "This confirms the account you created earlier. Your password is the one you chose then.";
       }
-      if (kind !== "none") {
-        if (!data.name || digits(data.phone) < 10) return json({ error: "Please create your account again with your name and phone number." }, 400);
-        const { data: gen, error: genErr } = await admin.auth.admin.generateLink({
-          type: "signup", email, password, options: { data, redirectTo },
-        });
-        if (genErr) {
-          // 422s are about the request itself (password policy) — say what Supabase Auth said.
-          if ((genErr as { status?: number }).status === 422 && genErr.message) return json({ error: genErr.message }, 400);
+      const { data: gen, error: genErr } = await admin.auth.admin.generateLink({
+        type: "signup", email, password, options: { data, redirectTo },
+      });
+      if (genErr) {
+        const code = (genErr as { code?: string }).code || "";
+        if (code === "email_exists" || /already been registered/i.test(genErr.message || "")) {
+          // Confirmed between the state check and now: same outcome as the confirmed branch.
+          await sendMail(email, existingAccountMail(brand, signIn), brand);
+          kind = "existing";
+        } else if ((genErr as { status?: number }).status === 422 && genErr.message) {
+          // Other 422s are about the request itself (password policy) — say what Supabase Auth said.
+          return json({ error: genErr.message }, 400);
+        } else {
           throw genErr;
         }
+      } else {
         // The email links to the site's own confirm page with the hashed code, not to Supabase's
         // /verify URL: mail scanners (Outlook Safe Links and friends) open every link before the
         // person does and would burn the one-time code. The page exchanges the code only when
         // the person presses its button, then sends them on to `next` signed in.
         const tokenHash = gen?.properties?.hashed_token;
         if (!tokenHash) throw new Error("no hashed_token in generateLink response");
-        const link = `${CONFIRM_PAGE}?token_hash=${encodeURIComponent(tokenHash)}&type=signup&next=${encodeURIComponent(redirectTo || site)}`;
-        await sendMail(email, confirmationMail(data.name, link, brand));
+        const link = `${CONFIRM_PAGE}?token_hash=${encodeURIComponent(tokenHash)}&type=signup&next=${encodeURIComponent(redirectTo || home)}`;
+        await sendMail(email, confirmationMail(data.name, link, brand, note), brand);
       }
     }
   } catch (e) {
     console.error("signup-email", mask(email), (e as Error).message);
-    return json({ error: `We couldn't send the confirmation email just now — try again in a minute, or call ${PHONE}.` }, 400);
+    // Resend saying "too many" is the same story as our own limits.
+    if ((e as { status?: number }).status === 429) return json({ error: BUSY }, 429);
+    return json({ error: `We couldn't send the email just now — try again in a minute, or call ${PHONE}.` }, 400);
   }
 
-  if (kind !== "none") {
-    const { error: logErr } = await admin.from("signup_requests").insert({ email, ip, kind: resend ? "resend" : kind });
-    if (logErr) console.error("signup_requests insert", logErr.message);
-    // Keep the trail short: rows older than two days no longer count for anything.
-    if (Math.random() < 0.05) await admin.from("signup_requests").delete().lt("created_at", new Date(Date.now() - 2 * 86400_000).toISOString());
+  if (slot.id) {
+    const { error: logErr } = await admin.from("signup_requests").update({ kind: resend ? "resend" : kind }).eq("id", slot.id);
+    if (logErr) console.error("signup_requests update", logErr.message);
   }
+  // Keep the trail short: rows older than two days no longer count for anything.
+  if (Math.random() < 0.05) await admin.from("signup_requests").delete().lt("created_at", new Date(Date.now() - 2 * 86400_000).toISOString());
   return json({ sent: true });
 });

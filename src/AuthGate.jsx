@@ -24,7 +24,11 @@ export default function AuthGate({ children }) {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
-  const [needsResend, setNeedsResend] = useState(false); // sign-in hit "not confirmed": offer a fresh link
+  // A sign-in that hit "not confirmed": the exact email and password it used, so the
+  // "Send a new link" button asks for that account even if the fields change afterwards.
+  const [pending, setPending] = useState(null);
+  const needsResend = !!pending;
+  const setNeedsResend = (on) => setPending(on ? { email, password } : null);
   const [submitting, setSubmitting] = useState(false);
   const [signupDone, setSignupDone] = useState(false);
 
@@ -75,12 +79,14 @@ export default function AuthGate({ children }) {
   };
 
   const handleResend = async () => {
+    if (!pending) return;
     setSubmitting(true);
     try {
-      const { error } = await resendConfirmation(email, password);
+      const { error } = await resendConfirmation(pending.email, pending.password);
       if (error) { setError(error.message); return; }
       setError("");
-      setNeedsResend(false);
+      setEmail(pending.email);
+      setPending(null);
       setSignupDone(true);
     } finally {
       setSubmitting(false);
@@ -101,7 +107,7 @@ export default function AuthGate({ children }) {
         <div style={{ maxWidth: 380, textAlign: "center", background: "#fff", borderRadius: 16, padding: 28, boxShadow: "0 30px 80px rgba(0,0,0,0.5)" }}>
           <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 10, color: INK }}>Check your email</div>
           <div style={{ fontSize: 13.5, color: "#555", lineHeight: 1.5 }}>
-            We sent a confirmation link to <strong>{email}</strong>. Click it and you'll be signed in right here. If it doesn't show up in a minute, check your spam folder.
+            We sent an email to <strong>{email}</strong>. If you're new, it has a link that confirms your account and signs you in right here. If you already have an account, it tells you how to sign in. Check your spam folder if it doesn't show up in a minute.
           </div>
           <button onClick={() => { setSignupDone(false); setMode("signin"); }}
             style={{ marginTop: 18, width: "100%", padding: "10px", borderRadius: 8, border: `1px solid ${INK}`, background: "transparent", color: INK, fontWeight: 600, cursor: "pointer" }}>
@@ -144,17 +150,17 @@ export default function AuthGate({ children }) {
         )}
         <label style={{ display: "block", fontSize: 12, color: "#555", marginBottom: 12 }}>
           Email
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
+          <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setPending(null); }} required
             style={{ width: "100%", padding: 10, marginTop: 4, border: "1px solid #ddd", borderRadius: 7, fontSize: 14, boxSizing: "border-box" }} />
         </label>
         <label style={{ display: "block", fontSize: 12, color: "#555", marginBottom: 16 }}>
           Password
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6}
+          <input type="password" value={password} onChange={(e) => { setPassword(e.target.value); setPending(null); }} required minLength={6}
             style={{ width: "100%", padding: 10, marginTop: 4, border: "1px solid #ddd", borderRadius: 7, fontSize: 14, boxSizing: "border-box" }} />
         </label>
 
         {error && (
-          <div style={{ fontSize: 12.5, color: "#B3261E", marginBottom: 14, background: "#FDECEA", padding: 8, borderRadius: 6 }}>
+          <div role="alert" style={{ fontSize: 12.5, color: "#B3261E", marginBottom: 14, background: "#FDECEA", padding: 8, borderRadius: 6 }}>
             {error}
             {needsResend && (
               <button type="button" onClick={handleResend} disabled={submitting}
