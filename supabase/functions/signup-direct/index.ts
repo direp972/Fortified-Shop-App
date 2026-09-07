@@ -4,8 +4,14 @@
 // site requires confirmation before first sign-in — so a burst of sign-ups (a Facebook
 // post, say) locks everyone out with "email rate limit exceeded". This function creates
 // the account already confirmed with the service-role key (available to Edge Functions
-// by default) and returns a real session, in the same shape /auth/v1/token returns, so
-// the browser can store it and carry on. No email is sent, so no email limit applies.
+// by default) and answers {created:true}. The browser then signs in through the ordinary
+// password grant from its own connection, so Supabase's per-IP sign-in limits and captcha
+// apply to the visitor, not to this function's shared egress address.
+//
+// An email that already has an account gets the same {created:true}: the browser's
+// sign-in then either succeeds (right password) or fails with the uniform "invalid login"
+// message, so this endpoint never reveals which emails are registered. It never touches
+// an existing account.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 
@@ -17,10 +23,16 @@ const CORS = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
-// Best-effort per-IP throttle (per isolate; enough to blunt a script, not a security boundary).
+// Best-effort brake per isolate: the gateway appends the real client address as the last
+// x-forwarded-for entry, so key on that (earlier entries are caller-supplied). Not a
+// security boundary — a determined script can still create accounts, as it could with
+// /auth/v1/signup — just enough to blunt the casual loop.
 const hits = new Map<string, number[]>();
-function throttled(ip: string): boolean {
+function throttled(req: Request): boolean {
+  const xff = (req.headers.get("x-forwarded-for") || "").split(",").map((s) => s.trim()).filter(Boolean);
+  const ip = req.headers.get("cf-connecting-ip") || xff[xff.length - 1] || "unknown";
   const now = Date.now();
+  if (hits.size > 5000) hits.clear();
   const recent = (hits.get(ip) || []).filter((t) => now - t < 10 * 60 * 1000);
   recent.push(now);
   hits.set(ip, recent);
@@ -30,9 +42,7 @@ function throttled(ip: string): boolean {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
-
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
-  if (throttled(ip)) return json({ error: "Too many sign-ups from this connection — try again in a few minutes." }, 429);
+  if (throttled(req)) return json({ error: "Too many sign-ups from this connection — try again in a few minutes." }, 429);
 
   let body: Record<string, unknown>;
   try { body = await req.json(); } catch { return json({ error: "Bad request" }, 400); }
@@ -48,29 +58,20 @@ Deno.serve(async (req: Request) => {
   if (!name) return json({ error: "Name is required." }, 400);
   if (phone.replace(/\D/g, "").length < 10) return json({ error: "A phone number is required so the shop can reach you about orders." }, 400);
 
-  const url = Deno.env.get("SUPABASE_URL")!;
-  const admin = createClient(url, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false, autoRefreshToken: false } });
-
-  const { error: createErr } = await admin.auth.admin.createUser({
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { error } = await admin.auth.admin.createUser({
     email, password, email_confirm: true, user_metadata: { name, company, phone },
   });
-  if (createErr) {
-    const m = createErr.message || "";
-    if (/already|exists|registered/i.test(m)) return json({ error: "That email already has an account — sign in instead." }, 409);
-    console.error("createUser", m);
-    return json({ error: "Sign up failed — try a different email." }, 400);
+  if (error) {
+    const code = (error as { code?: string }).code || "";
+    const status = (error as { status?: number }).status || 0;
+    if (code === "email_exists" || /already|exists|registered/i.test(error.message || "")) return json({ created: true });
+    // 422s are about the request itself (password policy, a failing users trigger) — say what GoTrue said.
+    if (status === 422 && error.message) return json({ error: error.message }, 400);
+    console.error("createUser", code, error.message);
+    return json({ error: "Sign up failed — please try again." }, 400);
   }
-
-  // Sign the new account in with the ordinary password grant so the browser gets a normal session.
-  const anon = createClient(url, Deno.env.get("SUPABASE_ANON_KEY")!, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { data, error: signErr } = await anon.auth.signInWithPassword({ email, password });
-  if (signErr || !data.session) {
-    console.error("signIn after create", signErr?.message);
-    return json({ error: "Account created — now sign in with your email and password." }, 201);
-  }
-  const s = data.session;
-  return json({
-    access_token: s.access_token, refresh_token: s.refresh_token, token_type: s.token_type,
-    expires_in: s.expires_in, expires_at: s.expires_at, user: s.user,
-  });
+  return json({ created: true });
 });
