@@ -57,15 +57,13 @@
     return { session: readSession() };
   }
 
-  // Sign-up goes through the signup-direct Edge Function, which creates the account already
-  // confirmed — no confirmation email, so Supabase's built-in mailer limit (a couple of
-  // emails an hour) can't lock people out — and then signs in through the ordinary password
-  // grant from this browser. If the function can't be reached, the old /auth/v1/signup path
-  // (confirmation email) is the fallback.
+  // Standard Supabase sign-up: the account is created and a confirmation email goes out
+  // through the project's custom SMTP sender; first sign-in happens after the link is
+  // clicked. Every failure returns a message rather than throwing, so the button never sticks.
   function friendly(m) {
     m = typeof m === "string" ? m : (m && m.message) || "";
     if (/rate limit/i.test(m)) return "We're getting a lot of sign-ups right now — try again in a few minutes, or call 972-944-7963 and we'll set you up.";
-    if (/not confirmed/i.test(m)) return "That email has an account that was never confirmed. Call 972-944-7963 and we'll fix it in a minute.";
+    if (/not confirmed/i.test(m)) return "That email hasn't been confirmed yet — check your inbox for the link, or call 972-944-7963.";
     return m;
   }
   function lead(name, company, phone, email) {
@@ -79,30 +77,7 @@
     } catch (e) {}
   }
   async function signUp(name, company, phone, email, password) {
-    let r = null, j = null;
-    try {
-      const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
-      const timer = ctl ? setTimeout(function () { ctl.abort(); }, 15000) : null;
-      r = await fetch(SUPA + "/functions/v1/signup-direct", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: KEY },
-        body: JSON.stringify({ email, password, name, company, phone }),
-        signal: ctl ? ctl.signal : undefined,
-      });
-      if (timer) clearTimeout(timer);
-      j = await r.json();
-    } catch (e) { r = null; j = null; }
-    // Only a reply the function itself wrote counts; anything else (unreachable, a gateway
-    // page, a non-JSON body) falls back to the confirmation-email path below.
-    const fromFn = j && (j.created === true || typeof j.error === "string");
-    if (r && fromFn) {
-      if (!r.ok) return { error: friendly(j.error) || "Sign up failed — please try again." };
-      lead(name, company, phone, email);
-      let s;
-      try { s = await signIn(email, password); } catch (e) { return { error: "Couldn't reach the server — check your connection and try again." }; }
-      if (s.error) return { error: /invalid login/i.test(s.error) ? "Couldn't sign in with that password. If this email already has an account, use its password — or call 972-944-7963." : friendly(s.error) };
-      return s;
-    }
+    let r, j;
     try {
       r = await fetch(SUPA + "/auth/v1/signup", {
         method: "POST",

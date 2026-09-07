@@ -66,45 +66,15 @@ export function AuthProvider({ children }) {
   const friendly = (m) => {
     m = typeof m === "string" ? m : (m && m.message) || "";
     if (/rate limit/i.test(m)) return "We're getting a lot of sign-ups right now — try again in a few minutes, or call 972-944-7963 and we'll set you up.";
-    if (/not confirmed/i.test(m)) return "That email has an account that was never confirmed. Call 972-944-7963 and we'll fix it in a minute.";
+    if (/not confirmed/i.test(m)) return "That email hasn't been confirmed yet — check your inbox for the link, or call 972-944-7963.";
     return m;
   };
 
   const signUp = async (email, password, name, phone) => {
-    // Sign-up goes through the signup-direct Edge Function, which creates the account
-    // already confirmed — no confirmation email, so Supabase's built-in mailer limit (a
-    // couple of emails an hour) can't lock people out — and then signs in with the ordinary
-    // password grant from this browser. The name and phone ride along as user metadata;
-    // loadCustomer picks them up from the session. If the function can't be reached,
-    // supabase.auth.signUp (confirmation email) is the fallback.
-    const url = import.meta.env.VITE_SUPABASE_URL;
-    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-    let r = null, j = null;
-    try {
-      const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), 15000);
-      r = await fetch(url + "/functions/v1/signup-direct", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: anonKey },
-        body: JSON.stringify({ email, password, name, company: "", phone }),
-        signal: ctl.signal,
-      });
-      clearTimeout(timer);
-      j = await r.json();
-    } catch (e) { r = null; j = null; }
-    // Only a reply the function itself wrote counts; anything else falls back below.
-    const fromFn = j && (j.created === true || typeof j.error === "string");
-    if (r && fromFn) {
-      if (!r.ok) return { data: null, error: { message: friendly(j.error) || "Sign up failed — please try again." } };
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) {
-        const m = /invalid login/i.test(error.message || "")
-          ? "Couldn't sign in with that password. If this email already has an account, use its password — or call 972-944-7963."
-          : friendly(error);
-        return { data, error: { message: m } };
-      }
-      return { data, error: null };
-    }
+    // Standard Supabase sign-up: the account is created and a confirmation email goes out
+    // through the project's custom SMTP sender. The name and phone ride along as user
+    // metadata; loadCustomer picks them up once a real session exists after the link is
+    // clicked. Every failure returns a message rather than throwing.
     try {
       const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name, phone } } });
       if (error) return { data, error: { message: friendly(error) || "Sign up failed — please try again." } };
