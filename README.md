@@ -88,6 +88,37 @@ team who needs staff access.
 2. Drag the `dist` folder onto Netlify's deploy page.
 3. Add the same two environment variables, then redeploy so the build picks them up.
 
+### 10. Turn on email (order alerts, Get Listed alerts)
+
+The shop is emailed about every new order (`order-alert`) and every Get Listed
+application (`listing-alert`) through [Resend](https://resend.com). Both Edge Functions
+(source under `supabase/functions/`) read their settings from Supabase Vault, so nothing
+has to be typed into the dashboard's secrets page. Open **SQL Editor** and run, with
+your Resend API key in place of the placeholder:
+
+```sql
+select vault.create_secret('re_your_key_here', 'RESEND_API_KEY');
+```
+
+Optional settings are stored the same way: `ALERT_EMAIL_TO` (default
+sales@fortifiedmetals.com), `LISTING_ALERT_TO` (default orders@roofcoil.com) and
+`ALERT_EMAIL_FROM` (default onboarding@resend.dev, which Resend only delivers to the
+address on your own Resend account — verify your domain in Resend, then set this to
+something like `Fortified Metals Orders <orders@fortifiedmetals.com>`).
+
+To rotate a key, update the existing secret rather than creating a second one with the
+same name:
+
+```sql
+select vault.update_secret((select id from vault.secrets where name = 'RESEND_API_KEY'), 're_new_key_here');
+```
+
+Sign-up confirmation emails are a separate path. They go out through Supabase Auth's
+own mailer, which is capped at two emails an hour unless custom SMTP is configured under
+**Authentication → SMTP Settings** (for Resend: host `smtp.resend.com`, port `465`, user
+`resend`, password = the same API key, sender = a verified address). Until that is done,
+sign-ups are created already confirmed by the `signup-direct` function and send no email.
+
 ## Notes on how access works
 
 - **Anyone signed in** (staff or customer) can submit orders and see the Price List
