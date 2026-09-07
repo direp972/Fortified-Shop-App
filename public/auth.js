@@ -57,16 +57,48 @@
     return { session: readSession() };
   }
 
-  // Sign-up goes through the signup-direct Edge Function, which creates the account already
-  // confirmed — no confirmation email, so Supabase's built-in mailer limit (a couple of
-  // emails an hour) can't lock people out — and then signs in through the ordinary password
-  // grant from this browser. If the function can't be reached, the old /auth/v1/signup path
-  // (confirmation email) is the fallback.
+  // Sign-up goes through the signup-email Edge Function: it creates the account unconfirmed
+  // and emails Supabase's own confirmation link through the shop's Resend sender, so the
+  // two-an-hour limit of Supabase's built-in mailer never applies. First sign-in happens
+  // when the link is clicked — it lands back on this page with the session in the URL hash,
+  // which consumeHashSession() picks up. If the function can't be reached, /auth/v1/signup
+  // (Supabase's own mailer) is the fallback.
   function friendly(m) {
     m = typeof m === "string" ? m : (m && m.message) || "";
     if (/rate limit/i.test(m)) return "We're getting a lot of sign-ups right now — try again in a few minutes, or call 972-944-7963 and we'll set you up.";
-    if (/not confirmed/i.test(m)) return "That email has an account that was never confirmed. Call 972-944-7963 and we'll fix it in a minute.";
+    if (/not confirmed/i.test(m)) return "That email hasn't been confirmed yet — check your inbox (and spam) for the link, or send a new one:";
     return m;
+  }
+  function here() { return location.origin + location.pathname + location.search; }
+  // Returns {ok, j} for a reply the function itself wrote, or null for anything else
+  // (unreachable, a gateway page, a non-JSON body) so the caller can fall back.
+  async function callSignupEmail(payload) {
+    let r = null, j = null, slow = false;
+    try {
+      const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
+      const timer = ctl ? setTimeout(function () { slow = true; ctl.abort(); }, 20000) : null;
+      r = await fetch(SUPA + "/functions/v1/signup-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: KEY },
+        body: JSON.stringify(Object.assign({ redirectTo: here() }, payload)),
+        signal: ctl ? ctl.signal : undefined,
+      });
+      if (timer) clearTimeout(timer);
+      j = await r.json();
+    } catch (e) { r = null; j = null; }
+    // A request we gave up on may still have gone through and sent the email, so it is not
+    // retried through the fallback: the person is told to look for the email first.
+    if (slow) return { ok: false, j: { error: "This is taking longer than usual. If a confirmation email shows up in the next minute, use it — otherwise try again." } };
+    const fromFn = j && (j.sent === true || typeof j.error === "string");
+    return r && fromFn ? { ok: r.ok, j: j } : null;
+  }
+  // A sign-in that failed with "not confirmed" can ask for a fresh link with just the email
+  // and password it already has; the function keeps the name and phone from the sign-up.
+  async function resendLink(email, password) {
+    const fn = await callSignupEmail({ email, password, resend: true });
+    if (!fn) return { error: "Couldn't reach the server — check your connection and try again." };
+    if (!fn.ok) return { error: friendly(fn.j.error) || "Couldn't send a new link — please try again." };
+    return { confirm: true };
   }
   function lead(name, company, phone, email) {
     // Keep the shop's lead list flowing (fire-and-forget).
@@ -79,30 +111,13 @@
     } catch (e) {}
   }
   async function signUp(name, company, phone, email, password) {
-    let r = null, j = null;
-    try {
-      const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
-      const timer = ctl ? setTimeout(function () { ctl.abort(); }, 15000) : null;
-      r = await fetch(SUPA + "/functions/v1/signup-direct", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", apikey: KEY },
-        body: JSON.stringify({ email, password, name, company, phone }),
-        signal: ctl ? ctl.signal : undefined,
-      });
-      if (timer) clearTimeout(timer);
-      j = await r.json();
-    } catch (e) { r = null; j = null; }
-    // Only a reply the function itself wrote counts; anything else (unreachable, a gateway
-    // page, a non-JSON body) falls back to the confirmation-email path below.
-    const fromFn = j && (j.created === true || typeof j.error === "string");
-    if (r && fromFn) {
-      if (!r.ok) return { error: friendly(j.error) || "Sign up failed — please try again." };
+    const fn = await callSignupEmail({ email, password, name, company, phone });
+    if (fn) {
+      if (!fn.ok) return { error: friendly(fn.j.error) || "Sign up failed — please try again." };
       lead(name, company, phone, email);
-      let s;
-      try { s = await signIn(email, password); } catch (e) { return { error: "Couldn't reach the server — check your connection and try again." }; }
-      if (s.error) return { error: /invalid login/i.test(s.error) ? "Couldn't sign in with that password. If this email already has an account, use its password — or call 972-944-7963." : friendly(s.error) };
-      return s;
+      return { confirm: true }; // the link in the email finishes the sign-in
     }
+    let r, j;
     try {
       r = await fetch(SUPA + "/auth/v1/signup", {
         method: "POST",
@@ -214,7 +229,7 @@
     </div>
     <label>Email</label><input id="rc-em" type="email" autocomplete="email" placeholder="you@company.com">
     <label>Password</label><input id="rc-pw" type="password" autocomplete="current-password" placeholder="••••••••">
-    <div class="err" id="rc-err"></div>
+    <div class="err" id="rc-err" role="alert"></div>
     <button class="btn" style="width:100%" id="rc-go">Sign in</button>
     <div class="swap" id="rc-swap">New here? <button type="button" data-mode="up">Create a free account</button></div>
   </div>`;
@@ -273,20 +288,47 @@
       res = await signUp(name, modal.querySelector("#rc-co").value.trim(), ph, em, pw);
     }
     btn.disabled = false; setMode(mode);
-    if (res.error) { showErr(res.error); return; }
-    if (res.confirm) {
-      modal.querySelector("#rc-title").textContent = "Check your email";
-      modal.querySelector("#rc-sub").textContent = "We sent a confirmation link to " + em + ". Click it, then come back and sign in.";
-      setModeAfterConfirm();
+    if (res.error) {
+      showErr(friendly(res.error));
+      if (mode === "in" && /not confirmed/i.test(res.error)) offerResend(em, pw);
       return;
     }
+    if (res.confirm) { showConfirmSent(em); return; }
     localStorage.removeItem("rc-member");
     location.reload();
   };
+  function showConfirmSent(em) {
+    var title = modal.querySelector("#rc-title");
+    title.textContent = "Check your email";
+    modal.querySelector("#rc-sub").textContent = "We sent an email to " + em + ". If you're new, it has a link that confirms your account and signs you in right here. If you already have an account, it tells you how to sign in. Check your spam folder if it doesn't show up in a minute.";
+    hideErr();
+    setModeAfterConfirm();
+    title.setAttribute("tabindex", "-1");
+    title.focus();
+  }
   function setModeAfterConfirm() {
     modal.querySelector("#rc-name-co").style.display = "none";
     modal.querySelector("#rc-go").textContent = "Sign in";
     mode = "in";
+  }
+  // Adds a "Send a new link" button under the "not confirmed" message.
+  function offerResend(em, pw) {
+    const err = modal.querySelector("#rc-err");
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = "Send a new link";
+    b.style.cssText = "display:block;margin-top:8px;border:none;border-radius:8px;background:#0F3D5C;color:#fff;font-weight:700;font-size:12.5px;padding:8px 12px;cursor:pointer;font-family:inherit";
+    b.onclick = async function () {
+      b.disabled = true; b.textContent = "Sending…";
+      const r = await resendLink(em, pw);
+      if (r.error) { showErr(r.error); offerResend(em, pw); return; }
+      showConfirmSent(em);
+    };
+    err.appendChild(b);
+  }
+  // Anything from a user record that lands in innerHTML goes through this first.
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
   }
 
   /* ---------- Google sign-in ---------- */
@@ -354,7 +396,7 @@
     modal.classList.remove("dismissable");
     card.innerHTML =
       '<p style="font-family:var(--mono,monospace);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#8A94A6;margin:0 0 10px">RoofCoil · One last thing</p>' +
-      '<h2>Welcome' + (session.user.user_metadata && session.user.user_metadata.name ? ", " + session.user.user_metadata.name.split(" ")[0] : "") + '</h2>' +
+      '<h2>Welcome' + (session.user.user_metadata && session.user.user_metadata.name ? ", " + esc(session.user.user_metadata.name.split(" ")[0]) : "") + '</h2>' +
       '<p class="sub">Add a phone number so the shop can reach you about orders.</p>' +
       '<label>Phone</label><input id="rc-ph2" type="tel" autocomplete="tel" inputmode="tel" placeholder="(555) 555-5555">' +
       '<div class="err" id="rc-err2"></div>' +
@@ -382,6 +424,10 @@
   async function boot() {
     document.body.appendChild(modal);
     const fromHash = await consumeHashSession();
+    // #signin / #signup on arrival (from the confirmation emails and the confirm page) opens
+    // the box straight away for a signed-out visitor.
+    const marker = /^#(signin|signup)$/.exec(location.hash || "");
+    if (marker) cleanHash();
     const session = await refreshIfNeeded();
     const slot = document.querySelector("[data-auth-slot]");
     if (fromHash && fromHash.fresh && session && !(session.user.user_metadata && session.user.user_metadata.phone)) {
@@ -390,7 +436,7 @@
     if (session) {
       const who = (session.user.user_metadata && session.user.user_metadata.name) || session.user.email;
       if (slot) {
-        slot.innerHTML = '<span class="rc-chip" title="' + session.user.email + '"><span class="rc-who">👤 ' + who + '</span><a class="rc-admin" id="rc-admin" href="/directory-admin.html" style="display:none">Admin</a><button id="rc-out">Sign out</button></span>';
+        slot.innerHTML = '<span class="rc-chip" title="' + esc(session.user.email) + '"><span class="rc-who">👤 ' + esc(who) + '</span><a class="rc-admin" id="rc-admin" href="/directory-admin.html" style="display:none">Admin</a><button id="rc-out">Sign out</button></span>';
         slot.querySelector("#rc-out").onclick = signOut;
         // Staff-only shortcut to the directory admin. RLS on the staff table means
         // non-staff accounts get an empty result, so the link never renders for them.
@@ -414,6 +460,7 @@
         el.addEventListener("click", function (e) { e.preventDefault(); openModal({ mode: el.dataset.authOpen || "up" }); });
       });
       if (document.body.hasAttribute("data-auth-required")) openModal({ blocking: true });
+      else if (marker) openModal({ mode: marker[1] === "signup" ? "up" : "in" });
       if (fromHash && fromHash.error) { openModal({}); showErr(fromHash.error); }
     }
     document.dispatchEvent(new CustomEvent("rc:auth", { detail: { session: session } }));
