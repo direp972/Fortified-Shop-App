@@ -2040,13 +2040,15 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
           strokeLinejoin="round" strokeLinecap="round" />
       )}
       {/* Painted side: the shadow line alongside the face that shows — tap it to switch sides.
-          A pale backing stroke keeps a dark finish color readable on the dark canvas. */}
+          Half the profile's weight and dashed 20 on / 20 off (screen pixels, so the pattern holds at
+          any zoom) so it can't be read as the profile itself. A pale backing stroke keeps a dark
+          finish color readable on the dark canvas; the wide transparent stroke is the tap target. */}
       {paintShadow && (
         <g data-testid="paint-shadow" onPointerDown={stop} onClick={() => setPaintSide?.(otherSide)}
           pointerEvents={mode === "draw" ? "none" : "auto"} style={{ cursor: "pointer" }}>
           <title>Painted side — tap to switch</title>
-          <path d={paintShadow.d} fill="none" stroke="#fff" strokeWidth={5} opacity={0.35} vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
-          <path d={paintShadow.d} fill="none" stroke={colorHex} strokeWidth={3} vectorEffect="non-scaling-stroke" strokeLinejoin="round" strokeLinecap="round" />
+          <path d={paintShadow.d} fill="none" stroke="#fff" strokeWidth={2.5} opacity={0.35} vectorEffect="non-scaling-stroke" strokeDasharray="20 20" strokeLinejoin="round" strokeLinecap="butt" />
+          <path d={paintShadow.d} fill="none" stroke={colorHex} strokeWidth={1} vectorEffect="non-scaling-stroke" strokeDasharray="20 20" strokeLinejoin="round" strokeLinecap="butt" />
           <path d={paintShadow.d} fill="none" stroke="transparent" strokeWidth={4 * unit} />
         </g>
       )}
