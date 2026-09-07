@@ -66,44 +66,44 @@ export function AuthProvider({ children }) {
   const friendly = (m) => {
     m = typeof m === "string" ? m : (m && m.message) || "";
     if (/rate limit/i.test(m)) return "We're getting a lot of sign-ups right now — try again in a few minutes, or call 972-944-7963 and we'll set you up.";
-    if (/not confirmed/i.test(m)) return "That email has an account that was never confirmed. Call 972-944-7963 and we'll fix it in a minute.";
+    if (/not confirmed/i.test(m)) return "That email hasn't been confirmed yet — check your inbox (and spam) for the link, or send a new one.";
     return m;
   };
 
-  const signUp = async (email, password, name, phone) => {
-    // Sign-up goes through the signup-direct Edge Function, which creates the account
-    // already confirmed — no confirmation email, so Supabase's built-in mailer limit (a
-    // couple of emails an hour) can't lock people out — and then signs in with the ordinary
-    // password grant from this browser. The name and phone ride along as user metadata;
-    // loadCustomer picks them up from the session. If the function can't be reached,
-    // supabase.auth.signUp (confirmation email) is the fallback.
+  // Returns {ok, j} for a reply the signup-email function itself wrote, or null for
+  // anything else (unreachable, a gateway page, a non-JSON body) so the caller can fall back.
+  const callSignupEmail = async (payload) => {
     const url = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
     let r = null, j = null;
     try {
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), 15000);
-      r = await fetch(url + "/functions/v1/signup-direct", {
+      r = await fetch(url + "/functions/v1/signup-email", {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: anonKey },
-        body: JSON.stringify({ email, password, name, company: "", phone }),
+        body: JSON.stringify({ redirectTo: window.location.origin + window.location.pathname, ...payload }),
         signal: ctl.signal,
       });
       clearTimeout(timer);
       j = await r.json();
     } catch (e) { r = null; j = null; }
-    // Only a reply the function itself wrote counts; anything else falls back below.
-    const fromFn = j && (j.created === true || typeof j.error === "string");
-    if (r && fromFn) {
-      if (!r.ok) return { data: null, error: { message: friendly(j.error) || "Sign up failed — please try again." } };
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) {
-        const m = /invalid login/i.test(error.message || "")
-          ? "Couldn't sign in with that password. If this email already has an account, use its password — or call 972-944-7963."
-          : friendly(error);
-        return { data, error: { message: m } };
-      }
-      return { data, error: null };
+    const fromFn = j && (j.sent === true || typeof j.error === "string");
+    return r && fromFn ? { ok: r.ok, j } : null;
+  };
+
+  const signUp = async (email, password, name, phone) => {
+    // Sign-up goes through the signup-email Edge Function: it creates the account
+    // unconfirmed and emails Supabase's own confirmation link through the shop's Resend
+    // sender, so the two-an-hour limit of Supabase's built-in mailer never applies. The
+    // link lands back on this page with the session in the URL hash, which supabase-js
+    // picks up on load; loadCustomer then reads the name and phone from the user metadata.
+    // No session comes back here, so AuthGate shows "check your email". If the function
+    // can't be reached, supabase.auth.signUp (Supabase's own mailer) is the fallback.
+    const fn = await callSignupEmail({ email, password, name, company: "", phone });
+    if (fn) {
+      if (!fn.ok) return { data: null, error: { message: friendly(fn.j.error) || "Sign up failed — please try again." } };
+      return { data: { user: null, session: null }, error: null };
     }
     try {
       const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name, phone } } });
@@ -114,8 +114,18 @@ export function AuthProvider({ children }) {
     }
   };
 
+  // A sign-in that failed with "not confirmed" can ask for a fresh link with just the email
+  // and password it already has; the function keeps the name and phone from the sign-up.
+  const resendConfirmation = async (email, password) => {
+    const fn = await callSignupEmail({ email, password, resend: true });
+    if (!fn) return { error: { message: "Couldn't reach the server — check your connection and try again." } };
+    if (!fn.ok) return { error: { message: friendly(fn.j.error) || "Couldn't send a new link — please try again." } };
+    return { error: null };
+  };
+
   const signIn = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { data, error: { ...error, message: friendly(error) || error.message, notConfirmed: /not confirmed/i.test(error.message || "") } };
     return { data, error };
   };
 
@@ -137,6 +147,6 @@ export function AuthProvider({ children }) {
 
   const refreshCustomer = () => loadCustomer(user);
 
-  const value = { user, customer, isStaff, loading, signUp, signIn, signInWithGoogle, signOut, refreshCustomer };
+  const value = { user, customer, isStaff, loading, signUp, signIn, signInWithGoogle, signOut, refreshCustomer, resendConfirmation };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

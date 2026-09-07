@@ -113,11 +113,18 @@ same name:
 select vault.update_secret((select id from vault.secrets where name = 'RESEND_API_KEY'), 're_new_key_here');
 ```
 
-Sign-up confirmation emails are a separate path. They go out through Supabase Auth's
-own mailer, which is capped at two emails an hour unless custom SMTP is configured under
-**Authentication → SMTP Settings** (for Resend: host `smtp.resend.com`, port `465`, user
-`resend`, password = the same API key, sender = a verified address). Until that is done,
-sign-ups are created already confirmed by the `signup-direct` function and send no email.
+**Sign-up confirmation emails** go through the same key. Supabase Auth's own mailer is
+capped at two emails an hour, so the `signup-email` Edge Function creates each account
+unconfirmed, asks Supabase Auth for its confirmation code, and emails a link itself
+through Resend from `no-reply@roofcoil.com` (change the sender with a Vault secret named
+`SIGNUP_EMAIL_FROM`). The link opens `public/confirm.html` on shop.roofcoil.com, where one
+button press exchanges the code for a session and sends the person back to the page they
+started from, signed in. The page exists because mail scanners such as Outlook Safe Links
+open links before the person does and would burn a one-time code. Both sign-up forms (the site modal in `public/auth.js` and
+the drawing app) use it, and a sign-in that fails with "not confirmed" offers a
+**Send a new link** button. To keep bots from burning through the Resend quota, the
+function allows, per hour, 3 emails to one address, 6 from one connection and 40 overall
+(`LIMITS` at the top of the function); every send is logged in `public.signup_requests`.
 
 ## Notes on how access works
 
