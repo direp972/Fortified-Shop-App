@@ -57,14 +57,33 @@
     return { session: readSession() };
   }
 
+  // Sign-up goes through the signup-direct Edge Function, which creates the account already
+  // confirmed and returns a session — no confirmation email, so Supabase's built-in mailer
+  // limit (a couple of emails an hour) can't lock people out. If the function is unreachable
+  // the old /auth/v1/signup path is the fallback.
+  function friendly(m) {
+    if (/rate limit/i.test(m || "")) return "We're getting a lot of sign-ups right now — try again in a few minutes, or call 972-944-7963 and we'll set you up.";
+    return m;
+  }
   async function signUp(name, company, phone, email, password) {
-    const r = await fetch(SUPA + "/auth/v1/signup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", apikey: KEY },
-      body: JSON.stringify({ email, password, data: { name, company, phone } }),
-    });
-    const j = await r.json();
-    if (!r.ok) return { error: j.error_description || j.msg || "Sign up failed — try a different email." };
+    let r, j;
+    try {
+      r = await fetch(SUPA + "/functions/v1/signup-direct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: KEY },
+        body: JSON.stringify({ email, password, name, company, phone }),
+      });
+      j = await r.json();
+    } catch (e) { r = null; }
+    if (!r || r.status >= 500) {
+      r = await fetch(SUPA + "/auth/v1/signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: KEY },
+        body: JSON.stringify({ email, password, data: { name, company, phone } }),
+      });
+      j = await r.json();
+    }
+    if (!r.ok) return { error: friendly(j.error || j.error_description || j.msg) || "Sign up failed — try a different email." };
     // Keep the shop's lead list flowing (fire-and-forget).
     try {
       fetch(SUPA + "/rest/v1/leads", {

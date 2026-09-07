@@ -56,9 +56,11 @@ export default function AuthGate({ children }) {
     try {
       if (mode === "signup") {
         if (phone.replace(/\D/g, "").length < 10) { setError("A phone number is required so the shop can reach you about orders."); return; }
-        const { error } = await signUp(email, password, name, phone);
+        const { data, error } = await signUp(email, password, name, phone);
         if (error) { setError(error.message); return; }
-        setSignupDone(true);
+        // A session back means the account is live and the gate opens on its own;
+        // the "check your email" screen is only for the confirmation-email fallback.
+        if (!data || !data.session) setSignupDone(true);
       } else {
         const { error } = await signIn(email, password);
         if (error) { setError(error.message); return; }

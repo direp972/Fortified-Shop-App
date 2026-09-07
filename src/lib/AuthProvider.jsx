@@ -61,11 +61,36 @@ export function AuthProvider({ children }) {
   }, [loadCustomer]);
 
   const signUp = async (email, password, name, phone) => {
-    // Store the name in the auth user's own metadata (not the customers table) since
-    // that's reliably available immediately, regardless of whether email confirmation
-    // is required — loadCustomer picks it up from here once a real session exists.
-    const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name, phone } } });
-    return { data, error };
+    // Sign-up goes through the signup-direct Edge Function, which creates the account
+    // already confirmed and hands back a session — no confirmation email, so Supabase's
+    // built-in mailer limit (a couple of emails an hour) can't lock people out. The name
+    // and phone ride along as user metadata; loadCustomer picks them up from the session.
+    // If the function is unreachable, supabase.auth.signUp is the fallback.
+    const url = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    let r = null, j = null;
+    try {
+      r = await fetch(url + "/functions/v1/signup-direct", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: anonKey },
+        body: JSON.stringify({ email, password, name, phone }),
+      });
+      j = await r.json();
+    } catch (e) { r = null; }
+    if (!r || r.status >= 500) {
+      const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name, phone } } });
+      if (error && /rate limit/i.test(error.message || "")) {
+        return { data, error: { message: "We're getting a lot of sign-ups right now — try again in a few minutes, or call 972-944-7963 and we'll set you up." } };
+      }
+      return { data, error };
+    }
+    if (!r.ok) return { data: null, error: { message: (j && j.error) || "Sign up failed — try a different email." } };
+    if (j && j.access_token) {
+      // setSession fires onAuthStateChange, which loads the customer row like any sign-in.
+      const { data, error } = await supabase.auth.setSession({ access_token: j.access_token, refresh_token: j.refresh_token });
+      return { data, error };
+    }
+    return { data: { session: null }, error: null }; // account made, session not returned — sign in
   };
 
   const signIn = async (email, password) => {
