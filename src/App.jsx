@@ -3406,6 +3406,8 @@ export default function ShopOrderApp() {
   const [roofBoxSeam, setRoofBoxSeam] = useState(1.5);
   const [roofBoxLower, setRoofBoxLower] = useState(3);
   const [roofBoxSel, setRoofBoxSel] = useState({}); // id -> qty (0 = not in the box)
+  const [boxNote, setBoxNote] = useState(""); // one line the box shows after a round trip — "Added Ridge Cap ×4 — pick the next piece."
+  const [boxStripAll, setBoxStripAll] = useState(false); // the "In the order now" strip shows eight parts until asked for all
   const [boxReturn, setBoxReturn] = useState(null); // the kit id of the box piece on the canvas, or "edit" for a part opened from the box's list — the box comes back when that work is done
   const [tabLoaded, setTabLoaded] = useState(false);
   // Job Vault — each member's saved trim/panel configs (Supabase vault_items, owner-only)
@@ -4086,6 +4088,7 @@ export default function ShopOrderApp() {
           throw new Error("Couldn't make sense of that sketch");
         }
         setPoints(parsed.map((p) => [+p[0], +p[1]]));
+        setBoxReturn((r) => (r === "edit" ? r : null)); // a scanned shape is not the box piece
         setViewResetKey((k) => k + 1);
         setToast("Sketch scanned — check the shape and adjust any points/lengths before using it.");
         setTimeout(() => setToast(""), 5000);
@@ -4302,6 +4305,7 @@ export default function ShopOrderApp() {
     setHemStart("none"); setHemEnd("none"); setPaintSide("left");
     setGaugeId(GAUGE_OPTIONS[0].id); setPaintId(PAINT_OPTIONS[0].id); setBrand(BRANDS[0]); setColorName(COLORS_BY_BRAND[BRANDS[0]][0].name);
     setQuantity(4); setLengthPerPiece(10); setSheetWidth(48); setPartName("");
+    setEditingId(null); setBoxReturn(null); editSnapshot.current = null; setRoofBoxOpen(false);
     setCustomerName(""); setPhone(""); setNotes("");
   };
 
@@ -4339,13 +4343,20 @@ export default function ShopOrderApp() {
     setBasket((b) => [...b, item]);
     clearDrawing();
     setPartPhoto(null);
-    if (fromBox) setRoofBoxOpen(true); // back to the box to pick the next piece
+    if (fromBox) { // back to the box to pick the next piece — its row unticked, since it is in the order now
+      setRoofBoxSel((sel) => ({ ...sel, [fromBox]: 0 }));
+      setBoxNote(`Added ${item.name} ×${item.quantity} — pick the next piece.`);
+      setRoofBoxOpen(true);
+    }
     setToast(`"${item.name}" added to the order — ${basket.length + 1} part${basket.length + 1 === 1 ? "" : "s"} so far.`);
     setTimeout(() => setToast(""), 3000);
   };
 
   const removeBasketItem = (id) => {
+    const gone = basket.find((i) => i.id === id);
     setBasket((b) => b.filter((i) => i.id !== id));
+    // the last of a kit piece leaving the order ticks its box row back the way the box ships it
+    if (gone?.kit && !basket.some((i) => i.id !== id && i.kit === gone.kit)) setRoofBoxSel((sel) => (Object.keys(sel).length ? { ...sel, [gone.kit]: ROOF_KIT_DEFAULT_SEL[gone.kit] || 0 } : sel));
     if (id === editingId) restoreCanvas();
   };
   // Tap a part in the list and it comes back onto the canvas and the form — legs, folds, painted
@@ -4386,6 +4397,7 @@ export default function ShopOrderApp() {
     if (points.length < 2) { setToast("Draw at least two points before updating this part."); return; }
     const item = draftPart(editingItem);
     setBasket((b) => b.map((i) => (i.id === editingId ? item : i)));
+    if (boxReturn === "edit") setBoxNote(`Updated ${item.name} ×${item.quantity}.`);
     restoreCanvas();
     setToast(`"${item.name}" updated.`); setTimeout(() => setToast(""), 3000);
   };
@@ -4397,12 +4409,8 @@ export default function ShopOrderApp() {
   // and puts the order on 24 gauge, which is what the kit is drawn for.
   const roofBoxPitchRef = useRef(null);
   useEffect(() => {
-    if (!roofBoxOpen) return;
-    setRoofBoxSel((sel) => {
-      const next = { ...(Object.keys(sel).length ? sel : ROOF_KIT_DEFAULT_SEL) };
-      for (const id of Object.keys(next)) if (basket.some((b) => b.kit === id)) next[id] = 0; // already in the order — tick it again for more
-      return next;
-    });
+    if (!roofBoxOpen) { setBoxNote(""); setBoxStripAll(false); return; }
+    setRoofBoxSel((sel) => (Object.keys(sel).length ? sel : { ...ROOF_KIT_DEFAULT_SEL }));
     const onKey = (e) => { if (e.key === "Escape") setRoofBoxOpen(false); };
     window.addEventListener("keydown", onKey);
     const focusTimer = setTimeout(() => roofBoxPitchRef.current?.focus(), 0);
@@ -4425,23 +4433,29 @@ export default function ShopOrderApp() {
     };
   };
   const roofBoxPicked = roofKit.filter((it) => (roofBoxSel[it.id] || 0) > 0).map((it) => roofBoxItem(it, Math.max(1, Math.round(+roofBoxSel[it.id] || 1))));
+  // A box piece opened on the canvas and not yet added rides along with the box's Add.
+  const boxPending = boxReturn && boxReturn !== "edit" && points.length >= 2 ? { ...draftPart(), kit: boxReturn } : null;
   const addRoofBoxToOrder = () => {
-    if (roofBoxPicked.length === 0) { setToast("Tick at least one trim to add the box to the order."); setTimeout(() => setToast(""), 3000); return; }
-    setBasket((b) => [...b, ...roofBoxPicked]);
+    const added = boxPending ? [boxPending, ...roofBoxPicked] : roofBoxPicked;
+    if (added.length === 0) { setToast("Tick at least one trim to add the box to the order."); setTimeout(() => setToast(""), 3000); return; }
+    setBasket((b) => [...b, ...added]);
+    setRoofBoxSel((sel) => { const next = { ...sel }; for (const it of added) if (it.kit) next[it.kit] = 0; return next; }); // in the order now — tick again for more
     if (!editingId) { clearDrawing(); setPartPhoto(null); } // same as Add Part: the canvas draft must not ride along as an extra part — unless it is a part being edited, which orderParts already counts once
     setRoofBoxOpen(false);
-    const pcs = roofBoxPicked.reduce((sum, it) => sum + it.quantity, 0);
-    setToast(`Roof in a Box — ${roofBoxPicked.length} trim${roofBoxPicked.length === 1 ? "" : "s"}, ${pcs} piece${pcs === 1 ? "" : "s"} added to the order.`);
+    const pcs = added.reduce((sum, it) => sum + (+it.quantity || 0), 0);
+    setToast(`Roof in a Box — ${added.length} trim${added.length === 1 ? "" : "s"}, ${pcs} piece${pcs === 1 ? "" : "s"} added to the order${boxPending ? ` (the ${boxPending.name} from the canvas with them)` : ""}.`);
     setTimeout(() => setToast(""), 4000);
   };
   // Load one kit piece into the canvas to tweak legs before adding it the usual way.
   const drawRoofBoxItem = (it) => {
     if (editingId) restoreCanvas(); // a piece from the box is a new part, not the edited one
+    const replaced = boxPending && boxPending.kit !== it.id ? boxPending.name : null;
     setBoxReturn(it.id);
     setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
     setHemStart(it.hemStart); setHemEnd(it.hemEnd); setPaintSide(it.paintSide); setPartName(it.name); setDrawnPitch(roofBoxPitch);
+    setQuantity(roofBoxSel[it.id] > 0 ? roofBoxSel[it.id] : 4);
     setViewResetKey((k) => k + 1); setRoofBoxOpen(false);
-    setToast(`${it.name} is on the canvas — adjust any leg, then Add Part to Order.`); setTimeout(() => setToast(""), 3500);
+    setToast(`${it.name} is on the canvas — adjust any leg, then Add Part to Order.${replaced ? ` It took the place of the ${replaced} that was there.` : ""}`); setTimeout(() => setToast(""), 4000);
   };
 
   // Screws only sell in lots of 100 — the qty spinner steps by the lot size and any
@@ -4739,6 +4753,7 @@ export default function ShopOrderApp() {
     const p = item.payload || {};
     const kind = p.type || item.kind;
     if (editingId) restoreCanvas(); // a saved item is a new part, not the edited one
+    setBoxReturn(null); setRoofBoxOpen(false); // and not the box piece either
     setTab("order");
     setShapeType(kind);
     setOrderStep("details");
@@ -5999,7 +6014,8 @@ export default function ShopOrderApp() {
                   </button>
                   {Object.keys(TRIM_PRESETS).map((p) => (
                     <button key={p} onClick={() => {
-                      setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt])); setDrawnPitch(4); setBoxReturn(null);
+                      setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt])); setDrawnPitch(4);
+                      if (boxReturn && boxReturn !== "edit") { setPartName(""); setBoxReturn(null); }
                       const f = presetFolds(p);
                       if (f) { setHemStart(f.hemStart); setHemEnd(f.hemEnd); setPaintSide(f.paintSide); }
                       setViewResetKey((k) => k + 1);
@@ -6013,7 +6029,7 @@ export default function ShopOrderApp() {
                   ))}
                   {customPresetsLoaded && customPresets.map((cp) => (
                     <span key={cp.id} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
-                      <button onClick={() => { setPreset(cp.name); setPoints(cp.points.map((pt) => [...pt])); setBoxReturn(null); setViewResetKey((k) => k + 1); }}
+                      <button onClick={() => { setPreset(cp.name); setPoints(cp.points.map((pt) => [...pt])); if (boxReturn && boxReturn !== "edit") { setPartName(""); setBoxReturn(null); } setViewResetKey((k) => k + 1); }}
                         style={{
                           padding: "5px 8px 5px 10px", borderRadius: "999px 0 0 999px", fontSize: 11, cursor: "pointer",
                           border: `1px solid ${SAFETY}`, borderRight: "none", background: preset === cp.name ? SAFETY : "#fff", color: preset === cp.name ? "#fff" : SAFETY,
@@ -6091,6 +6107,9 @@ export default function ShopOrderApp() {
                             {gaugeLabel} · {brand} · {colorName}<br />{lengthPerPiece} ft pieces · {sheetWidthNum}" sheets
                           </div>
                         </div>
+                        {boxNote && (
+                          <div data-testid="box-note" style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: theme.text, display: "flex", alignItems: "center", gap: 6 }}><Check size={14} color={SAFETY} /> {boxNote}</div>
+                        )}
                         {basket.length > 0 && (
                           <div data-testid="box-in-order" style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, background: "rgba(212,175,55,0.10)", border: `1px solid rgba(212,175,55,0.35)` }}>
                             <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
@@ -6099,13 +6118,23 @@ export default function ShopOrderApp() {
                               <span style={{ fontSize: 10.5, color: theme.textSecondary }}>— tap one to change it</span>
                             </div>
                             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
-                              {basket.map((b) => (
-                                <button key={b.id} type="button" onClick={() => editBasketItem(b, true)} title="Open this part on the canvas to change it" data-testid="box-in-order-part"
-                                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 8px 3px 3px", borderRadius: 999, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, fontSize: 11, cursor: "pointer" }}>
-                                  <span style={{ background: INK, borderRadius: 4, padding: 2, display: "flex" }}><ShapeThumb order={{ type: "trim", points: b.points, hemStart: b.hemStart, hemEnd: b.hemEnd, colorHex: b.colorHex }} size={18} /></span>
-                                  <span style={{ fontWeight: 600 }}>{b.name}</span><span className="mono" style={{ color: theme.textSecondary }}>×{b.quantity}</span>
+                              {(boxStripAll ? basket : basket.slice(0, 8)).map((b) => {
+                                const editing = b.id === editingId;
+                                return (
+                                  <button key={b.id} type="button" onClick={() => (editing ? setRoofBoxOpen(false) : editBasketItem(b, true))} title={editing ? "This part is on the canvas now — back to it" : "Open this part on the canvas to change it"} data-testid="box-in-order-part"
+                                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 8px 3px 3px", borderRadius: 999, border: `1px solid ${editing ? SAFETY : theme.border}`, background: editing ? "rgba(212,175,55,0.18)" : theme.inputBg, color: theme.text, fontSize: 11, cursor: "pointer" }}>
+                                    <span style={{ background: INK, borderRadius: 4, padding: 2, display: "flex" }}><ShapeThumb order={{ type: "trim", points: b.points, hemStart: b.hemStart, hemEnd: b.hemEnd, colorHex: b.colorHex }} size={18} /></span>
+                                    <span style={{ fontWeight: 600 }}>{b.name}</span><span className="mono" style={{ color: theme.textSecondary }}>×{b.quantity}</span>
+                                    {editing && <span className="mono" style={{ fontSize: 9, color: SAFETY, fontWeight: 700, letterSpacing: "0.08em" }}>EDITING</span>}
+                                  </button>
+                                );
+                              })}
+                              {basket.length > 8 && (
+                                <button type="button" onClick={() => setBoxStripAll((v) => !v)} data-testid="box-in-order-more"
+                                  style={{ padding: "3px 10px", borderRadius: 999, border: `1px dashed ${theme.border}`, background: "transparent", color: theme.textSecondary, fontSize: 11, cursor: "pointer" }}>
+                                  {boxStripAll ? "Show fewer" : `+${basket.length - 8} more`}
                                 </button>
-                              ))}
+                              )}
                             </div>
                           </div>
                         )}
@@ -6113,7 +6142,7 @@ export default function ShopOrderApp() {
                           {roofKit.map((it) => {
                             const qty = roofBoxSel[it.id] || 0;
                             const on = qty > 0;
-                            const inOrder = basket.filter((b) => b.kit === it.id);
+                            const inOrder = basket.filter((b) => b.kit === it.id && +b.quantity > 0);
                             const inOrderPcs = inOrder.reduce((sum, b) => sum + (+b.quantity || 0), 0);
                             const g = profileGirth(it.points, it.hemStart, it.hemEnd);
                             const pps = piecesPerSheet(sheetWidthNum, g);
@@ -6151,6 +6180,7 @@ export default function ShopOrderApp() {
                         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 12, paddingTop: 12, borderTop: `1px solid ${theme.border}` }}>
                           <div className="mono" style={{ fontSize: 11.5, color: theme.text, fontWeight: 600 }} data-testid="box-totals">
                             {roofBoxPicked.length} trim{roofBoxPicked.length === 1 ? "" : "s"} · {totalPcs} pcs · {totalSheets} sheet{totalSheets === 1 ? "" : "s"} · est. {money(totalPrice)}
+                            {boxPending && <span data-testid="box-pending" style={{ display: "block", fontWeight: 500, color: theme.textSecondary }}>+ the {boxPending.name} ×{boxPending.quantity} on the canvas goes in with them</span>}
                           </div>
                           <div style={{ display: "flex", gap: 8 }}>
                             <button type="button" onClick={() => setRoofBoxOpen(false)}
@@ -6168,7 +6198,7 @@ export default function ShopOrderApp() {
                 <TrimCanvas points={points} setPoints={setPoints} colorHex={colorObj.hex} hemStart={hemStart} hemEnd={hemEnd} paintSide={paintSide} roofPitch={drawnPitch}
                   setHemStart={setHemStart} setHemEnd={setHemEnd} setPaintSide={setPaintSide} viewResetKey={viewResetKey} />
                 <div style={{ display: "flex", alignItems: "center", marginTop: 8, gap: 8, flexWrap: "wrap" }}>
-                  <button onClick={() => setPoints((p) => p.slice(0, -1))}
+                  <button onClick={() => { if (points.length <= 1 && boxReturn !== "edit") setBoxReturn(null); setPoints((p) => p.slice(0, -1)); }}
                     style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, padding: "5px 9px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, cursor: "pointer" }}>
                     <Undo2 size={12} /> Undo
                   </button>
@@ -6189,7 +6219,7 @@ export default function ShopOrderApp() {
                       onBlur={(e) => { if (e.target.value === "") setSheetWidth(48); }}
                       className="mono" style={{ width: 48, padding: "5px 6px", border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12 }} />
                   </label>
-                  <button onClick={() => { setPoints([]); setHemStart("none"); setHemEnd("none"); setPaintSide("left"); }} title="Start the drawing over — folds and painted side reset with it"
+                  <button onClick={() => { setPoints([]); setHemStart("none"); setHemEnd("none"); setPaintSide("left"); if (boxReturn && boxReturn !== "edit") { setPartName(""); setBoxReturn(null); } }} title="Start the drawing over — folds and painted side reset with it"
                     style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, padding: "5px 9px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, cursor: "pointer" }}>
                     <Trash2 size={12} /> Clear
                   </button>
