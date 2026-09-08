@@ -3398,6 +3398,7 @@ export default function ShopOrderApp() {
   const [submitting, setSubmitting] = useState(false);
   const [basket, setBasket] = useState([]);
   const [editingId, setEditingId] = useState(null); // the part from the list that is back on the canvas to be changed
+  const editSnapshot = useRef(null); // what the canvas and form held before a part was tapped — put back when the edit ends
   const canvasTopRef = useRef(null);
   // Roof in a Box — the standard 24 ga standing seam trim set, drawn to pitch
   const [roofBoxOpen, setRoofBoxOpen] = useState(false);
@@ -4310,12 +4311,10 @@ export default function ShopOrderApp() {
   };
 
   // The part on the canvas as an order item — a new one, or the edited version of `base`, which
-  // keeps its id, kit, gauge, paint and colour (those are not on the canvas) and its name if the
-  // name box was emptied.
+  // keeps its id and kit and its name if the name box was emptied. Gauge, paint and colour come
+  // from the form, which carries the part's own while it is being edited.
   const draftPart = (base) => {
-    const own = base
-      ? { gaugeId: base.gaugeId, paintId: base.paintId, brand: base.brand, colorName: base.colorName, colorHex: base.colorHex }
-      : { gaugeId, paintId, brand, colorName, colorHex: colorObj.hex };
+    const own = { gaugeId, paintId, brand, colorName, colorHex: colorObj.hex };
     return {
       ...(base || {}), id: base?.id || uid(),
       name: partName.trim() || base?.name || `Part ${basket.length + 1}`,
@@ -4344,31 +4343,47 @@ export default function ShopOrderApp() {
 
   const removeBasketItem = (id) => {
     setBasket((b) => b.filter((i) => i.id !== id));
-    if (id === editingId) { clearDrawing(); setPartPhoto(null); }
+    if (id === editingId) restoreCanvas();
   };
-  // Tap a part in the list and it comes back onto the canvas — legs, folds, painted side, name,
-  // quantity, length, sheet width and photo — to be changed and put back in its place. The part
-  // keeps its own gauge, paint and colour; those are not on the canvas.
+  // Tap a part in the list and it comes back onto the canvas and the form — legs, folds, painted
+  // side, name, quantity, length, sheet width, photo, gauge, paint and colour — to be changed and
+  // put back in its place. Whatever was on the canvas and the form is kept aside and comes back
+  // when the edit ends, so tapping a part to look at it never costs a drawing in progress.
   const editBasketItem = (it) => {
+    if (!editingId) editSnapshot.current = { points, hemStart, hemEnd, paintSide, partName, quantity, lengthPerPiece, sheetWidth, partPhoto, drawnPitch, preset, materialCategory, gaugeId, paintId, brand, colorName };
     setEditingId(it.id);
     setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
     setHemStart(it.hemStart || "none"); setHemEnd(it.hemEnd || "none"); setPaintSide(it.paintSide || "left");
     setPartName(it.name); setQuantity(it.quantity); setLengthPerPiece(it.lengthPerPiece); setSheetWidth(it.sheetWidth);
     setPartPhoto(it.photo || null); setDrawnPitch(it.pitch || 4);
+    setMaterialCategory(UNPAINTED_MATERIALS.includes(it.brand) ? "unpainted" : "painted");
+    if (it.gaugeId) setGaugeId(it.gaugeId); if (it.paintId) setPaintId(it.paintId);
+    if (it.brand) setBrand(it.brand); if (it.colorName) setColorName(it.colorName); // brand then colour directly — handleBrandChange would reset the colour
     setViewResetKey((k) => k + 1);
     canvasTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     setToast(`Editing "${it.name}" — change what you need, then Update Part.`); setTimeout(() => setToast(""), 3500);
+  };
+  // The edit is over: the canvas and form go back to what they held before the part was tapped.
+  const restoreCanvas = () => {
+    const s = editSnapshot.current;
+    editSnapshot.current = null;
+    setEditingId(null);
+    if (!s) { clearDrawing(); setPartPhoto(null); return; }
+    setPoints(s.points); setHemStart(s.hemStart); setHemEnd(s.hemEnd); setPaintSide(s.paintSide);
+    setPartName(s.partName); setQuantity(s.quantity); setLengthPerPiece(s.lengthPerPiece); setSheetWidth(s.sheetWidth);
+    setPartPhoto(s.partPhoto); setDrawnPitch(s.drawnPitch); setPreset(s.preset);
+    setMaterialCategory(s.materialCategory); setGaugeId(s.gaugeId); setPaintId(s.paintId); setBrand(s.brand); setColorName(s.colorName);
+    setViewResetKey((k) => k + 1);
   };
   const updateBasketItem = () => {
     if (!editingItem) { setEditingId(null); return; }
     if (points.length < 2) { setToast("Draw at least two points before updating this part."); return; }
     const item = draftPart(editingItem);
     setBasket((b) => b.map((i) => (i.id === editingId ? item : i)));
-    clearDrawing();
-    setPartPhoto(null);
+    restoreCanvas();
     setToast(`"${item.name}" updated.`); setTimeout(() => setToast(""), 3000);
   };
-  const cancelEdit = () => { clearDrawing(); setPartPhoto(null); setToast("Left as it was."); setTimeout(() => setToast(""), 2000); };
+  const cancelEdit = () => { restoreCanvas(); setToast("Left as it was."); setTimeout(() => setToast(""), 2000); };
 
   /* ---------- Roof in a Box ---------- */
   const roofKit = buildRoofKit({ pitch: roofBoxPitch, seamHeight: roofBoxSeam, lowerPitch: roofBoxLower });
@@ -4403,8 +4418,7 @@ export default function ShopOrderApp() {
   const addRoofBoxToOrder = () => {
     if (roofBoxPicked.length === 0) { setToast("Tick at least one trim to add the box to the order."); setTimeout(() => setToast(""), 3000); return; }
     setBasket((b) => [...b, ...roofBoxPicked]);
-    clearDrawing(); // same as Add Part: the canvas draft must not ride along as an extra part
-    setPartPhoto(null);
+    if (!editingId) { clearDrawing(); setPartPhoto(null); } // same as Add Part: the canvas draft must not ride along as an extra part — unless it is a part being edited, which orderParts already counts once
     setRoofBoxOpen(false);
     const pcs = roofBoxPicked.reduce((sum, it) => sum + it.quantity, 0);
     setToast(`Roof in a Box — ${roofBoxPicked.length} trim${roofBoxPicked.length === 1 ? "" : "s"}, ${pcs} piece${pcs === 1 ? "" : "s"} added to the order.`);
@@ -4412,6 +4426,7 @@ export default function ShopOrderApp() {
   };
   // Load one kit piece into the canvas to tweak legs before adding it the usual way.
   const drawRoofBoxItem = (it) => {
+    if (editingId) restoreCanvas(); // a piece from the box is a new part, not the edited one
     setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
     setHemStart(it.hemStart); setHemEnd(it.hemEnd); setPaintSide(it.paintSide); setPartName(it.name); setDrawnPitch(roofBoxPitch);
     setViewResetKey((k) => k + 1); setRoofBoxOpen(false);
@@ -4712,6 +4727,7 @@ export default function ShopOrderApp() {
   const loadVaultItem = (item, sourceLabel = "your Job Vault") => {
     const p = item.payload || {};
     const kind = p.type || item.kind;
+    if (editingId) restoreCanvas(); // a saved item is a new part, not the edited one
     setTab("order");
     setShapeType(kind);
     setOrderStep("details");
@@ -6228,7 +6244,7 @@ export default function ShopOrderApp() {
                       const editing = it.id === editingId;
                       return (
                         <div key={it.id} role="button" tabIndex={0} data-testid="basket-row" title="Tap to edit this part"
-                          onClick={() => editBasketItem(it)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); editBasketItem(it); } }}
+                          onClick={() => editBasketItem(it)} onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === "Enter" || e.key === " ") { e.preventDefault(); editBasketItem(it); } }}
                           style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 6px", margin: "0 -6px", borderRadius: 6, cursor: "pointer",
                             borderBottom: idx < basket.length - 1 && !editing ? "1px solid #F3F0E7" : "none",
                             background: editing ? "rgba(212,175,55,0.12)" : "transparent", boxShadow: editing ? `inset 3px 0 0 ${SAFETY}` : "none" }}>
