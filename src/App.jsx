@@ -826,6 +826,12 @@ function findGauge(gaugeId, brand) {
 function formatDim(n) {
   return (+n).toFixed(2).replace(/\.?0+$/, "");
 }
+// Inches for the ticket: two decimals, except a value that lands on an odd eighth (⅛, ⅜, ⅝, ⅞)
+// keeps its third — 3.125", not 3.13" — so the shop reads the fraction it actually bends to.
+function fmtIn(v) {
+  const e = v * 8, onEighth = Math.abs(e - Math.round(e)) < 1e-6 && Math.round(e) % 2 !== 0;
+  return v.toFixed(onEighth ? 3 : 2);
+}
 
 // Formats a length given in inches as feet + leftover inches: 126 -> "10' 6"", 120 -> "10'".
 function formatFeetInches(totalInches) {
@@ -854,7 +860,7 @@ function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = 
     const len = dist(points[i - 1], points[i]);
     const mx = (pathPts[i - 1][0] + pathPts[i][0]) / 2;
     const my = (pathPts[i - 1][1] + pathPts[i][1]) / 2;
-    labels += `<text x="${mx.toFixed(1)}" y="${(my - 8).toFixed(1)}" font-size="11" text-anchor="middle" font-family="monospace" fill="#333">${len.toFixed(2)}"</text>`;
+    labels += `<text x="${mx.toFixed(1)}" y="${(my - 8).toFixed(1)}" font-size="11" text-anchor="middle" font-family="monospace" fill="#333">${fmtIn(len)}"</text>`;
   }
   const dotSvg = pathPts.map((p) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${colorHex || "#333"}" />`).join("");
   // End folds are drawn in inches inside a scaled group so the same geometry the canvas
@@ -898,7 +904,7 @@ function printPartAsPDF(item) {
       <div class="details">
         <div><b>Quantity</b>${esc(item.quantity)}</div>
         <div><b>Length / piece</b>${esc(item.lengthPerPiece)} ft</div>
-        <div><b>Girth</b>${item.girth != null ? item.girth.toFixed(2) : "—"}"</div>
+        <div><b>Girth</b>${item.girth != null ? fmtIn(item.girth) : "—"}"</div>
         <div><b>Brand</b>${esc(item.brand)}</div>
         <div><b>Color</b>${esc(item.colorName)}</div>
         <div><b>Paint side</b>${item.paintSide === "left" ? "Left" : "Right"}</div>
@@ -1460,8 +1466,46 @@ function tagPointer(box, unit, gap) {
 }
 
 const PITCH_CHIPS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18];
+// A roof pitch typed where a bend's angle goes — "4:12", "4/12", "4-12", "4 in 12", "4 on 12",
+// "4.5:12", "4 pitch" or "4 pitch 12" (rise over 12). Gives the rise, the run and the roof angle
+// in degrees. A pitch break is two of them: "6:12 to 3:12" (also "over" or ">") adds the lower
+// roof's angle as th2.
+function parseOnePitch(raw) {
+  const worded = /pitch/.test(raw);
+  const str = raw.replace(/pitch|roof/g, "").trim();
+  let m = str.match(/^(\d+(?:\.\d+)?)\s*(?::|\/|-|in|on)\s*(\d+(?:\.\d+)?)$/), rise, run;
+  if (!m && worded) m = str.match(/^(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/);
+  if (m) { rise = +m[1]; run = +m[2]; }
+  else if (worded && (m = str.match(/^(\d+(?:\.\d+)?)$/))) { rise = +m[1]; run = 12; }
+  else return null;
+  if (!(run > 0) || !(rise >= 0)) return null;
+  return { rise, run, th: (Math.atan(rise / run) * 180) / Math.PI };
+}
+function parsePitch(input) {
+  const raw = String(input ?? "").trim().toLowerCase();
+  const parts = raw.split(/\s*(?:\bto\b|\bover\b|>)\s*/);
+  if (parts.length > 2) return null;
+  const upper = parseOnePitch(parts[0]);
+  if (!upper) return null;
+  if (parts.length === 1) return upper;
+  const lower = parseOnePitch(parts[1]);
+  return lower ? { ...upper, rise2: lower.rise, run2: lower.run, th2: lower.th } : null;
+}
+// The inside angle a bend needs for a roof angle th (degrees), by the kind of bend it is. Break
+// is the one kind that needs two: the upper roof's angle and the flatter lower roof's.
+const PITCH_BENDS = [
+  { id: "internal", label: "Internal", hint: "Chimney back pan, cricket or upslope curb — roof climbs away from the wall", angle: (th) => 90 - th },
+  { id: "open", label: "Open", hint: "Headwall flashing — roof falls away from the wall", angle: (th) => 90 + th },
+  { id: "ridge", label: "Ridge", hint: "Ridge or peak — both legs on the slope", angle: (th) => 180 - 2 * th },
+  { id: "hip", label: "Hip", hint: "Hip cap or valley pan — the slopes meet on the diagonal, so the fold is flatter than the ridge", angle: (th) => 180 - (Math.acos(Math.cos((th * Math.PI) / 180) ** 2) * 180) / Math.PI },
+  { id: "break", label: "Break", hint: "Pitch break — the upper roof breaks to a flatter one; type both, like 6:12 to 3:12", twoPitch: true, angle: (th, th2 = 0) => 90 + (th - th2) },
+];
+const pitchBendAngle = (id, th, th2) => (PITCH_BENDS.find((b) => b.id === id) || PITCH_BENDS[2]).angle(th, th2);
+// Which kind of bend a drawn bend already is, judged at the given roof angle — a kit piece opened
+// from the box or the preset row matches one of them to the degree; a plain 90° or a custom bend matches none.
+const inferPitchKind = (angle, th) => PITCH_BENDS.find((b) => !b.twoPitch && Math.abs(b.angle(th) - angle) < 1.5)?.id || null;
 const FRACTION_CHIPS = [["⅛", "1/8"], ["¼", "1/4"], ["⅜", "3/8"], ["½", "1/2"], ["⅝", "5/8"], ["¾", "3/4"], ["⅞", "7/8"]];
-const fmtDeg = (d) => { const r = Math.round(d * 10) / 10; return `${Number.isInteger(r) ? r : r.toFixed(1)}°`; };
+const fmtDeg = (d) => `${Math.round(d)}°`; // bends are called out to the whole degree — the brake is not set finer
 const trimNum = (v) => String(Math.round(v * 1000) / 1000);
 
 // Picker pictures for the fold sheet: a leg coming down with the fold at its end, all four
@@ -1504,7 +1548,7 @@ function PitchPicture({ kind, th }) {
   );
 }
 
-function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, setHemStart, setHemEnd, setPaintSide, viewResetKey }) {
+function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, setHemStart, setHemEnd, setPaintSide, viewResetKey, roofPitch = 4 }) {
   const svgRef = useRef(null);
   const [dragIdx, setDragIdx] = useState(null);
   const [zoom, setZoom] = useState(1); // 1 = the auto-fit view; smaller zooms in, larger zooms out
@@ -1524,6 +1568,11 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const [draft, setDraft] = useState("");
   const [pitchOpen, setPitchOpen] = useState(false);
   const [pitch, setPitch] = useState(4);
+  const [pitchKind, setPitchKind] = useState("open");   // the kind of bend a typed pitch is applied as at the bend that is open
+  const [stickyKind, setStickyKind] = useState("open"); // Internal or Open, whichever was tapped last — it carries from bend to bend and part to part
+  // A profile loaded from the box or the preset row brings the pitch it was drawn at, so the
+  // chips start there and a bend's kind can be read off the drawing.
+  useEffect(() => { setPitch(roofPitch || 4); }, [roofPitch, viewResetKey]);
   const [invalid, setInvalid] = useState(false); // Done with a value that can't be applied keeps the sheet open and says so
   // A tap back on the last leg (Draw mode) offers a hem: two rings, one either side, and the
   // chosen one folds the leg back on itself. `t` is where along the leg the tap landed.
@@ -1603,7 +1652,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
 
   // Formats a length in inches for display, switching to mm when metric is selected.
   // Under an inch the leading zero comes off — .50" the way it's called out on a drawing.
-  const formatLen = (inches) => (unitSystem === "metric" ? `${Math.round(inches * 25.4)}mm` : `${inches.toFixed(2).replace(/^0\./, ".")}"`);
+  const formatLen = (inches) => (unitSystem === "metric" ? `${Math.round(inches * 25.4)}mm` : `${fmtIn(inches).replace(/^0\./, ".")}"`);
 
   // When a preset is loaded, reset to a neutral zoom. Sizing itself is now handled by
   // the proportional margin above (scales with each shape's own size), so every preset
@@ -1729,12 +1778,24 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   };
   // The sheet opens on the number as its tag reads it — sub-inch without the leading zero
   // (parseLength takes ".5" the same as "0.5", so what's typed back still reads fine).
-  const lengthDraft = (i) => (unitSystem === "metric" ? String(Math.round(dist(points[i - 1], points[i]) * 25.4)) : trimNum(Math.round(dist(points[i - 1], points[i]) * 100) / 100).replace(/^0\./, "."));
-  const angleDraft = (i) => trimNum(Math.round(insideAngle(points[i - 1], points[i], points[i + 1]) * 10) / 10);
+  const lengthDraft = (i) => (unitSystem === "metric" ? String(Math.round(dist(points[i - 1], points[i]) * 25.4)) : trimNum(+fmtIn(dist(points[i - 1], points[i]))).replace(/^0\./, "."));
+  const angleDraft = (i) => String(Math.round(insideAngle(points[i - 1], points[i], points[i + 1])));
   const openLength = (i) => { if (i < 1 || i > points.length - 1) return; const t = lengthDraft(i); setEditor({ kind: "length", i, orig: t }); setDraft(t); };
   // A hem's fold is a fixed 180°, not a bend to edit — the angle sheet skips it.
   const angleEditable = (i) => i >= 1 && i <= points.length - 2 && !foldSide(points[i + 1]);
-  const openAngle = (i) => { if (!angleEditable(i)) return; const t = angleDraft(i); setEditor({ kind: "angle", i, orig: t }); setDraft(t); };
+  // The kind a typed pitch bends this joint as: a ridge or hip bend, as drawn at the drawing's
+  // pitch, is always its own kind; every other bend takes Internal or Open, whichever was
+  // tapped last (Open to start), so the choice carries from bend to bend and part to part.
+  const kindForBend = (i) => {
+    const auto = inferPitchKind(insideAngle(points[i - 1], points[i], points[i + 1]), (Math.atan(pitch / 12) * 180) / Math.PI);
+    return auto === "ridge" || auto === "hip" ? auto : stickyKind;
+  };
+  const openAngle = (i) => {
+    if (!angleEditable(i)) return;
+    const t = angleDraft(i);
+    setPitchKind(kindForBend(i));
+    setEditor({ kind: "angle", i, orig: t }); setDraft(t);
+  };
   const openFold = (end) => {
     if (points.length < 2) return;
     if (mode !== "folds") modeBeforeFold.current = mode;
@@ -1751,7 +1812,13 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const commitDraft = () => {
     if (!editor || draft.trim() === (editor.orig ?? "").trim()) return true; // nothing typed: leave the geometry exactly as it is
     if (editor.kind === "length") return applyLength(editor.i, draft);
-    if (editor.kind === "angle") return applyAngle(editor.i, parseFloat(draft));
+    if (editor.kind === "angle") {
+      // A pitch becomes the angle for the chosen kind of bend; anything else must be a whole number
+      // of degrees (a ° or "deg" is fine) — "4:0" or "4x" is refused, not read as 4°.
+      const p = parsePitch(draft);
+      const deg = draft.trim().match(/^(\d+(?:\.\d+)?)\s*(?:°|deg(?:ree)?s?\.?)?$/i); // plain degrees, ° or "deg" allowed; "0x10" or "1e2" are not
+      return applyAngle(editor.i, Math.round(p ? pitchBendAngle(p.th2 != null ? "break" : pitchKind, p.th, p.th2) : deg ? +deg[1] : NaN));
+    }
     if (editor.kind === "rotate") { const deg = parseFloat(draft); if (!isFinite(deg)) return false; applyRotation(deg); }
     return true;
   };
@@ -1767,6 +1834,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     while (editor.kind === "angle" && j >= stepRange[0] && j <= stepRange[1] && !angleEditable(j)) j += delta;
     if (j < stepRange[0] || j > stepRange[1]) return;
     const t = editor.kind === "length" ? lengthDraft(j) : angleDraft(j);
+    if (editor.kind === "angle") setPitchKind(kindForBend(j));
     setEditor({ ...editor, i: j, orig: t });
     setDraft(t);
   };
@@ -1941,7 +2009,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const hiBend = editor?.kind === "angle" ? editor.i : null;   // bend being edited
   const otherSide = paintSide === "left" ? "right" : "left";
   const editorTitle = editor?.kind === "length" ? `LENGTH · leg ${editor.i} of ${points.length - 1}`
-    : editor?.kind === "angle" ? `ANGLE · bend ${editor.i} of ${points.length - 2} · inside angle`
+    : editor?.kind === "angle" ? `ANGLE · bend ${editor.i} of ${points.length - 2} · inside angle, or a pitch like 4:12`
     : editor?.kind === "rotate" ? "ROTATE · degrees clockwise, 0 = as drawn"
     : editor?.kind === "fold" ? `${editor.end === "start" ? "START" : "END"} FOLD` : "";
   const btn = (active, extra = {}) => ({
@@ -2252,7 +2320,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
                   placeholder={editor.kind === "length" && unitSystem === "imperial" ? 'e.g. 6.5 or 6 1/2' : ""}
                   style={{ flex: 1, minWidth: 0, fontSize: 20, fontWeight: 700, background: "transparent", border: "none", borderBottom: `2px solid ${invalid ? "#FF6B6B" : SAFETY}`, color: "#fff", padding: "4px 2px", outline: "none" }} />
                 <span className="mono" style={{ fontSize: 12, color: "#8FB4C9", fontWeight: 700, minWidth: 22 }}>
-                  {editor.kind === "length" ? (unitSystem === "metric" ? "mm" : "in") : "°"}
+                  {editor.kind === "length" ? (unitSystem === "metric" ? "mm" : "in") : editor.kind === "angle" && parsePitch(draft) ? "pitch" : "°"}
                 </span>
                 {stepRange && (
                   <div style={{ display: "flex", gap: 4, borderLeft: "1px solid rgba(255,255,255,0.2)", paddingLeft: 8 }}>
@@ -2268,7 +2336,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
                   {editor.kind === "length" && editor.i > 1 && foldSide(points[editor.i]) && (unitSystem === "metric" ? parseLength(draft) / 25.4 : parseLength(draft)) > dist(points[editor.i - 2], points[editor.i - 1])
                     ? `A hem folds back along its leg — ${formatLen(dist(points[editor.i - 2], points[editor.i - 1]))} at most.`
                     : editor.kind === "length" ? `Enter a length above 0${unitSystem === "imperial" ? ' — like 6.5, 6 1/2 or 3/8' : " in mm"}.`
-                    : editor.kind === "angle" ? "Enter an inside angle between 0 and 180 degrees." : "Enter the rotation in degrees."}
+                    : editor.kind === "angle" ? "Enter an inside angle between 0 and 180 degrees, or a roof pitch like 4:12." : "Enter the rotation in degrees."}
                 </div>
               )}
               {editor.kind === "length" && unitSystem === "imperial" && (
@@ -2281,36 +2349,48 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
               {editor.kind === "angle" && (
                 <div style={{ marginTop: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <button type="button" data-testid="pitch-toggle" onClick={() => setPitchOpen((o) => !o)} style={btn(pitchOpen)}>
-                      {pitchOpen ? "▾" : "▸"} Pitch
+                    <button type="button" data-testid="pitch-toggle" onClick={() => setPitchOpen((o) => !o)} style={btn(pitchOpen || !!parsePitch(draft))}>
+                      {pitchOpen || parsePitch(draft) ? "▾" : "▸"} Pitch
                     </button>
                     <span style={{ fontSize: 10.5, color: "#8FB4C9" }}>
-                      {pitchOpen ? "Pick the roof pitch, then the kind of bend" : "Set the bend from a roof pitch"}
+                      {pitchOpen || parsePitch(draft) ? "Pick the roof pitch, then the kind of bend" : "Set the bend from a roof pitch — or type one above, like 4:12"}
                     </span>
                   </div>
-                  {pitchOpen && (() => {
-                    const th = (Math.atan(pitch / 12) * 180) / Math.PI;
-                    const cards = [
-                      { id: "internal", label: "Internal", value: 90 - th, hint: "Roof climbs away from the wall" },
-                      { id: "open", label: "Open", value: 90 + th, hint: "Headwall or apron — roof falls away from the wall" },
-                      { id: "ridge", label: "Ridge", value: 180 - 2 * th, hint: "Ridge or peak — both legs on the slope" },
-                    ];
+                  {(pitchOpen || parsePitch(draft)) && (() => {
+                    // A pitch typed in the box drives the cards; otherwise the chip picked below does.
+                    // Two pitches ("6:12 to 3:12") are a pitch break, the one kind that needs both.
+                    const typed = parsePitch(draft);
+                    const isBreak = typed?.th2 != null;
+                    const th = typed ? typed.th : (Math.atan(pitch / 12) * 180) / Math.PI;
+                    const cards = PITCH_BENDS.filter((b) => !b.twoPitch || isBreak).map((b) => ({ ...b, value: b.angle(th, typed?.th2) }));
+                    const doneKind = (isBreak ? cards.find((c) => c.id === "break") : cards.find((c) => c.id === pitchKind)) || cards[2];
                     return (
-                      <div style={{ marginTop: 8 }}>
-                        <div className="mono" style={{ fontSize: 9, letterSpacing: "0.12em", color: SAFETY, fontWeight: 700 }}>
-                          PITCH <span style={{ color: "#fff" }}>{pitch}:12</span> <span style={{ color: "#8FB4C9" }}>· {fmtDeg(th)}</span>
+                      <div style={{ marginTop: 8 }} data-testid="pitch-panel">
+                        <div className="mono" style={{ fontSize: 9, letterSpacing: "0.12em", color: SAFETY, fontWeight: 700 }} data-testid="pitch-caption">
+                          PITCH <span style={{ color: "#fff" }}>{typed ? `${typed.rise}:${typed.run}${isBreak ? ` to ${typed.rise2}:${typed.run2}` : ""}` : `${pitch}:12`}</span> <span style={{ color: "#8FB4C9" }}>· {fmtDeg(th)}{isBreak ? ` to ${fmtDeg(typed.th2)}` : ""} roof angle{typed ? ` · Done applies ${doneKind.label}, ${fmtDeg(doneKind.value)}${isBreak ? "" : " — tap a card for another kind"}` : ""}</span>
                         </div>
                         <div style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 4, marginTop: 4 }}>
                           {PITCH_CHIPS.map((r) => (
-                            <button key={r} type="button" data-testid={`pitch-${r}`} onClick={() => setPitch(r)} style={btn(pitch === r, { flex: "0 0 auto", padding: "5px 8px" })}>{r}:12</button>
+                            <button key={r} type="button" data-testid={`pitch-${r}`}
+                              onClick={() => {
+                                // A chip bends the joint right away as the kind that is lit, so the drawing
+                                // follows the pitch while it is browsed and the kind never needs tapping again.
+                                const kind = pitchKind === "break" ? "open" : pitchKind;
+                                const value = Math.round(pitchBendAngle(kind, (Math.atan(r / 12) * 180) / Math.PI));
+                                setPitch(r); setPitchOpen(true); setInvalid(false);
+                                applyAngle(editor.i, value);
+                                const t = String(value); setDraft(t); setEditor({ ...editor, orig: t });
+                                inputRef.current?.focus();
+                              }}
+                              style={btn(typed ? typed.rise === r && typed.run === 12 && !isBreak : pitch === r, { flex: "0 0 auto", padding: "5px 8px" })}>{r}:12</button>
                           ))}
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginTop: 4 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: `repeat(${cards.length}, 1fr)`, gap: 6, marginTop: 4 }}>
                           {cards.map((c) => (
                             <button key={c.id} type="button" data-testid={`pitch-${c.id}`} title={c.hint}
-                              onClick={() => { applyAngle(editor.i, c.value); const t = trimNum(Math.round(c.value * 10) / 10); setDraft(t); setEditor({ ...editor, orig: t }); }}
-                              style={btn(Math.abs(parseFloat(draft) - c.value) < 0.06, { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "6px 4px" })}>
-                              <PitchPicture kind={c.id} th={th} />
+                              onClick={() => { if (!c.twoPitch) setPitchKind(c.id); if (c.id === "internal" || c.id === "open") setStickyKind(c.id); applyAngle(editor.i, Math.round(c.value)); const t = String(Math.round(c.value)); setDraft(t); setEditor({ ...editor, orig: t }); setPitchOpen(true); setInvalid(false); }}
+                              style={btn(typed ? c.id === doneKind.id : parseFloat(draft) === Math.round(c.value), { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "6px 4px" })}>
+                              <PitchPicture kind={c.id === "hip" || c.id === "break" ? "ridge" : c.id} th={c.id === "hip" || c.id === "break" ? (180 - c.value) / 2 : th} />
                               <span className="mono" style={{ fontSize: 13, color: SAFETY }}>{fmtDeg(c.value)}</span>
                               <span style={{ fontSize: 10.5 }}>{c.label}</span>
                             </button>
@@ -3286,6 +3366,7 @@ export default function ShopOrderApp() {
   const [points, setPoints] = useState(TRIM_PRESETS["Eave / Drip Edge"]);
   const [preset, setPreset] = useState("Eave / Drip Edge");
   const [viewResetKey, setViewResetKey] = useState(0);
+  const [drawnPitch, setDrawnPitch] = useState(4); // the roof pitch the profile on the canvas was drawn at — the box's, or 4:12 for a preset
   const [hemStart, setHemStart] = useState("none");
   const [hemEnd, setHemEnd] = useState("none");
   const [paintSide, setPaintSide] = useState("left");
@@ -4287,7 +4368,7 @@ export default function ShopOrderApp() {
   // Load one kit piece into the canvas to tweak legs before adding it the usual way.
   const drawRoofBoxItem = (it) => {
     setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
-    setHemStart(it.hemStart); setHemEnd(it.hemEnd); setPaintSide(it.paintSide); setPartName(it.name);
+    setHemStart(it.hemStart); setHemEnd(it.hemEnd); setPaintSide(it.paintSide); setPartName(it.name); setDrawnPitch(roofBoxPitch);
     setViewResetKey((k) => k + 1); setRoofBoxOpen(false);
     setToast(`${it.name} is on the canvas — adjust any leg, then Add Part to Order.`); setTimeout(() => setToast(""), 3500);
   };
@@ -5861,7 +5942,7 @@ export default function ShopOrderApp() {
                   </button>
                   {Object.keys(TRIM_PRESETS).map((p) => (
                     <button key={p} onClick={() => {
-                      setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt]));
+                      setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt])); setDrawnPitch(4);
                       const f = presetFolds(p);
                       if (f) { setHemStart(f.hemStart); setHemEnd(f.hemEnd); setPaintSide(f.paintSide); }
                       setViewResetKey((k) => k + 1);
@@ -5970,7 +6051,7 @@ export default function ShopOrderApp() {
                                   <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{it.name} <span className="mono" style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 500 }}>{it.dims}</span></div>
                                   <div style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 1.4 }}>{it.where}</div>
                                   <div className="mono" style={{ fontSize: 10, color: theme.textSecondary, marginTop: 2 }}>
-                                    Girth {g.toFixed(2)}" · {Math.max(0, it.points.length - 2)} bend{it.points.length === 3 ? "" : "s"} · {pps} pcs/sheet · one {lengthPerPiece} ft piece per {lengthPerPiece} ft of {it.per}
+                                    Girth {fmtIn(g)}" · {Math.max(0, it.points.length - 2)} bend{it.points.length === 3 ? "" : "s"} · {pps} pcs/sheet · one {lengthPerPiece} ft piece per {lengthPerPiece} ft of {it.per}
                                   </div>
                                 </div>
                                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
@@ -6005,7 +6086,7 @@ export default function ShopOrderApp() {
                     </div>
                   );
                 })()}
-                <TrimCanvas points={points} setPoints={setPoints} colorHex={colorObj.hex} hemStart={hemStart} hemEnd={hemEnd} paintSide={paintSide}
+                <TrimCanvas points={points} setPoints={setPoints} colorHex={colorObj.hex} hemStart={hemStart} hemEnd={hemEnd} paintSide={paintSide} roofPitch={drawnPitch}
                   setHemStart={setHemStart} setHemEnd={setHemEnd} setPaintSide={setPaintSide} viewResetKey={viewResetKey} />
                 <div style={{ display: "flex", alignItems: "center", marginTop: 8, gap: 8, flexWrap: "wrap" }}>
                   <button onClick={() => setPoints((p) => p.slice(0, -1))}
@@ -6013,7 +6094,7 @@ export default function ShopOrderApp() {
                     <Undo2 size={12} /> Undo
                   </button>
                   <span className="mono" style={{ fontSize: 11, color: theme.text, fontWeight: 600 }}>
-                    Girth: {girth.toFixed(2)}"{hemAllowance(hemStart) + hemAllowance(hemEnd) > 0 ? ` (incl. ${fracIn(hemAllowance(hemStart) + hemAllowance(hemEnd))} folds)` : ""} · {points.length} pts
+                    Girth: {fmtIn(girth)}"{hemAllowance(hemStart) + hemAllowance(hemEnd) > 0 ? ` (incl. ${fracIn(hemAllowance(hemStart) + hemAllowance(hemEnd))} folds)` : ""} · {points.length} pts
                   </span>
                   <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, color: theme.text, fontWeight: 600 }}>
                     Qty
@@ -6044,7 +6125,7 @@ export default function ShopOrderApp() {
                     {partsPerSheet} pcs/{sheetWidth}" sheet · {sheetsNeeded} sheet{sheetsNeeded === 1 ? "" : "s"} needed
                   </span>
                   <span className="mono" style={{ fontSize: 11, color: SAFETY, fontWeight: 600 }} title="Leftover width per sheet after cutting all full pieces">
-                    Drop: {dropWidth.toFixed(2)}"
+                    Drop: {fmtIn(dropWidth)}"
                   </span>
                 </div>
                 <label style={{ display: "block", fontSize: 10.5, color: theme.textSecondary, marginTop: 10 }}>
@@ -6105,7 +6186,7 @@ export default function ShopOrderApp() {
                             <img src={it.photo} alt="Reference" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 5, border: `1px solid ${theme.border}`, flexShrink: 0 }} />
                           )}
                           <span style={{ fontSize: 11.5, color: theme.text, flex: 1 }}>
-                            <strong>{it.name}</strong> — Qty {it.quantity} · {it.girth.toFixed(2)}" girth · {it.sheetsNeeded} sheet{it.sheetsNeeded === 1 ? "" : "s"} · {it.dropWidth.toFixed(2)}" drop
+                            <strong>{it.name}</strong> — Qty {it.quantity} · {fmtIn(it.girth)}" girth · {it.sheetsNeeded} sheet{it.sheetsNeeded === 1 ? "" : "s"} · {fmtIn(it.dropWidth)}" drop
                             <br />
                             <span style={{ fontSize: 10.5, color: theme.textSecondary }}>
                               {it.colorName} · {itGauge?.label} · {itBends} bend{itBends === 1 ? "" : "s"} · Paint side: {it.paintSide === "left" ? "Left" : "Right"}
