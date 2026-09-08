@@ -273,59 +273,80 @@ function profileSearchUrl(profile) {
 
 /* ---------------------------------- panel catalog (vendor menu) ---------------------------------- */
 
-// A close-up three-quarter view of one panel: the cut section — the thing that actually
-// tells one profile from another — is the subject, with the pan running away from it.
-// The section is drawn family by family so a snap-lock's rounded hook, a mechanical
-// seam's squared, stepped block, a nail strip's fastening flange and a flush panel's
-// shallow reveal each read as a different shape at thumbnail size. Geometry is
-// exaggerated for legibility, the same trade-off the cross-section drawing makes.
-// `colorHex` shades the metal in the order's finish color; without one it falls back to
-// the blueprint blue. The sweeping glint is parked off the pan until CSS animates it
-// (see .pc-glint) so a wall of cards isn't shimmering all at once.
-function generatePanelIsoSvg(profileLabel, ribStyle, idSuffix, colorHex) {
-  const info = PROFILE_INFO[profileLabel] || {};
-  const family = info.family || "mech";
-  const m = profileLabel.match(/(\d+(\.\d+)?)"/);
-  const seam = Math.max(1.0, Math.min(2.5, m ? parseFloat(m[1]) : 1.5));
-
-  const W = 7.6;                 // inches of pan drawn — cropped so the seam is the subject
+// One panel's cross-section in inches, both legs included: the female leg the next
+// panel hooks into, the pan between them, and the male leg that goes underneath — the
+// way a panel actually locks to its neighbor, and the way the manufacturer's own
+// profile drawings show it. Shapes follow the same family conventions the app's
+// side-view drawing uses (generatePanelProfileSvg): a snap-lock's rounded hook, a
+// mechanical seam's squared and layered fold, a nail strip's fastening flange out on
+// the deck, a flush panel's shallow reveal, a batten's boxy cap. Exaggerated for
+// legibility at thumbnail size — the fold SHAPE matters more here than true scale.
+// u runs across the panel (0 = far edge), v is height above the pan.
+// Cross-section with BOTH legs — the female leg the next panel hooks into, the pan,
+// and the male leg that goes under it — mirroring the shapes the app's own side-view
+// drawing (generatePanelProfileSvg) already uses for each family.
+function panelSectionIn(family, seam, ribStyle, W) {
   const sec = [];
   const S = (u, v) => sec.push([u, v]);
-  if (family === "batten") {
-    // Wide boxy cap sitting over the pan leg
-    S(0, 0); S(0, seam * 0.55); S(0.28, seam); S(1.5, seam); S(1.78, seam * 0.55); S(1.78, 0); S(2.15, 0);
-  } else if (family === "trapezoid") {
-    S(0, 0); S(0.75, seam); S(1.85, seam); S(2.6, 0);
-  } else if (family === "flush") {
-    // Flat wall panel: the tell is the reveal channel between courses
-    S(0, 0); S(0, 0.62); S(0.34, 0.62); S(0.34, 0.12); S(0.62, 0.12); S(0.62, 0);
+  const h = seam;
+
+  // --- far edge: the female leg, folded toward the pan -------------------------------
+  if (family === "batten") { S(0, 0); S(0, h * 0.5); S(0.3, h); S(1.45, h); S(1.72, h * 0.5); S(1.72, 0); }
+  else if (family === "trapezoid") { S(0, 0); S(0.7, h); S(1.7, h); S(2.35, 0); }
+  else if (family === "flush") { S(0, 0); S(0, 0.7); S(0.4, 0.7); S(0.4, 0.16); S(0.72, 0.16); S(0.72, 0); }
+  else if (family === "mech" || family === "mecharmco") {
+    // double-lock: squared upstand, flat top, layered fold stepping back down
+    S(0, 0); S(0, h); S(0.46, h); S(0.46, h - 0.2); S(0.16, h - 0.24); S(0.16, h - 0.46); S(0.62, h - 0.5); S(0.62, 0);
   } else if (family === "flange") {
-    // Nail strip: short hook plus the fastening flange lying flat on the deck
-    S(-1.15, 0); S(-1.15, 0.12); S(0, 0.12); S(0, seam * 0.8);
-    S(0.42, seam * 0.8); S(0.42, seam * 0.42); S(0.66, seam * 0.42); S(0.66, 0);
-  } else if (family === "mech" || family === "mecharmco") {
-    // Double-lock: squared-off, flat-topped, with a stepped shoulder
-    S(0, 0); S(0, seam); S(0.6, seam); S(0.6, seam - 0.22); S(0.22, seam - 0.26);
-    S(0.22, seam - 0.5); S(0.86, seam - 0.5); S(0.86, 0);
+    // nail strip: leg up, over, and back down to deck level, then the fastening flange
+    S(0, 0); S(0, h * 0.85); S(0.44, h * 0.85); S(0.44, h * 0.45); S(0.66, h * 0.45); S(0.66, 0);
   } else {
-    // Snap-lock: rounded hook cap curling over the male leg
-    const hook = [];
-    for (let i = 0; i <= 7; i++) {
-      const a = Math.PI * (1 - i / 7);
-      hook.push([0.42 - Math.cos(a) * 0.42, seam - 0.42 + Math.sin(a) * 0.42]);
-    }
-    S(0, 0); S(0, seam - 0.42);
-    hook.forEach(([u, v]) => S(u, v));
-    S(0.84, seam - 0.95); S(0.5, seam - 1.05 < 0 ? 0 : seam - 1.05); S(0.5, 0);
+    // snap-lock: rounded hook curling over and back down
+    S(0, 0); S(0, h - 0.4);
+    for (let i = 0; i <= 6; i++) { const a = Math.PI * (1 - i / 6); S(0.4 - Math.cos(a) * 0.4, h - 0.4 + Math.sin(a) * 0.4); }
+    S(0.8, h - 0.86); S(0.5, h - 0.98); S(0.5, 0);
   }
+
   const panStart = sec[sec.length - 1][0];
-  const span = W - panStart;
+
+  // --- near edge: the male leg the next panel's female leg locks over ----------------
+  // Both legs lean the same way, the way panels shingle across a roof.
+  const male = [];
+  const M = (u, v) => male.push([u, v]);
+  if (family === "batten") { M(0, 0); M(0, h * 0.5); M(0.28, h); M(0.28, 0); }
+  else if (family === "trapezoid") { M(0, 0); M(0.62, h); M(0.62, 0); }
+  else if (family === "flush") { M(0, 0); M(0, 0.7); M(0.34, 0.7); M(0.34, 0.2); }
+  else if (family === "mech" || family === "mecharmco") { M(0, 0); M(0, h - 0.1); M(0.3, h - 0.1); M(0.3, h - 0.34); }
+  else if (family === "flange") {
+    // the fastening flange lies out on the deck past the leg and is screwed down there
+    M(0, 0); M(0, h * 0.72); M(0.3, h * 0.72); M(0.3, 0.1); M(1.35, 0.1);
+  } else { M(0, 0); M(0, h - 0.46); M(0.3, h - 0.38); M(0.3, h - 0.72); M(0.14, h - 0.82); }
+
+  const maleW = Math.max(...male.map((q) => q[0]));
+  const panEnd = W - maleW;
+  const span = panEnd - panStart;
   const rib = (fracs, fn) => fracs.forEach((f) => fn(panStart + span * f));
   if (ribStyle === "bead") rib([0.34, 0.68], (c) => { S(c - 0.3, 0); S(c - 0.18, 0.14); S(c + 0.18, 0.14); S(c + 0.3, 0); });
   else if (ribStyle === "pencil") rib([0.28, 0.52, 0.76], (c) => { S(c - 0.22, 0); S(c, 0.13); S(c + 0.22, 0); });
   else if (ribStyle === "v") rib([0.36, 0.68], (c) => { S(c - 0.24, 0); S(c, -0.15); S(c + 0.24, 0); });
   else if (ribStyle === "striations") { const n = 9; for (let i = 1; i < n; i++) { const u = panStart + (span * i) / n; S(u - 0.07, 0); S(u, 0.05); S(u + 0.07, 0); } }
-  S(W, 0);
+  S(panEnd, 0);
+  for (const [u, v] of male) if (u || v) S(panEnd + u, v);
+  return sec;
+}
+
+// A close-up three-quarter view of one panel: the cut section — the thing that tells one
+// profile from another — is the subject, with the pan running away from it. `colorHex`
+// shades the metal in the order's finish color; without one it falls back to the
+// blueprint blue. The sweeping glint is parked off the pan until CSS animates it (see
+// .pc-glint) so a wall of cards isn't shimmering all at once.
+function generatePanelIsoSvg(profileLabel, ribStyle, idSuffix, colorHex) {
+  const info = PROFILE_INFO[profileLabel] || {};
+  const family = info.family || "mech";
+  const m = profileLabel.match(/(\d+(\.\d+)?)"/);
+  const seam = Math.max(1.0, Math.min(2.5, m ? parseFloat(m[1]) : 1.5));
+  const W = 7.2;
+  const sec = panelSectionIn(family, seam, ribStyle, W);
 
   // Close-up three-quarter view: the cut section is the subject, the pan runs away from it.
   const SC = 26;
@@ -335,7 +356,6 @@ function generatePanelIsoSvg(profileLabel, ribStyle, idSuffix, colorHex) {
   const X = (u, v, t) => u * A[0] + v * V[0] + t * B[0];
   const Y = (u, v, t) => u * A[1] + v * V[1] + t * B[1];
 
-  // Finish color drives the shading ramp; default is the blueprint blue.
   const hex = (colorHex || "#7FA8C6").replace("#", "");
   const rgb = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
   const mx = Math.max(...rgb), mn = Math.min(...rgb), l0 = (mx + mn) / 2;
@@ -346,30 +366,23 @@ function generatePanelIsoSvg(profileLabel, ribStyle, idSuffix, colorHex) {
     hue = (mx === rgb[0] ? (rgb[1] - rgb[2]) / d + (rgb[1] < rgb[2] ? 6 : 0) : mx === rgb[1] ? (rgb[2] - rgb[0]) / d + 2 : (rgb[0] - rgb[1]) / d + 4) * 60;
   }
   const SS = Math.min(52, Math.round(sat * 100) + 8);
-  // The sunlit pan sits at the color's own lightness; every other face is shaded down
-  // from it, so a dark finish stays dark instead of washing out to mid-gray.
   const base = Math.min(84, Math.max(22, Math.round(l0 * 100)));
   const tone = (l) => `hsl(${hue.toFixed(0)} ${SS}% ${Math.max(9, Math.min(94, l)).toFixed(0)}%)`;
-  // How much a strip faces up (bright) versus stands on edge, and whether it turns
-  // toward the light (upper left) or away from it.
   const face = (du, dv) => {
     const flat = Math.abs(du) / (Math.abs(du) + Math.abs(dv) * 2.4 + 1e-6);
     const toward = du >= 0 ? 1 : 0.52;
     return base - 26 * (1 - flat * toward);
   };
 
-  const TH = 0.13; // drawn sheet thickness
-  // Fit the view to what is actually drawn, so a 1" flush panel and a 2" seam each
-  // fill their tile the same way instead of one floating in space.
+  const TH = 0.13;
   const xs = [], ys = [];
   for (const [u, v] of sec) for (const t of [0, 1]) for (const dv of [0, -TH]) { xs.push(X(u, v + dv, t)); ys.push(Y(u, v + dv, t)); }
   const padX = 16, padTop = 12, padBot = 20;
   let vx = Math.min(...xs) - padX, vy = Math.min(...ys) - padTop;
   let vw = Math.max(...xs) - Math.min(...xs) + padX * 2, vh = Math.max(...ys) - Math.min(...ys) + padTop + padBot;
-  // Every tile ends up the same shape, so a row of cards lines up however tall the seam is.
   const AR = 300 / 190;
   if (vw / vh < AR) { const g = vh * AR - vw; vx -= g / 2; vw += g; }
-  else { const g = vw / AR - vh; vy -= g * 0.62; vh += g; } // a touch more air above than below
+  else { const g = vw / AR - vh; vy -= g * 0.62; vh += g; }
   const P = (u, v, t) => `${X(u, v, t).toFixed(1)},${Y(u, v, t).toFixed(1)}`;
 
   let strips = "";
@@ -380,7 +393,9 @@ function generatePanelIsoSvg(profileLabel, ribStyle, idSuffix, colorHex) {
   }
 
   const gid = `pc${(info.code || "x")}${ribStyle || "none"}${idSuffix || ""}`.replace(/[^A-Za-z0-9]/g, "");
-  const panQuad = `${P(panStart, 0, 0)} ${P(W, 0, 0)} ${P(W, 0, 1)} ${P(panStart, 0, 1)}`;
+  const flat = sec.filter((q) => q[1] === 0);
+  const pa = Math.min(...flat.map((q) => q[0])), pb = Math.max(...flat.map((q) => q[0]));
+  const panQuad = `${P(pa, 0, 0)} ${P(pb, 0, 0)} ${P(pb, 0, 1)} ${P(pa, 0, 1)}`;
   const defs = `<defs>` +
     `<linearGradient id="${gid}s" x1="0" y1="1" x2="0.85" y2="0">` +
       `<stop offset="0" stop-color="#fff" stop-opacity="0.02"/><stop offset="0.5" stop-color="#fff" stop-opacity="0.16"/>` +
@@ -390,17 +405,14 @@ function generatePanelIsoSvg(profileLabel, ribStyle, idSuffix, colorHex) {
       `<stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
     `<clipPath id="${gid}c"><polygon points="${panQuad}"/></clipPath></defs>`;
   const sheen = `<polygon points="${panQuad}" fill="url(#${gid}s)"/>`;
-  // A glint that sweeps the length of the pan — parked off-frame until the tile animates it.
   const glint = `<g clip-path="url(#${gid}c)" transform="skewX(-26)"><rect class="pc-glint" x="${(vx + vh * 0.5 - vw * 0.42).toFixed(1)}" y="${vy.toFixed(1)}" width="${(vw * 0.3).toFixed(1)}" height="${vh.toFixed(1)}" fill="url(#${gid}g)"/></g>`;
 
-  // The near cut face carries the profile, so it is drawn last, bright, and outlined.
   const top = sec.map(([u, v]) => P(u, v, 0)).join(" ");
   const bot = sec.slice().reverse().map(([u, v]) => P(u, v - TH, 0)).join(" ");
   const edge = `<polygon points="${top} ${bot}" fill="${tone(base + 20)}" stroke="${tone(base - 30)}" stroke-width="0.8" stroke-linejoin="round"/>`;
 
   let extra = "";
-  // Fasteners marching down the nail strip's flange — the tell for a flange-fixed panel.
-  if (family === "flange") for (const t of [0.22, 0.5, 0.78]) extra += `<ellipse cx="${X(-0.6, 0.13, t).toFixed(1)}" cy="${Y(-0.6, 0.13, t).toFixed(1)}" rx="3.4" ry="2" fill="${tone(base - 34)}"/>`;
+  if (family === "flange") for (const t of [0.22, 0.5, 0.78]) extra += `<ellipse cx="${X(pb + 0.95, 0.11, t).toFixed(1)}" cy="${Y(pb + 0.95, 0.11, t).toFixed(1)}" rx="3.4" ry="2" fill="${tone(base - 34)}"/>`;
 
   const shadow = `<ellipse cx="${(vx + vw * 0.52).toFixed(1)}" cy="${(vy + vh - padBot * 0.45).toFixed(1)}" rx="${(vw * 0.38).toFixed(1)}" ry="6" fill="rgba(0,0,0,0.16)"/>`;
   return `<svg viewBox="${vx.toFixed(1)} ${vy.toFixed(1)} ${vw.toFixed(1)} ${vh.toFixed(1)}" xmlns="http://www.w3.org/2000/svg">${defs}${shadow}${strips}${sheen}${glint}${extra}${edge}</svg>`;
