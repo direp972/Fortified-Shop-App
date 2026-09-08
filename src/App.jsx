@@ -567,13 +567,13 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
       points: [kitPt(0, 0), kitPt(3.75, 0), kitFold(2.5, 0, "left"), kitPt(2.5, 2), kitPt(2.5 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
     { id: "apron", name: "Gutter Apron", dims: '4½" × 2" · 15° kick', per: "eave with gutters", on: false,
       where: "Eave trim for gutter runs — a longer deck flange and a face kicked out over the gutter's back.",
-      points: [kitPt(0, 0), kitPt(4.5, 0), kitPt(4.5 + 2 * Math.sin(apronKick), 2 * Math.cos(apronKick))], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
+      points: [kitPt(0, 0), kitPt(4.5, 0), kitPt(4.5 + 2 * Math.sin(apronKick), 2 * Math.cos(apronKick))], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
     { id: "rake", name: "Rake / Gable Trim", dims: '3" × 5½" · ½" 45° kick', per: "rake edge", on: true,
       where: "Gable ends — the top leg covers the panel's turned-up edge and the rake cleat, the face drops over the fascia, kicked and hemmed at the bottom.",
-      points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 5.5), kitPt(3 + KICK, 5.5 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
+      points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 5.5), kitPt(3 + KICK, 5.5 + KICK)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
     { id: "higheave", name: "High-Side Eave", dims: '5" × 5½" · ½" 45° kick', per: "high eave (single-slope roofs)", on: false,
       where: "Top edge of a shed or single-slope roof — sits over the Z-closure and drops down the high fascia, kicked and hemmed.",
-      points: [kitPt(0, 0), kitPt(5, 0), kitPt(5, 5.5), kitPt(5 + KICK, 5.5 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
+      points: [kitPt(0, 0), kitPt(5, 0), kitPt(5, 5.5), kitPt(5 + KICK, 5.5 + KICK)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
     { id: "ridge", name: "Ridge Cap", dims: `${capLeg}" legs · bent to ${fmtPitch(pitch)}`, per: "ridge", on: true, pitched: true,
       where: "Peak of the roof over the Z-closures, both legs hemmed for the drip. Bent to the roof pitch.",
       points: cap(ridgeHalf), hemStart: "open-left", hemEnd: "open-left", paintSide: "right" },
@@ -587,17 +587,17 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
       where: "Same pan with flat wings — an offset cleat runs along each edge and the panels hem over the cleat. Tick the Offset Cleat below, two lengths per valley.",
       points: valleyPan, hemStart: "none", hemEnd: "none", paintSide: "right" },
     { id: "sidewall", name: "Sidewall Flashing", dims: '4" × 4" · ⅜" kickout', per: "sidewall", on: true,
-      where: "Where the roof runs along a wall — roof leg over the panel, wall leg behind the siding or counter flashing, hemmed top.",
-      points: [kitPt(-0.375, 0.25), kitPt(0, 0), kitPt(4, 0), kitPt(4, -4)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
+      where: "Where the roof runs along a wall — roof leg over the panel, wall leg behind the siding or counter flashing.",
+      points: [kitPt(-0.375, 0.25), kitPt(0, 0), kitPt(4, 0), kitPt(4, -4)], hemStart: "none", hemEnd: "none", paintSide: "right" },
     { id: "endwall", name: "Headwall Flashing", dims: `5" × 4" · wall leg plumb for ${fmtPitch(pitch)}`, per: "headwall", on: true, pitched: true,
       where: "Where the roof runs up into a wall (an endwall) — sits over the Z-closure, wall leg plumb at your pitch behind the siding or counter flashing.",
-      points: [kitPt(-0.375, 0.25), kitPt(0, 0), kitPt(5, 0), kitPt(5 + 4 * wallTilt.x, 4 * wallTilt.y)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
+      points: [kitPt(-0.375, 0.25), kitPt(0, 0), kitPt(5, 0), kitPt(5 + 4 * wallTilt.x, 4 * wallTilt.y)], hemStart: "none", hemEnd: "none", paintSide: "right" },
     { id: "counter", name: "Counter Flashing — Reglet", dims: '1" reglet · 4" face · ½" 45° kick', per: "sidewall and headwall against masonry", on: true,
       where: "Covers the top of the sidewall and headwall flashing — 1\" leg set into a saw-cut or mortar joint, 4\" face down the wall, kicked out and hemmed at the bottom.",
-      points: [kitPt(1, -0.25), kitPt(0, 0), kitPt(0, 4), kitPt(-KICK, 4 + KICK)], hemStart: "none", hemEnd: "open-right", paintSide: "left" },
+      points: [kitPt(1, -0.25), kitPt(0, 0), kitPt(0, 4), kitPt(-KICK, 4 + KICK)], hemStart: "none", hemEnd: "closed-right", paintSide: "left" },
     { id: "counter2", name: "Counter Flashing — Surface Mount", dims: '½" sealant kick · 4" face · ½" 45° kick', per: "sidewall and headwall on siding, stucco or block", on: false,
       where: "Same job where nothing can be cut into the wall — the top edge kicks out 45° to hold a bead of sealant, screwed through the face.",
-      points: [kitPt(-KICK, -KICK), kitPt(0, 0), kitPt(0, 4), kitPt(-KICK, 4 + KICK)], hemStart: "none", hemEnd: "open-right", paintSide: "left" },
+      points: [kitPt(-KICK, -KICK), kitPt(0, 0), kitPt(0, 4), kitPt(-KICK, 4 + KICK)], hemStart: "none", hemEnd: "closed-right", paintSide: "left" },
     { id: "zclosure", name: "Z-Closure", dims: `1" × ${H}" × 1"`, per: "ridge and hip (two per length, one on each slope), plus headwalls and pitch breaks", on: true,
       where: "Fills the seam height between panels under the ridge and hip caps, at headwalls and pitch breaks; sealed to the pan. Eaves are usually hemmed over a cleat instead.",
       points: [kitPt(0, 0), kitPt(1, 0), kitPt(1, -H), kitPt(2, -H)], hemStart: "none", hemEnd: "none", paintSide: "right" },
@@ -611,14 +611,13 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
 }
 const ROOF_KIT_DEFAULT_SEL = Object.fromEntries(buildRoofKit().map((it) => [it.id, it.on ? 1 : 0]));
 // Quick presets on the trim canvas: every piece of the kit at a 4:12 roof, under the name
-// the box gives it (Roof in a Box redraws the pitch-driven ones to any pitch), plus the shop
-// staples that aren't roof trims.
+// the box gives it (Roof in a Box redraws the pitch-driven ones to any pitch), plus Custom
+// for a blank start.
 const KIT_4_12 = Object.fromEntries(buildRoofKit({ pitch: 4 }).map((it) => [it.id, it]));
 const PITCHED_KIT = new Set(Object.values(KIT_4_12).filter((it) => it.pitched).map((it) => it.id)); // the pieces whose shape follows the roof pitch
 const KIT_PRESETS = Object.fromEntries(Object.values(KIT_4_12).map((it) => [it.name, it.id]));
 const TRIM_PRESETS = {
   ...Object.fromEntries(Object.entries(KIT_PRESETS).map(([name, id]) => [name, KIT_4_12[id].points])),
-  "F-Channel": [[0, 0], [0, 10.5], [7, 10.5], [7, 4], [10, 4], [10, 0]],
   "Custom": [[0, 0], [0, 6]],
 };
 // A preset from the kit brings its standard end folds and painted side along with the shape;
@@ -4202,7 +4201,7 @@ export default function ShopOrderApp() {
 
       // Marcus Webb — 2 trim pieces + 1 panel run, all Ready for Pickup
       mkTrim({ jobId: jobMarcus, partName: "F-Channel — Soffit Return", customerName: "Marcus Webb", phone: "(469) 555-0177",
-        points: TRIM_PRESETS["F-Channel"], quantity: 10, lengthPerPiece: 10,
+        points: [[0, 0], [0, 10.5], [7, 10.5], [7, 4], [10, 4], [10, 0]], quantity: 10, lengthPerPiece: 10,
         brand: "Adax Metals", ...trimColor("Adax Metals", "Matte Black"), status: "Ready for Pickup", createdAt: daysAgo(5) }),
       mkTrim({ jobId: jobMarcus, partName: "Z-Bar — Wainscot Transition", customerName: "Marcus Webb", phone: "(469) 555-0177",
         points: [[0, 0], [0, 7.5], [6, 1.5], [6, 9]], quantity: 14, lengthPerPiece: 10,
