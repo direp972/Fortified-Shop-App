@@ -2266,7 +2266,9 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
               </div>
               {invalid && (
                 <div role="alert" style={{ fontSize: 10.5, color: "#FF9B9B", marginTop: 5 }}>
-                  {editor.kind === "length" ? `Enter a length above 0${unitSystem === "imperial" ? ' — like 6.5, 6 1/2 or 3/8' : " in mm"}.`
+                  {editor.kind === "length" && editor.i > 1 && foldSide(points[editor.i]) && (unitSystem === "metric" ? parseLength(draft) / 25.4 : parseLength(draft)) > dist(points[editor.i - 2], points[editor.i - 1])
+                    ? `A hem folds back along its leg — ${formatLen(dist(points[editor.i - 2], points[editor.i - 1]))} at most.`
+                    : editor.kind === "length" ? `Enter a length above 0${unitSystem === "imperial" ? ' — like 6.5, 6 1/2 or 3/8' : " in mm"}.`
                     : editor.kind === "angle" ? "Enter an inside angle between 0 and 180 degrees." : "Enter the rotation in degrees."}
                 </div>
               )}
