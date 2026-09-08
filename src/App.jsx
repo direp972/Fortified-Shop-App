@@ -533,6 +533,7 @@ const SEAM_HEIGHTS = [1, 1.5, 1.75, 2];
 const pitchAngle = (rise) => Math.atan(rise / 12); // radians
 const r3 = (v) => Math.round(v * 1000) / 1000;
 const kitPt = (x, y) => [r3(x), r3(y)];
+const kitFold = (x, y, side) => [r3(x), r3(y), `fold-${side}`]; // a hem drawn as a leg: folds 180° back along the previous leg, to that side of its travel — tag written out because the kit is built at load, before withFold exists
 const fmtPitch = (rise) => `${rise}:12`;
 
 function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
@@ -559,8 +560,11 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
 
   return [
     { id: "eave", name: "Eave / Drip Edge", dims: '3" × 2" · ½" 45° kick', per: "eave", on: true,
-      where: "Bottom edge of the roof — deck flange under the panels, face down the fascia, a 45° kick throws the water clear and the hem hooks the panel's hemmed edge.",
+      where: "Bottom edge of the roof — deck flange under the panels, face down the fascia, kicked out 45° at the bottom to throw the water clear, and hemmed. The panels hook an Offset Cleat over the flange, or the lip of the D-Style Drip Edge below.",
       points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 2), kitPt(3 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
+    { id: "dstyle", name: "D-Style Drip Edge", dims: '3¾" × 2" · 1¼" lip hemmed flat · ½" 45° kick', per: "eave", on: false,
+      where: "Same eave for panels that hook the trim itself (the T-style) — 2½\" on the deck, then a 1¼\" lip past the fascia, hemmed flat back under, that the panel's hemmed edge hooks and squeezes shut on: no cleat. Face down the fascia, kicked at the bottom with a closed hem; tick it in place of the Eave / Drip Edge above.",
+      points: [kitPt(0, 0), kitPt(3.75, 0), kitFold(2.5, 0, "left"), kitPt(2.5, 2), kitPt(2.5 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
     { id: "apron", name: "Gutter Apron", dims: '4½" × 2" · 15° kick', per: "eave with gutters", on: false,
       where: "Eave trim for gutter runs — a longer deck flange and a face kicked out over the gutter's back.",
       points: [kitPt(0, 0), kitPt(4.5, 0), kitPt(4.5 + 2 * Math.sin(apronKick), 2 * Math.cos(apronKick))], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
@@ -606,20 +610,19 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
   ];
 }
 const ROOF_KIT_DEFAULT_SEL = Object.fromEntries(buildRoofKit().map((it) => [it.id, it.on ? 1 : 0]));
-// Quick presets on the trim canvas: the kit's own profiles at a 4:12 roof (Roof in a Box
-// redraws the pitch-driven ones to any pitch), plus the shop staples that aren't roof trims.
+// Quick presets on the trim canvas: every piece of the kit at a 4:12 roof, under the name
+// the box gives it (Roof in a Box redraws the pitch-driven ones to any pitch), plus the shop
+// staples that aren't roof trims.
 const KIT_4_12 = Object.fromEntries(buildRoofKit({ pitch: 4 }).map((it) => [it.id, it]));
+const KIT_PRESETS = Object.fromEntries(Object.values(KIT_4_12).map((it) => [it.name, it.id]));
 const TRIM_PRESETS = {
-  "Eave": KIT_4_12.eave.points,
-  "Rake": KIT_4_12.rake.points,
-  "Ridge Cap": KIT_4_12.ridge.points,
-  "Valley": KIT_4_12.valley.points,
-  "Sidewall Flashing": KIT_4_12.sidewall.points,
-  "Headwall Flashing": KIT_4_12.endwall.points,
-  "Counter Flashing": KIT_4_12.counter.points,
+  ...Object.fromEntries(Object.entries(KIT_PRESETS).map(([name, id]) => [name, KIT_4_12[id].points])),
   "F-Channel": [[0, 0], [0, 10.5], [7, 10.5], [7, 4], [10, 4], [10, 0]],
   "Custom": [[0, 0], [0, 6]],
 };
+// A preset from the kit brings its standard end folds and painted side along with the shape;
+// the shop staples set only the shape and leave the folds as they are.
+const presetFolds = (name) => { const it = KIT_4_12[KIT_PRESETS[name]]; return it ? { hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide } : null; };
 
 const STATUS_FLOW = ["Pending", "In Production", "Ready for Pickup", "Completed"];
 const RIB_LABELS = { bead: "Bead Ribs", pencil: "Pencil Ribs", v: "V Ribs", striations: "Striations" };
@@ -1169,6 +1172,10 @@ function profileGirth(pts, hemStart = "none", hemEnd = "none") {
   if (!pts || pts.length < 2) return 0;
   return pts.reduce((s, p, i) => s + (i > 0 ? dist(pts[i - 1], p) : 0), 0) + hemAllowance(hemStart) + hemAllowance(hemEnd);
 }
+// Pieces a sheet yields: the girth's rounding must not cost a piece — a ½" leg at 45° is
+// stored to the thousandth and comes out 0.5006", so 48/6.0006 has to be 8, not 7. The
+// sheet may come up a sixty-fourth short over its whole width, which is what the shear holds.
+const piecesPerSheet = (sheetWidth, girth) => (girth > 0 ? Math.floor((sheetWidth + 1 / 64) / girth) : 0);
 function unitVec(a, b) {
   const dx = b[0] - a[0], dy = b[1] - a[1];
   const m = Math.hypot(dx, dy) || 1;
@@ -1686,6 +1693,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     const raw = parseLength(text);
     if (!isFinite(raw) || raw <= 0) return false;
     const val = unitSystem === "metric" ? raw / 25.4 : raw; // always store in inches internally
+    if (i > 1 && foldSide(points[i]) && val > dist(points[i - 2], points[i - 1]) + 1e-9) return false; // a hem can't fold back past the start of its leg
     const dir = unitVec(points[i - 1], points[i]);
     const target = [points[i - 1][0] + dir[0] * val, points[i - 1][1] + dir[1] * val];
     const dx = target[0] - points[i][0], dy = target[1] - points[i][1];
@@ -2257,7 +2265,9 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
               </div>
               {invalid && (
                 <div role="alert" style={{ fontSize: 10.5, color: "#FF9B9B", marginTop: 5 }}>
-                  {editor.kind === "length" ? `Enter a length above 0${unitSystem === "imperial" ? ' — like 6.5, 6 1/2 or 3/8' : " in mm"}.`
+                  {editor.kind === "length" && editor.i > 1 && foldSide(points[editor.i]) && (unitSystem === "metric" ? parseLength(draft) / 25.4 : parseLength(draft)) > dist(points[editor.i - 2], points[editor.i - 1])
+                    ? `A hem folds back along its leg — ${formatLen(dist(points[editor.i - 2], points[editor.i - 1]))} at most.`
+                    : editor.kind === "length" ? `Enter a length above 0${unitSystem === "imperial" ? ' — like 6.5, 6 1/2 or 3/8' : " in mm"}.`
                     : editor.kind === "angle" ? "Enter an inside angle between 0 and 180 degrees." : "Enter the rotation in degrees."}
                 </div>
               )}
@@ -3273,8 +3283,8 @@ export default function ShopOrderApp() {
   }, [coilWidth, profile]);
   // Clips default to the panel profile being ordered, so "Clips — <profile>" matches the panel.
   useEffect(() => { if (shapeType === "panel") setAccProfile(profile); }, [shapeType, profile]);
-  const [points, setPoints] = useState(TRIM_PRESETS["Eave"]);
-  const [preset, setPreset] = useState("Eave");
+  const [points, setPoints] = useState(TRIM_PRESETS["Eave / Drip Edge"]);
+  const [preset, setPreset] = useState("Eave / Drip Edge");
   const [viewResetKey, setViewResetKey] = useState(0);
   const [hemStart, setHemStart] = useState("none");
   const [hemEnd, setHemEnd] = useState("none");
@@ -4034,7 +4044,7 @@ export default function ShopOrderApp() {
       const base = {
         id: uid(), type: "trim", partName: "Sample Part",
         customerName: "Sample Customer", phone: "(555) 555-0100",
-        points: TRIM_PRESETS["Eave"], lengthPerPiece: 10, hemStart: "none", hemEnd: "none", paintSide: "left",
+        points: TRIM_PRESETS["Eave / Drip Edge"], lengthPerPiece: 10, hemStart: "none", hemEnd: "none", paintSide: "left",
         quantity: 4, gaugeId: GAUGE_OPTIONS[0].id, paintId: PAINT_OPTIONS[0].id, brand: "Fortified Metal",
         notes: "", status: "Pending", createdAt: daysAgo(1),
         ...trimColor("Fortified Metal", "Charcoal Gray"),
@@ -4044,7 +4054,7 @@ export default function ShopOrderApp() {
       // so sample/seed data rolls up into Materials Needed the same way real orders do.
       const girth = profileGirth(merged.points, merged.hemStart, merged.hemEnd);
       const sheetWidth = merged.sheetWidth || 48;
-      const partsPerSheet = girth > 0 ? Math.floor(sheetWidth / girth) : 0;
+      const partsPerSheet = piecesPerSheet(sheetWidth, girth);
       const sheetsNeeded = partsPerSheet > 0 ? Math.ceil(merged.quantity / partsPerSheet) : 0;
       Object.assign(merged, { girth, sheetWidth, partsPerSheet, sheetsNeeded });
       merged.price = computePrice(merged, priceList, coilWidthScale);
@@ -4074,10 +4084,10 @@ export default function ShopOrderApp() {
     const samples = [
       // Dave Rutherford — 2 trim pieces + 1 panel run, all Pending
       mkTrim({ jobId: jobDave, partName: "Eave — North Slope", customerName: "Dave Rutherford", phone: "(817) 555-0142",
-        points: TRIM_PRESETS["Eave"], quantity: 12, lengthPerPiece: 10, hemStart: "closed-left",
+        points: TRIM_PRESETS["Eave / Drip Edge"], quantity: 12, lengthPerPiece: 10, hemStart: "closed-left",
         brand: "Berridge", ...trimColor("Berridge", "Charcoal Grey"), status: "Pending", createdAt: daysAgo(1) }),
       mkTrim({ jobId: jobDave, partName: "Rake — West Gable", customerName: "Dave Rutherford", phone: "(817) 555-0142",
-        points: TRIM_PRESETS["Rake"], quantity: 8, lengthPerPiece: 10, hemEnd: "open-right",
+        points: TRIM_PRESETS["Rake / Gable Trim"], quantity: 8, lengthPerPiece: 10, hemEnd: "open-right",
         brand: "Berridge", ...trimColor("Berridge", "Charcoal Grey"), status: "Pending", createdAt: daysAgo(1) }),
       mkTrim({ jobId: jobDave, partName: "Ridge Cap — North Slope", customerName: "Dave Rutherford", phone: "(817) 555-0142",
         points: TRIM_PRESETS["Ridge Cap"], quantity: 4, lengthPerPiece: 10,
@@ -4113,7 +4123,7 @@ export default function ShopOrderApp() {
 
       // Tammy Ostrowski — 2 trim pieces + 1 panel run, all Completed
       mkTrim({ jobId: jobTammy, partName: "Eave — Shop Addition", customerName: "Tammy Ostrowski", phone: "(214) 555-0163",
-        points: TRIM_PRESETS["Eave"], quantity: 20, lengthPerPiece: 10, hemStart: "closed-left", hemEnd: "closed-left",
+        points: TRIM_PRESETS["Eave / Drip Edge"], quantity: 20, lengthPerPiece: 10, hemStart: "closed-left", hemEnd: "closed-left",
         brand: "Fortified Metal", ...trimColor("Fortified Metal", "Copper Metallic"), status: "Completed", createdAt: daysAgo(9) }),
       mkTrim({ jobId: jobTammy, partName: "Ridge Cap — Shop Addition", customerName: "Tammy Ostrowski", phone: "(214) 555-0163",
         points: TRIM_PRESETS["Ridge Cap"], quantity: 5, lengthPerPiece: 10,
@@ -4190,7 +4200,7 @@ export default function ShopOrderApp() {
   // Qty / sheet width are "" while a field is cleared for retyping — treat that as 0 so
   // this stays numeric (dropWidth.toFixed on "" used to white-screen the whole app).
   const sheetWidthNum = +sheetWidth || 0, quantityNum = +quantity || 0;
-  const partsPerSheet = girth > 0 ? Math.floor(sheetWidthNum / girth) : 0;
+  const partsPerSheet = piecesPerSheet(sheetWidthNum, girth);
   const sheetsNeeded = partsPerSheet > 0 ? Math.ceil(quantityNum / partsPerSheet) : 0;
   const dropWidth = partsPerSheet > 0 ? Math.max(0, sheetWidthNum - partsPerSheet * girth) : sheetWidthNum;
 
@@ -4203,7 +4213,7 @@ export default function ShopOrderApp() {
     setOutletShape("box"); setFlangeW(4); setFlangeD(4); setOutletDiameter(4); setOutletLength(6); setFlangeTapered(true);
     setFlangeLength(4); setOutletRoundTapered(false);
     setTopTrim(false); setBodyTaper(false); setTaperStart(0); setTaperLength(6);
-    setPoints(TRIM_PRESETS["Eave"]); setPreset("Eave");
+    setPoints(TRIM_PRESETS["Eave / Drip Edge"]); setPreset("Eave / Drip Edge");
     setHemStart("none"); setHemEnd("none"); setPaintSide("left");
     setGaugeId(GAUGE_OPTIONS[0].id); setPaintId(PAINT_OPTIONS[0].id); setBrand(BRANDS[0]); setColorName(COLORS_BY_BRAND[BRANDS[0]][0].name);
     setQuantity(4); setLengthPerPiece(10); setSheetWidth(48); setPartName("");
@@ -4253,7 +4263,7 @@ export default function ShopOrderApp() {
   const kitGaugeId = brand === "Copper" ? gaugeId : "24ga";
   const roofBoxItem = (it, qty) => {
     const g = profileGirth(it.points, it.hemStart, it.hemEnd);
-    const pps = g > 0 ? Math.floor(sheetWidthNum / g) : 0;
+    const pps = piecesPerSheet(sheetWidthNum, g);
     return {
       id: uid(), name: it.name, kit: it.id,
       points: it.points.map((pt) => [...pt]), hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide,
@@ -5850,7 +5860,12 @@ export default function ShopOrderApp() {
                     <Package size={12} /> Roof in a Box
                   </button>
                   {Object.keys(TRIM_PRESETS).map((p) => (
-                    <button key={p} onClick={() => { setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt])); setViewResetKey((k) => k + 1); }}
+                    <button key={p} onClick={() => {
+                      setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt]));
+                      const f = presetFolds(p);
+                      if (f) { setHemStart(f.hemStart); setHemEnd(f.hemEnd); setPaintSide(f.paintSide); }
+                      setViewResetKey((k) => k + 1);
+                    }}
                       style={{
                         padding: "5px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
                         border: `1px solid ${preset === p ? INK : "#D9D5C7"}`, background: preset === p ? INK : "#fff", color: preset === p ? "#fff" : INK_DEEP,
@@ -5943,7 +5958,7 @@ export default function ShopOrderApp() {
                             const qty = roofBoxSel[it.id] || 0;
                             const on = qty > 0;
                             const g = profileGirth(it.points, it.hemStart, it.hemEnd);
-                            const pps = g > 0 ? Math.floor(sheetWidthNum / g) : 0;
+                            const pps = piecesPerSheet(sheetWidthNum, g);
                             return (
                               <div key={it.id} data-testid={`box-row-${it.id}`} style={{ display: "grid", gridTemplateColumns: "22px 54px 1fr auto", gap: 10, alignItems: "center", padding: "8px 0", borderTop: `1px solid ${theme.border}`, opacity: on ? 1 : 0.72 }}>
                                 <input type="checkbox" checked={on} aria-label={`Include ${it.name}`}
