@@ -273,93 +273,149 @@ function profileSearchUrl(profile) {
 
 /* ---------------------------------- panel catalog (vendor menu) ---------------------------------- */
 
-// McElroy-style isometric rendering of a panel: an oblique-projected extrusion of a
-// simplified full-width cross-section. Length runs lower-left → upper-right, width
-// recedes down-right, seam height rises straight up. Painter's order: extruded strips
-// far → near, then a sheen sweep along the length, then the near cut edge on top.
-// Geometry is exaggerated for thumbnail legibility, same trade-off as the old
-// cross-section drawing — the fold SHAPE matters more than true scale.
-function generatePanelIsoSvg(profileLabel, ribStyle, idSuffix) {
-  const family = PROFILE_INFO[profileLabel]?.family || "mech";
-  const seamMatch = profileLabel.match(/(\d+(\.\d+)?)"/);
-  const seamIn = Math.max(1.0, Math.min(2.6, seamMatch ? parseFloat(seamMatch[1]) : 1.5));
-
-  // Cross-section in inches: u across the panel (0 = far seam edge), v above the pan.
-  const W = 16;
+// One panel's cross-section in inches, both legs included: the female leg the next
+// panel hooks into, the pan between them, and the male leg that goes underneath — the
+// way a panel actually locks to its neighbor, and the way the manufacturer's own
+// profile drawings show it. Shapes follow the same family conventions the app's
+// side-view drawing uses (generatePanelProfileSvg): a snap-lock's rounded hook, a
+// mechanical seam's squared and layered fold, a nail strip's fastening flange out on
+// the deck, a flush panel's shallow reveal, a batten's boxy cap. Exaggerated for
+// legibility at thumbnail size — the fold SHAPE matters more here than true scale.
+// u runs across the panel (0 = far edge), v is height above the pan.
+// Cross-section with BOTH legs — the female leg the next panel hooks into, the pan,
+// and the male leg that goes under it — mirroring the shapes the app's own side-view
+// drawing (generatePanelProfileSvg) already uses for each family.
+function panelSectionIn(family, seam, ribStyle, W) {
   const sec = [];
   const S = (u, v) => sec.push([u, v]);
-  if (family === "batten") {
-    S(0, 0); S(0, seamIn); S(1.6, seamIn); S(1.6, 0); S(2.0, 0);
-  } else if (family === "trapezoid") {
-    S(0, 0); S(0.9, seamIn); S(2.1, seamIn); S(3.0, 0);
-  } else if (family === "flush" || family === "flange") {
-    S(0, 0); S(0, 0.55); S(0.5, 0.55); S(0.5, 0); S(1.0, 0);
-  } else if (family === "mech" || family === "mecharmco") {
-    S(0, 0); S(0, seamIn); S(0.75, seamIn); S(0.75, seamIn * 0.62); S(1.05, seamIn * 0.62); S(1.05, 0);
-  } else { // snap / snapbump / newlock
-    S(0, 0); S(0, seamIn); S(0.85, seamIn); S(0.85, seamIn * 0.72); S(0.55, seamIn * 0.72); S(0.55, 0);
+  const h = seam;
+
+  // --- far edge: the female leg, folded toward the pan -------------------------------
+  if (family === "batten") { S(0, 0); S(0, h * 0.5); S(0.3, h); S(1.45, h); S(1.72, h * 0.5); S(1.72, 0); }
+  else if (family === "trapezoid") { S(0, 0); S(0.7, h); S(1.7, h); S(2.35, 0); }
+  else if (family === "flush") { S(0, 0); S(0, 0.7); S(0.4, 0.7); S(0.4, 0.16); S(0.72, 0.16); S(0.72, 0); }
+  else if (family === "mech" || family === "mecharmco") {
+    // double-lock: squared upstand, flat top, layered fold stepping back down
+    S(0, 0); S(0, h); S(0.46, h); S(0.46, h - 0.2); S(0.16, h - 0.24); S(0.16, h - 0.46); S(0.62, h - 0.5); S(0.62, 0);
+  } else if (family === "flange") {
+    // nail strip: leg up, over, and back down to deck level, then the fastening flange
+    S(0, 0); S(0, h * 0.85); S(0.44, h * 0.85); S(0.44, h * 0.45); S(0.66, h * 0.45); S(0.66, 0);
+  } else {
+    // snap-lock: rounded hook curling over and back down
+    S(0, 0); S(0, h - 0.4);
+    for (let i = 0; i <= 6; i++) { const a = Math.PI * (1 - i / 6); S(0.4 - Math.cos(a) * 0.4, h - 0.4 + Math.sin(a) * 0.4); }
+    S(0.8, h - 0.86); S(0.5, h - 0.98); S(0.5, 0);
   }
+
   const panStart = sec[sec.length - 1][0];
-  const span = W - panStart;
-  if (ribStyle === "bead") {
-    [0.33, 0.62].forEach((f) => {
-      const c = panStart + span * f;
-      S(c - 0.55, 0); S(c - 0.35, 0.16); S(c + 0.35, 0.16); S(c + 0.55, 0);
-    });
-  } else if (ribStyle === "pencil") {
-    [0.28, 0.5, 0.72].forEach((f) => { const c = panStart + span * f; S(c - 0.4, 0); S(c, 0.14); S(c + 0.4, 0); });
-  } else if (ribStyle === "v") {
-    [0.36, 0.64].forEach((f) => { const c = panStart + span * f; S(c - 0.4, 0); S(c, -0.16); S(c + 0.4, 0); });
-  } else if (ribStyle === "striations") {
-    const n = 14;
-    for (let i = 1; i < n; i++) {
-      const u = panStart + (span * i) / n;
-      S(u - span / (n * 4), 0); S(u, i % 2 ? 0.05 : -0.05); S(u + span / (n * 4), 0);
-    }
+
+  // --- near edge: the male leg the next panel's female leg locks over ----------------
+  // Both legs lean the same way, the way panels shingle across a roof.
+  const male = [];
+  const M = (u, v) => male.push([u, v]);
+  if (family === "batten") { M(0, 0); M(0, h * 0.5); M(0.28, h); M(0.28, 0); }
+  else if (family === "trapezoid") { M(0, 0); M(0.62, h); M(0.62, 0); }
+  else if (family === "flush") { M(0, 0); M(0, 0.7); M(0.34, 0.7); M(0.34, 0.2); }
+  else if (family === "mech" || family === "mecharmco") { M(0, 0); M(0, h - 0.1); M(0.3, h - 0.1); M(0.3, h - 0.34); }
+  else if (family === "flange") {
+    // the fastening flange lies out on the deck past the leg and is screwed down there
+    M(0, 0); M(0, h * 0.72); M(0.3, h * 0.72); M(0.3, 0.1); M(1.35, 0.1);
+  } else { M(0, 0); M(0, h - 0.46); M(0.3, h - 0.38); M(0.3, h - 0.72); M(0.14, h - 0.82); }
+
+  const maleW = Math.max(...male.map((q) => q[0]));
+  const panEnd = W - maleW;
+  const span = panEnd - panStart;
+  const rib = (fracs, fn) => fracs.forEach((f) => fn(panStart + span * f));
+  if (ribStyle === "bead") rib([0.34, 0.68], (c) => { S(c - 0.3, 0); S(c - 0.18, 0.14); S(c + 0.18, 0.14); S(c + 0.3, 0); });
+  else if (ribStyle === "pencil") rib([0.28, 0.52, 0.76], (c) => { S(c - 0.22, 0); S(c, 0.13); S(c + 0.22, 0); });
+  else if (ribStyle === "v") rib([0.36, 0.68], (c) => { S(c - 0.24, 0); S(c, -0.15); S(c + 0.24, 0); });
+  else if (ribStyle === "striations") { const n = 9; for (let i = 1; i < n; i++) { const u = panStart + (span * i) / n; S(u - 0.07, 0); S(u, 0.05); S(u + 0.07, 0); } }
+  S(panEnd, 0);
+  for (const [u, v] of male) if (u || v) S(panEnd + u, v);
+  return sec;
+}
+
+// A close-up three-quarter view of one panel: the cut section — the thing that tells one
+// profile from another — is the subject, with the pan running away from it. `colorHex`
+// shades the metal in the order's finish color; without one it falls back to the
+// blueprint blue. The sweeping glint is parked off the pan until CSS animates it (see
+// .pc-glint) so a wall of cards isn't shimmering all at once.
+function generatePanelIsoSvg(profileLabel, ribStyle, idSuffix, colorHex) {
+  const info = PROFILE_INFO[profileLabel] || {};
+  const family = info.family || "mech";
+  const m = profileLabel.match(/(\d+(\.\d+)?)"/);
+  const seam = Math.max(1.0, Math.min(2.5, m ? parseFloat(m[1]) : 1.5));
+  const W = 7.2;
+  const sec = panelSectionIn(family, seam, ribStyle, W);
+
+  // Close-up three-quarter view: the cut section is the subject, the pan runs away from it.
+  const SC = 26;
+  const A = [0.62 * SC, 0.345 * SC];
+  const V = [-0.10 * SC, -1.32 * SC];
+  const B = [128, -72];
+  const X = (u, v, t) => u * A[0] + v * V[0] + t * B[0];
+  const Y = (u, v, t) => u * A[1] + v * V[1] + t * B[1];
+
+  const hex = (colorHex || "#7FA8C6").replace("#", "");
+  const rgb = [0, 2, 4].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const mx = Math.max(...rgb), mn = Math.min(...rgb), l0 = (mx + mn) / 2;
+  let hue = 0, sat = 0;
+  if (mx !== mn) {
+    const d = mx - mn;
+    sat = l0 > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+    hue = (mx === rgb[0] ? (rgb[1] - rgb[2]) / d + (rgb[1] < rgb[2] ? 6 : 0) : mx === rgb[1] ? (rgb[2] - rgb[0]) / d + 2 : (rgb[0] - rgb[1]) / d + 4) * 60;
   }
-  S(W, 0);
-
-  // Projection: screen = O + u*A + v*V + t*B  (u,v in inches; t 0..1 along the length).
-  const w = 300, h = 210, SC = 10.2;
-  const A = [0.60 * SC, 0.335 * SC];
-  const V = [-0.08 * SC, -1.35 * SC];
-  const B = [176, -102];
-  const O = [26, 180];
-  const px = (u, v, t) => (O[0] + u * A[0] + v * V[0] + t * B[0]).toFixed(1);
-  const py = (u, v, t) => (O[1] + u * A[1] + v * V[1] + t * B[1]).toFixed(1);
-
-  // Lighting by strip orientation: flat pan bright, seam side-walls dark, back-facing
-  // folds darker still — that contrast is what makes the fold shape read at card size.
-  const BASE_H = 208, BASE_S = 40;
-  const shade = (du, dv) => {
-    const flat = Math.abs(du) / (Math.abs(du) + Math.abs(dv) * 2.2 + 1e-6);
-    const facing = du >= 0 ? 1 : 0.55;
-    return `hsl(${BASE_H} ${BASE_S}% ${(30 + flat * 34 * facing).toFixed(0)}%)`;
+  const SS = Math.min(52, Math.round(sat * 100) + 8);
+  const base = Math.min(84, Math.max(22, Math.round(l0 * 100)));
+  const tone = (l) => `hsl(${hue.toFixed(0)} ${SS}% ${Math.max(9, Math.min(94, l)).toFixed(0)}%)`;
+  const face = (du, dv) => {
+    const flat = Math.abs(du) / (Math.abs(du) + Math.abs(dv) * 2.4 + 1e-6);
+    const toward = du >= 0 ? 1 : 0.52;
+    return base - 26 * (1 - flat * toward);
   };
+
+  const TH = 0.13;
+  const xs = [], ys = [];
+  for (const [u, v] of sec) for (const t of [0, 1]) for (const dv of [0, -TH]) { xs.push(X(u, v + dv, t)); ys.push(Y(u, v + dv, t)); }
+  const padX = 16, padTop = 12, padBot = 20;
+  let vx = Math.min(...xs) - padX, vy = Math.min(...ys) - padTop;
+  let vw = Math.max(...xs) - Math.min(...xs) + padX * 2, vh = Math.max(...ys) - Math.min(...ys) + padTop + padBot;
+  const AR = 300 / 190;
+  if (vw / vh < AR) { const g = vh * AR - vw; vx -= g / 2; vw += g; }
+  else { const g = vw / AR - vh; vy -= g * 0.62; vh += g; }
+  const P = (u, v, t) => `${X(u, v, t).toFixed(1)},${Y(u, v, t).toFixed(1)}`;
 
   let strips = "";
   for (let i = 0; i < sec.length - 1; i++) {
     const [u1, v1] = sec[i], [u2, v2] = sec[i + 1];
     if (u1 === u2 && v1 === v2) continue;
-    strips += `<polygon points="${px(u1, v1, 0)},${py(u1, v1, 0)} ${px(u2, v2, 0)},${py(u2, v2, 0)} ${px(u2, v2, 1)},${py(u2, v2, 1)} ${px(u1, v1, 1)},${py(u1, v1, 1)}" fill="${shade(u2 - u1, v2 - v1)}"/>`;
+    strips += `<polygon points="${P(u1, v1, 0)} ${P(u2, v2, 0)} ${P(u2, v2, 1)} ${P(u1, v1, 1)}" fill="${tone(face(u2 - u1, v2 - v1))}"/>`;
   }
 
-  const TH = 0.16;
-  const edgeTop = sec.map(([u, v]) => `${px(u, v, 0)},${py(u, v, 0)}`).join(" ");
-  const edgeBot = sec.slice().reverse().map(([u, v]) => `${px(u, v - TH, 0)},${py(u, v - TH, 0)}`).join(" ");
-  const edge = `<polygon points="${edgeTop} ${edgeBot}" fill="hsl(${BASE_H} ${BASE_S + 6}% 20%)"/>`;
+  const gid = `pc${(info.code || "x")}${ribStyle || "none"}${idSuffix || ""}`.replace(/[^A-Za-z0-9]/g, "");
+  const flat = sec.filter((q) => q[1] === 0);
+  const pa = Math.min(...flat.map((q) => q[0])), pb = Math.max(...flat.map((q) => q[0]));
+  const panQuad = `${P(pa, 0, 0)} ${P(pb, 0, 0)} ${P(pb, 0, 1)} ${P(pa, 0, 1)}`;
+  const defs = `<defs>` +
+    `<linearGradient id="${gid}s" x1="0" y1="1" x2="0.85" y2="0">` +
+      `<stop offset="0" stop-color="#fff" stop-opacity="0.02"/><stop offset="0.5" stop-color="#fff" stop-opacity="0.16"/>` +
+      `<stop offset="1" stop-color="#fff" stop-opacity="0.03"/></linearGradient>` +
+    `<linearGradient id="${gid}g" x1="0" y1="0" x2="1" y2="0">` +
+      `<stop offset="0" stop-color="#fff" stop-opacity="0"/><stop offset="0.5" stop-color="#fff" stop-opacity="0.45"/>` +
+      `<stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
+    `<clipPath id="${gid}c"><polygon points="${panQuad}"/></clipPath></defs>`;
+  const sheen = `<polygon points="${panQuad}" fill="url(#${gid}s)"/>`;
+  const glint = `<g clip-path="url(#${gid}c)" transform="skewX(-26)"><rect class="pc-glint" x="${(vx + vh * 0.5 - vw * 0.42).toFixed(1)}" y="${vy.toFixed(1)}" width="${(vw * 0.3).toFixed(1)}" height="${vh.toFixed(1)}" fill="url(#${gid}g)"/></g>`;
 
-  // Gradient ids must be unique per rendered SVG or same-page cards bleed into each other.
-  const gid = `pcs${(PROFILE_INFO[profileLabel]?.code || "x")}${ribStyle || "none"}${idSuffix || ""}`;
-  const panQuad = `${px(0, 0, 0)},${py(0, 0, 0)} ${px(W, 0, 0)},${py(W, 0, 0)} ${px(W, 0, 1)},${py(W, 0, 1)} ${px(0, 0, 1)},${py(0, 0, 1)}`;
-  const sheen = `<defs><linearGradient id="${gid}" x1="0" y1="1" x2="1" y2="0">` +
-    `<stop offset="0.15" stop-color="#fff" stop-opacity="0"/><stop offset="0.45" stop-color="#fff" stop-opacity="0.22"/>` +
-    `<stop offset="0.62" stop-color="#fff" stop-opacity="0.05"/><stop offset="1" stop-color="#fff" stop-opacity="0.16"/>` +
-    `</linearGradient></defs><polygon points="${panQuad}" fill="url(#${gid})"/>`;
+  const top = sec.map(([u, v]) => P(u, v, 0)).join(" ");
+  const bot = sec.slice().reverse().map(([u, v]) => P(u, v - TH, 0)).join(" ");
+  const edge = `<polygon points="${top} ${bot}" fill="${tone(base + 20)}" stroke="${tone(base - 30)}" stroke-width="0.8" stroke-linejoin="round"/>`;
 
-  const shadow = `<ellipse cx="${w * 0.52}" cy="${h * 0.92}" rx="${w * 0.44}" ry="8" fill="rgba(0,0,0,0.10)"/>`;
+  let extra = "";
+  if (family === "flange") for (const t of [0.22, 0.5, 0.78]) extra += `<ellipse cx="${X(pb + 0.95, 0.11, t).toFixed(1)}" cy="${Y(pb + 0.95, 0.11, t).toFixed(1)}" rx="3.4" ry="2" fill="${tone(base - 34)}"/>`;
 
-  return `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg">${shadow}${strips}${sheen}${edge}</svg>`;
+  const shadow = `<ellipse cx="${(vx + vw * 0.52).toFixed(1)}" cy="${(vy + vh - padBot * 0.45).toFixed(1)}" rx="${(vw * 0.38).toFixed(1)}" ry="6" fill="rgba(0,0,0,0.16)"/>`;
+  return `<svg viewBox="${vx.toFixed(1)} ${vy.toFixed(1)} ${vw.toFixed(1)} ${vh.toFixed(1)}" xmlns="http://www.w3.org/2000/svg">${defs}${shadow}${strips}${sheen}${glint}${extra}${edge}</svg>`;
 }
 
 // Which vendor's lineup each catalog section shows, and where that vendor is, so a
@@ -4754,6 +4810,12 @@ export default function ShopOrderApp() {
           100% { transform: scale(1) rotate(0deg); }
         }
         .celebrate { animation: celebrateSpin 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        /* Panel art: light sweeps down the pan the way it does on real metal — only on the
+           card being pointed at and the panel already chosen, so a full catalog sits still. */
+        @keyframes panelGlint { from { transform: translateX(0); } to { transform: translateX(430%); } }
+        .pc-glint { opacity: 0; }
+        .panel-art:hover .pc-glint, .panel-art-on .pc-glint { opacity: 1; animation: panelGlint 2.4s linear infinite; }
+        @media (prefers-reduced-motion: reduce) { .pc-glint { animation: none !important; opacity: 0 !important; } }
       `}</style>
 
       {/* header */}
@@ -5566,7 +5628,8 @@ export default function ShopOrderApp() {
                     width: "100%", marginTop: 4, padding: "8px 10px", borderRadius: 8, border: `1px solid ${theme.border}`,
                     background: theme.inputBg, cursor: "pointer", display: "flex", alignItems: "center", gap: 10, textAlign: "left",
                   }}>
-                  <span style={{ width: 88, flexShrink: 0, display: "block" }} dangerouslySetInnerHTML={{ __html: generatePanelIsoSvg(profile, ribStyle, "pk") }} />
+                  <span className="panel-art" style={{ width: 88, flexShrink: 0, display: "block" }}
+                    dangerouslySetInnerHTML={{ __html: generatePanelIsoSvg(profile, ribStyle, "pk", colorObj.hex) }} />
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: "block", fontSize: 13, fontWeight: 700, color: theme.text }}>{profile}</span>
                     <span style={{ display: "block", fontSize: 10, color: theme.textSecondary, marginTop: 2 }}>
@@ -5638,8 +5701,9 @@ export default function ShopOrderApp() {
                                       padding: 0, borderRadius: 10, overflow: "hidden", cursor: "pointer", textAlign: "center",
                                       border: active ? `2px solid ${SAFETY}` : `1px solid ${theme.border}`, background: theme.card,
                                     }}>
-                                    <span style={{ display: "block", background: darkMode ? "#20262B" : "#F7F5EE" }}
-                                      dangerouslySetInnerHTML={{ __html: generatePanelIsoSvg(p, "none") }} />
+                                    <span className={`panel-art${active ? " panel-art-on" : ""}`}
+                                      style={{ display: "block", background: darkMode ? "#20262B" : "#F7F5EE" }}
+                                      dangerouslySetInnerHTML={{ __html: generatePanelIsoSvg(p, "none", "cat", colorObj.hex) }} />
                                     <span style={{ display: "block", padding: "5px 8px 9px" }}>
                                       <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: theme.text }}>{pCode}</span>
                                       <span style={{ display: "block", fontSize: 9.5, color: theme.textSecondary, marginTop: 1 }}>{pSpec}</span>
