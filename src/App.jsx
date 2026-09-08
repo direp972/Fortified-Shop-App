@@ -826,6 +826,12 @@ function findGauge(gaugeId, brand) {
 function formatDim(n) {
   return (+n).toFixed(2).replace(/\.?0+$/, "");
 }
+// Inches for the ticket: two decimals, except a value that lands on an odd eighth (⅛, ⅜, ⅝, ⅞)
+// keeps its third — 3.125", not 3.13" — so the shop reads the fraction it actually bends to.
+function fmtIn(v) {
+  const e = v * 8, onEighth = Math.abs(e - Math.round(e)) < 1e-6 && Math.round(e) % 2 !== 0;
+  return v.toFixed(onEighth ? 3 : 2);
+}
 
 // Formats a length given in inches as feet + leftover inches: 126 -> "10' 6"", 120 -> "10'".
 function formatFeetInches(totalInches) {
@@ -854,7 +860,7 @@ function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = 
     const len = dist(points[i - 1], points[i]);
     const mx = (pathPts[i - 1][0] + pathPts[i][0]) / 2;
     const my = (pathPts[i - 1][1] + pathPts[i][1]) / 2;
-    labels += `<text x="${mx.toFixed(1)}" y="${(my - 8).toFixed(1)}" font-size="11" text-anchor="middle" font-family="monospace" fill="#333">${len.toFixed(2)}"</text>`;
+    labels += `<text x="${mx.toFixed(1)}" y="${(my - 8).toFixed(1)}" font-size="11" text-anchor="middle" font-family="monospace" fill="#333">${fmtIn(len)}"</text>`;
   }
   const dotSvg = pathPts.map((p) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${colorHex || "#333"}" />`).join("");
   // End folds are drawn in inches inside a scaled group so the same geometry the canvas
@@ -898,7 +904,7 @@ function printPartAsPDF(item) {
       <div class="details">
         <div><b>Quantity</b>${esc(item.quantity)}</div>
         <div><b>Length / piece</b>${esc(item.lengthPerPiece)} ft</div>
-        <div><b>Girth</b>${item.girth != null ? item.girth.toFixed(2) : "—"}"</div>
+        <div><b>Girth</b>${item.girth != null ? fmtIn(item.girth) : "—"}"</div>
         <div><b>Brand</b>${esc(item.brand)}</div>
         <div><b>Color</b>${esc(item.colorName)}</div>
         <div><b>Paint side</b>${item.paintSide === "left" ? "Left" : "Right"}</div>
@@ -1603,7 +1609,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
 
   // Formats a length in inches for display, switching to mm when metric is selected.
   // Under an inch the leading zero comes off — .50" the way it's called out on a drawing.
-  const formatLen = (inches) => (unitSystem === "metric" ? `${Math.round(inches * 25.4)}mm` : `${inches.toFixed(2).replace(/^0\./, ".")}"`);
+  const formatLen = (inches) => (unitSystem === "metric" ? `${Math.round(inches * 25.4)}mm` : `${fmtIn(inches).replace(/^0\./, ".")}"`);
 
   // When a preset is loaded, reset to a neutral zoom. Sizing itself is now handled by
   // the proportional margin above (scales with each shape's own size), so every preset
@@ -1729,7 +1735,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   };
   // The sheet opens on the number as its tag reads it — sub-inch without the leading zero
   // (parseLength takes ".5" the same as "0.5", so what's typed back still reads fine).
-  const lengthDraft = (i) => (unitSystem === "metric" ? String(Math.round(dist(points[i - 1], points[i]) * 25.4)) : trimNum(Math.round(dist(points[i - 1], points[i]) * 100) / 100).replace(/^0\./, "."));
+  const lengthDraft = (i) => (unitSystem === "metric" ? String(Math.round(dist(points[i - 1], points[i]) * 25.4)) : trimNum(+fmtIn(dist(points[i - 1], points[i]))).replace(/^0\./, "."));
   const angleDraft = (i) => trimNum(Math.round(insideAngle(points[i - 1], points[i], points[i + 1]) * 10) / 10);
   const openLength = (i) => { if (i < 1 || i > points.length - 1) return; const t = lengthDraft(i); setEditor({ kind: "length", i, orig: t }); setDraft(t); };
   // A hem's fold is a fixed 180°, not a bend to edit — the angle sheet skips it.
@@ -5970,7 +5976,7 @@ export default function ShopOrderApp() {
                                   <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{it.name} <span className="mono" style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 500 }}>{it.dims}</span></div>
                                   <div style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 1.4 }}>{it.where}</div>
                                   <div className="mono" style={{ fontSize: 10, color: theme.textSecondary, marginTop: 2 }}>
-                                    Girth {g.toFixed(2)}" · {Math.max(0, it.points.length - 2)} bend{it.points.length === 3 ? "" : "s"} · {pps} pcs/sheet · one {lengthPerPiece} ft piece per {lengthPerPiece} ft of {it.per}
+                                    Girth {fmtIn(g)}" · {Math.max(0, it.points.length - 2)} bend{it.points.length === 3 ? "" : "s"} · {pps} pcs/sheet · one {lengthPerPiece} ft piece per {lengthPerPiece} ft of {it.per}
                                   </div>
                                 </div>
                                 <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
@@ -6013,7 +6019,7 @@ export default function ShopOrderApp() {
                     <Undo2 size={12} /> Undo
                   </button>
                   <span className="mono" style={{ fontSize: 11, color: theme.text, fontWeight: 600 }}>
-                    Girth: {girth.toFixed(2)}"{hemAllowance(hemStart) + hemAllowance(hemEnd) > 0 ? ` (incl. ${fracIn(hemAllowance(hemStart) + hemAllowance(hemEnd))} folds)` : ""} · {points.length} pts
+                    Girth: {fmtIn(girth)}"{hemAllowance(hemStart) + hemAllowance(hemEnd) > 0 ? ` (incl. ${fracIn(hemAllowance(hemStart) + hemAllowance(hemEnd))} folds)` : ""} · {points.length} pts
                   </span>
                   <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, color: theme.text, fontWeight: 600 }}>
                     Qty
@@ -6044,7 +6050,7 @@ export default function ShopOrderApp() {
                     {partsPerSheet} pcs/{sheetWidth}" sheet · {sheetsNeeded} sheet{sheetsNeeded === 1 ? "" : "s"} needed
                   </span>
                   <span className="mono" style={{ fontSize: 11, color: SAFETY, fontWeight: 600 }} title="Leftover width per sheet after cutting all full pieces">
-                    Drop: {dropWidth.toFixed(2)}"
+                    Drop: {fmtIn(dropWidth)}"
                   </span>
                 </div>
                 <label style={{ display: "block", fontSize: 10.5, color: theme.textSecondary, marginTop: 10 }}>
@@ -6105,7 +6111,7 @@ export default function ShopOrderApp() {
                             <img src={it.photo} alt="Reference" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 5, border: `1px solid ${theme.border}`, flexShrink: 0 }} />
                           )}
                           <span style={{ fontSize: 11.5, color: theme.text, flex: 1 }}>
-                            <strong>{it.name}</strong> — Qty {it.quantity} · {it.girth.toFixed(2)}" girth · {it.sheetsNeeded} sheet{it.sheetsNeeded === 1 ? "" : "s"} · {it.dropWidth.toFixed(2)}" drop
+                            <strong>{it.name}</strong> — Qty {it.quantity} · {fmtIn(it.girth)}" girth · {it.sheetsNeeded} sheet{it.sheetsNeeded === 1 ? "" : "s"} · {fmtIn(it.dropWidth)}" drop
                             <br />
                             <span style={{ fontSize: 10.5, color: theme.textSecondary }}>
                               {it.colorName} · {itGauge?.label} · {itBends} bend{itBends === 1 ? "" : "s"} · Paint side: {it.paintSide === "left" ? "Left" : "Right"}
