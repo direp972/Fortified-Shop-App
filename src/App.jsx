@@ -613,17 +613,15 @@ const ROOF_KIT_DEFAULT_SEL = Object.fromEntries(buildRoofKit().map((it) => [it.i
 // Quick presets on the trim canvas: the kit's own profiles at a 4:12 roof (Roof in a Box
 // redraws the pitch-driven ones to any pitch), plus the shop staples that aren't roof trims.
 const KIT_4_12 = Object.fromEntries(buildRoofKit({ pitch: 4 }).map((it) => [it.id, it]));
+const KIT_PRESETS = { "Eave": "eave", "D-Style Drip Edge": "dstyle", "Rake": "rake", "Ridge Cap": "ridge", "Valley": "valley", "Sidewall Flashing": "sidewall", "Headwall Flashing": "endwall", "Counter Flashing": "counter" };
 const TRIM_PRESETS = {
-  "Eave": KIT_4_12.eave.points,
-  "Rake": KIT_4_12.rake.points,
-  "Ridge Cap": KIT_4_12.ridge.points,
-  "Valley": KIT_4_12.valley.points,
-  "Sidewall Flashing": KIT_4_12.sidewall.points,
-  "Headwall Flashing": KIT_4_12.endwall.points,
-  "Counter Flashing": KIT_4_12.counter.points,
+  ...Object.fromEntries(Object.entries(KIT_PRESETS).map(([name, id]) => [name, KIT_4_12[id].points])),
   "F-Channel": [[0, 0], [0, 10.5], [7, 10.5], [7, 4], [10, 4], [10, 0]],
   "Custom": [[0, 0], [0, 6]],
 };
+// A preset from the kit brings its standard end folds and painted side along with the shape;
+// the shop staples set only the shape and leave the folds as they are.
+const presetFolds = (name) => { const it = KIT_4_12[KIT_PRESETS[name]]; return it ? { hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide } : null; };
 
 const STATUS_FLOW = ["Pending", "In Production", "Ready for Pickup", "Completed"];
 const RIB_LABELS = { bead: "Bead Ribs", pencil: "Pencil Ribs", v: "V Ribs", striations: "Striations" };
@@ -5861,7 +5859,12 @@ export default function ShopOrderApp() {
                     <Package size={12} /> Roof in a Box
                   </button>
                   {Object.keys(TRIM_PRESETS).map((p) => (
-                    <button key={p} onClick={() => { setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt])); setViewResetKey((k) => k + 1); }}
+                    <button key={p} onClick={() => {
+                      setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt]));
+                      const f = presetFolds(p);
+                      if (f) { setHemStart(f.hemStart); setHemEnd(f.hemEnd); setPaintSide(f.paintSide); }
+                      setViewResetKey((k) => k + 1);
+                    }}
                       style={{
                         padding: "5px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
                         border: `1px solid ${preset === p ? INK : "#D9D5C7"}`, background: preset === p ? INK : "#fff", color: preset === p ? "#fff" : INK_DEEP,
