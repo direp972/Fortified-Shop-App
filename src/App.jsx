@@ -2371,7 +2371,18 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
                         </div>
                         <div style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 4, marginTop: 4 }}>
                           {PITCH_CHIPS.map((r) => (
-                            <button key={r} type="button" data-testid={`pitch-${r}`} onClick={() => { setPitch(r); setDraft(`${r}:12`); setPitchOpen(true); setInvalid(false); inputRef.current?.focus(); }} style={btn(typed ? typed.rise === r && typed.run === 12 && !isBreak : pitch === r, { flex: "0 0 auto", padding: "5px 8px" })}>{r}:12</button>
+                            <button key={r} type="button" data-testid={`pitch-${r}`}
+                              onClick={() => {
+                                // A chip bends the joint right away as the kind that is lit, so the drawing
+                                // follows the pitch while it is browsed and the kind never needs tapping again.
+                                const kind = pitchKind === "break" ? "open" : pitchKind;
+                                const value = Math.round(pitchBendAngle(kind, (Math.atan(r / 12) * 180) / Math.PI));
+                                setPitch(r); setPitchOpen(true); setInvalid(false);
+                                applyAngle(editor.i, value);
+                                const t = String(value); setDraft(t); setEditor({ ...editor, orig: t });
+                                inputRef.current?.focus();
+                              }}
+                              style={btn(typed ? typed.rise === r && typed.run === 12 && !isBreak : pitch === r, { flex: "0 0 auto", padding: "5px 8px" })}>{r}:12</button>
                           ))}
                         </div>
                         <div style={{ display: "grid", gridTemplateColumns: `repeat(${cards.length}, 1fr)`, gap: 6, marginTop: 4 }}>
