@@ -560,10 +560,10 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
 
   return [
     { id: "eave", name: "Eave / Drip Edge", dims: '3" × 2" · ½" 45° kick', per: "eave", on: true,
-      where: "Bottom edge of the roof — deck flange under the panels, face down the fascia, a 45° kick throws the water clear, hemmed at the bottom. The panels hook an Offset Cleat over the flange, or the lip of the D-Style below.",
+      where: "Bottom edge of the roof — deck flange under the panels, face down the fascia, kicked out 45° at the bottom to throw the water clear, and hemmed. The panels hook an Offset Cleat over the flange, or the lip of the D-Style Drip Edge below.",
       points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 2), kitPt(3 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
     { id: "dstyle", name: "D-Style Drip Edge", dims: '3½" × 2" · 1½" lip hemmed flat · ½" 45° kick', per: "eave", on: false,
-      where: "Same eave for panels that hook the trim itself (the T-style) — 2\" on the deck, then the flange runs 1½\" past the fascia and hems flat back under to the face, so the panel's hemmed edge hooks that lip and is squeezed shut on it: no cleat. Face down the fascia, kicked and hemmed at the bottom; tick it in place of the Eave / Drip Edge above.",
+      where: "Same eave for panels that hook the trim itself (the T-style) — 2\" on the deck, then a 1½\" lip past the fascia, hemmed flat back under, that the panel's hemmed edge hooks and squeezes shut on: no cleat. Face down the fascia, kicked and hemmed at the bottom; tick it in place of the Eave / Drip Edge above.",
       points: [kitPt(0, 0), kitPt(3.5, 0), kitFold(2, 0, "left"), kitPt(2, 2), kitPt(2 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
     { id: "apron", name: "Gutter Apron", dims: '4½" × 2" · 15° kick', per: "eave with gutters", on: false,
       where: "Eave trim for gutter runs — a longer deck flange and a face kicked out over the gutter's back.",
@@ -1175,8 +1175,8 @@ function profileGirth(pts, hemStart = "none", hemEnd = "none") {
 }
 // Pieces a sheet yields: the girth's rounding must not cost a piece — a ½" leg at 45° is
 // stored to the thousandth and comes out 0.5006", so 48/6.0006 has to be 8, not 7. The
-// slack is a thousandth of a piece: under a hundredth of an inch across the sheet.
-const piecesPerSheet = (sheetWidth, girth) => (girth > 0 ? Math.floor(sheetWidth / girth + 1e-3) : 0);
+// sheet may come up a sixty-fourth short over its whole width, which is what the shear holds.
+const piecesPerSheet = (sheetWidth, girth) => (girth > 0 ? Math.floor((sheetWidth + 1 / 64) / girth) : 0);
 function unitVec(a, b) {
   const dx = b[0] - a[0], dy = b[1] - a[1];
   const m = Math.hypot(dx, dy) || 1;
@@ -1694,6 +1694,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     const raw = parseLength(text);
     if (!isFinite(raw) || raw <= 0) return false;
     const val = unitSystem === "metric" ? raw / 25.4 : raw; // always store in inches internally
+    if (i > 1 && foldSide(points[i]) && val > dist(points[i - 2], points[i - 1]) + 1e-9) return false; // a hem can't fold back past the start of its leg
     const dir = unitVec(points[i - 1], points[i]);
     const target = [points[i - 1][0] + dir[0] * val, points[i - 1][1] + dir[1] * val];
     const dx = target[0] - points[i][0], dy = target[1] - points[i][1];
