@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase, Package } from "lucide-react";
+import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase, Package, Pencil } from "lucide-react";
 import * as THREE from "three";
 import { storage } from "./lib/storage";
 import { supabase } from "./lib/supabaseClient";
@@ -3397,6 +3397,8 @@ export default function ShopOrderApp() {
   const matSaveChain = useRef(Promise.resolve()); // serializes board writes so rapid taps can't land out of order
   const [submitting, setSubmitting] = useState(false);
   const [basket, setBasket] = useState([]);
+  const [editingId, setEditingId] = useState(null); // the part from the list that is back on the canvas to be changed
+  const canvasTopRef = useRef(null);
   // Roof in a Box — the standard 24 ga standing seam trim set, drawn to pitch
   const [roofBoxOpen, setRoofBoxOpen] = useState(false);
   const [roofBoxPitch, setRoofBoxPitch] = useState(4);
@@ -4304,6 +4306,7 @@ export default function ShopOrderApp() {
   const clearDrawing = () => {
     setPoints([]); setHemStart("none"); setHemEnd("none"); setPaintSide("left");
     setQuantity(4); setLengthPerPiece(10); setPartName("");
+    setEditingId(null);
   };
 
   const addToBasket = () => {
@@ -4312,7 +4315,7 @@ export default function ShopOrderApp() {
       id: uid(),
       name: partName.trim() || `Part ${basket.length + 1}`,
       points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
-      girth, partsPerSheet, sheetsNeeded, dropWidth, photo: partPhoto,
+      girth, partsPerSheet, sheetsNeeded, dropWidth, photo: partPhoto, pitch: drawnPitch,
       gaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
       price: computePrice({ type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, brand, colorName }, priceList, coilWidthScale),
     };
@@ -4323,7 +4326,40 @@ export default function ShopOrderApp() {
     setTimeout(() => setToast(""), 3000);
   };
 
-  const removeBasketItem = (id) => setBasket((b) => b.filter((i) => i.id !== id));
+  const removeBasketItem = (id) => {
+    setBasket((b) => b.filter((i) => i.id !== id));
+    if (id === editingId) { clearDrawing(); setPartPhoto(null); }
+  };
+  // Tap a part in the list and it comes back onto the canvas — legs, folds, painted side, name,
+  // quantity, length, sheet width and photo — to be changed and put back in its place. The part
+  // keeps its own gauge, paint and colour; those are not on the canvas.
+  const editBasketItem = (it) => {
+    setEditingId(it.id);
+    setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
+    setHemStart(it.hemStart || "none"); setHemEnd(it.hemEnd || "none"); setPaintSide(it.paintSide || "left");
+    setPartName(it.name); setQuantity(it.quantity); setLengthPerPiece(it.lengthPerPiece); setSheetWidth(it.sheetWidth);
+    setPartPhoto(it.photo || null); setDrawnPitch(it.pitch || 4);
+    setViewResetKey((k) => k + 1);
+    canvasTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setToast(`Editing "${it.name}" — change what you need, then Update Part.`); setTimeout(() => setToast(""), 3500);
+  };
+  const updateBasketItem = () => {
+    const old = basket.find((i) => i.id === editingId);
+    if (!old) { setEditingId(null); return; }
+    if (points.length < 2) { setToast("Draw at least two points before updating this part."); return; }
+    const item = {
+      ...old,
+      name: partName.trim() || old.name,
+      points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
+      girth, partsPerSheet, sheetsNeeded, dropWidth, photo: partPhoto, pitch: drawnPitch,
+      price: computePrice({ type: "trim", points, quantity, lengthPerPiece, gaugeId: old.gaugeId, paintId: old.paintId, brand: old.brand, colorName: old.colorName }, priceList, coilWidthScale),
+    };
+    setBasket((b) => b.map((i) => (i.id === editingId ? item : i)));
+    clearDrawing();
+    setPartPhoto(null);
+    setToast(`"${item.name}" updated.`); setTimeout(() => setToast(""), 3000);
+  };
+  const cancelEdit = () => { clearDrawing(); setPartPhoto(null); setToast("Left as it was."); setTimeout(() => setToast(""), 2000); };
 
   /* ---------- Roof in a Box ---------- */
   const roofKit = buildRoofKit({ pitch: roofBoxPitch, seamHeight: roofBoxSeam, lowerPitch: roofBoxLower });
@@ -4350,7 +4386,7 @@ export default function ShopOrderApp() {
       points: it.points.map((pt) => [...pt]), hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide,
       quantity: qty, lengthPerPiece, sheetWidth: sheetWidthNum,
       girth: g, partsPerSheet: pps, sheetsNeeded: pps > 0 ? Math.ceil(qty / pps) : 0, dropWidth: pps > 0 ? Math.max(0, sheetWidthNum - pps * g) : sheetWidthNum,
-      photo: null, gaugeId: kitGaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
+      photo: null, pitch: roofBoxPitch, gaugeId: kitGaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
       price: computePrice({ type: "trim", points: it.points, quantity: qty, lengthPerPiece, gaugeId: kitGaugeId, paintId, brand, colorName }, priceList, coilWidthScale),
     };
   };
@@ -5932,7 +5968,7 @@ export default function ShopOrderApp() {
               </>
             ) : (
               <>
-                <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                <div ref={canvasTopRef} style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                   <button type="button" onClick={() => setRoofBoxOpen(true)} title="The standard trims for a 24 ga standing seam roof, drawn to your pitch"
                     style={{
                       padding: "5px 11px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer",
@@ -6156,15 +6192,32 @@ export default function ShopOrderApp() {
                   )}
                 </div>
 
-                <button onClick={addToBasket}
-                  className="disp"
-                  style={{
-                    width: "100%", marginTop: 10, padding: "10px", borderRadius: 8, border: `2px solid ${SAFETY}`,
-                    background: theme.inputBg, color: SAFETY, fontSize: 12, fontWeight: 700, cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                  }}>
-                  <Plus size={14} /> Add Part to Order
-                </button>
+                {editingId && basket.some((i) => i.id === editingId) ? (
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <button onClick={updateBasketItem} className="disp" data-testid="update-part"
+                      style={{
+                        flex: 1, padding: "10px", borderRadius: 8, border: "none",
+                        background: SAFETY, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      }}>
+                      <Check size={14} /> Update Part
+                    </button>
+                    <button onClick={cancelEdit} className="disp" data-testid="cancel-edit"
+                      style={{ padding: "10px 14px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={addToBasket}
+                    className="disp" data-testid="add-part"
+                    style={{
+                      width: "100%", marginTop: 10, padding: "10px", borderRadius: 8, border: `2px solid ${SAFETY}`,
+                      background: theme.inputBg, color: SAFETY, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    }}>
+                    <Plus size={14} /> Add Part to Order
+                  </button>
+                )}
 
                 {basket.length > 0 && (
                   <div style={{ marginTop: 10, borderTop: "1px solid #EEE9DC", paddingTop: 10 }}>
@@ -6174,11 +6227,17 @@ export default function ShopOrderApp() {
                         {basketPartsCount} pcs · {basketSheets} sheet{basketSheets === 1 ? "" : "s"}
                       </span>
                     </div>
+                    <div style={{ fontSize: 10.5, color: theme.textSecondary, marginBottom: 4 }}>Tap a part to bring it back onto the canvas and change it.</div>
                     {basket.map((it, idx) => {
                       const itGauge = findGauge(it.gaugeId, it.brand);
                       const itBends = Math.max(0, it.points.length - 2);
+                      const editing = it.id === editingId;
                       return (
-                        <div key={it.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0", borderBottom: idx < basket.length - 1 ? "1px solid #F3F0E7" : "none" }}>
+                        <div key={it.id} role="button" tabIndex={0} data-testid="basket-row" title="Tap to edit this part"
+                          onClick={() => editBasketItem(it)} onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); editBasketItem(it); } }}
+                          style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 6px", margin: "0 -6px", borderRadius: 6, cursor: "pointer",
+                            borderBottom: idx < basket.length - 1 && !editing ? "1px solid #F3F0E7" : "none",
+                            background: editing ? "rgba(212,175,55,0.12)" : "transparent", boxShadow: editing ? `inset 3px 0 0 ${SAFETY}` : "none" }}>
                           <div style={{ background: INK, borderRadius: 5, padding: 3, flexShrink: 0 }}>
                             <ShapeThumb order={{ type: "trim", points: it.points, hemStart: it.hemStart, hemEnd: it.hemEnd, colorHex: it.colorHex }} size={28} />
                           </div>
@@ -6186,18 +6245,22 @@ export default function ShopOrderApp() {
                             <img src={it.photo} alt="Reference" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 5, border: `1px solid ${theme.border}`, flexShrink: 0 }} />
                           )}
                           <span style={{ fontSize: 11.5, color: theme.text, flex: 1 }}>
-                            <strong>{it.name}</strong> — Qty {it.quantity} · {fmtIn(it.girth)}" girth · {it.sheetsNeeded} sheet{it.sheetsNeeded === 1 ? "" : "s"} · {fmtIn(it.dropWidth)}" drop
+                            <strong>{it.name}</strong>{editing && <span className="mono" style={{ fontSize: 9.5, color: SAFETY, fontWeight: 700, marginLeft: 6, letterSpacing: "0.08em" }}>EDITING</span>} — Qty {it.quantity} · {fmtIn(it.girth)}" girth · {it.sheetsNeeded} sheet{it.sheetsNeeded === 1 ? "" : "s"} · {fmtIn(it.dropWidth)}" drop
                             <br />
                             <span style={{ fontSize: 10.5, color: theme.textSecondary }}>
                               {it.colorName} · {itGauge?.label} · {itBends} bend{itBends === 1 ? "" : "s"} · Paint side: {it.paintSide === "left" ? "Left" : "Right"}
                             </span>
                           </span>
                           <span className="mono" style={{ fontSize: 11, color: theme.textSecondary }}>{money(it.price)}</span>
-                          <button onClick={() => printPartAsPDF(it)} title="Export as PDF"
+                          <button onClick={(e) => { e.stopPropagation(); editBasketItem(it); }} title="Edit this part" aria-label={`Edit ${it.name}`}
+                            style={{ border: "none", background: "none", color: editing ? SAFETY : theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
+                            <Pencil size={13} />
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); printPartAsPDF(it); }} title="Export as PDF"
                             style={{ border: "none", background: "none", color: theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
                             <Printer size={13} />
                           </button>
-                          <button onClick={() => removeBasketItem(it.id)}
+                          <button onClick={(e) => { e.stopPropagation(); removeBasketItem(it.id); }} title="Remove" aria-label={`Remove ${it.name}`}
                             style={{ border: "none", background: "none", color: theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
                             <Trash2 size={12} />
                           </button>
