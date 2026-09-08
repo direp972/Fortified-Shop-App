@@ -533,6 +533,7 @@ const SEAM_HEIGHTS = [1, 1.5, 1.75, 2];
 const pitchAngle = (rise) => Math.atan(rise / 12); // radians
 const r3 = (v) => Math.round(v * 1000) / 1000;
 const kitPt = (x, y) => [r3(x), r3(y)];
+const kitFold = (x, y, side) => [r3(x), r3(y), `fold-${side}`]; // a hem drawn as a leg: folds 180° back along the previous leg, to that side of its travel
 const fmtPitch = (rise) => `${rise}:12`;
 
 function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
@@ -561,6 +562,9 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
     { id: "eave", name: "Eave / Drip Edge", dims: '3" × 2" · ½" 45° kick', per: "eave", on: true,
       where: "Bottom edge of the roof — deck flange under the panels, face down the fascia, a 45° kick throws the water clear and the hem hooks the panel's hemmed edge.",
       points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 2), kitPt(3 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
+    { id: "dstyle", name: "D-Style Drip Edge", dims: '3" × 2" · 1½" hemmed lip · ½" 45° kick', per: "eave", on: false,
+      where: "The T-style eave for hemmed panels — the deck flange runs 1½\" past the fascia and folds back under itself, so the panel's hemmed edge hooks that lip and gets squeezed tight: no cleat. Face down the fascia, kicked and hemmed at the bottom.",
+      points: [kitPt(0, 0), kitPt(4.5, 0), kitFold(3, 0, "left"), kitPt(3, 2), kitPt(3 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
     { id: "apron", name: "Gutter Apron", dims: '4½" × 2" · 15° kick', per: "eave with gutters", on: false,
       where: "Eave trim for gutter runs — a longer deck flange and a face kicked out over the gutter's back.",
       points: [kitPt(0, 0), kitPt(4.5, 0), kitPt(4.5 + 2 * Math.sin(apronKick), 2 * Math.cos(apronKick))], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
