@@ -610,10 +610,11 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
   ];
 }
 const ROOF_KIT_DEFAULT_SEL = Object.fromEntries(buildRoofKit().map((it) => [it.id, it.on ? 1 : 0]));
-// Quick presets on the trim canvas: the kit's own profiles at a 4:12 roof (Roof in a Box
-// redraws the pitch-driven ones to any pitch), plus the shop staples that aren't roof trims.
+// Quick presets on the trim canvas: every piece of the kit at a 4:12 roof, under the name
+// the box gives it (Roof in a Box redraws the pitch-driven ones to any pitch), plus the shop
+// staples that aren't roof trims.
 const KIT_4_12 = Object.fromEntries(buildRoofKit({ pitch: 4 }).map((it) => [it.id, it]));
-const KIT_PRESETS = { "Eave": "eave", "D-Style Drip Edge": "dstyle", "Rake": "rake", "Ridge Cap": "ridge", "Valley": "valley", "Sidewall Flashing": "sidewall", "Headwall Flashing": "endwall", "Counter Flashing": "counter" };
+const KIT_PRESETS = Object.fromEntries(Object.values(KIT_4_12).map((it) => [it.name, it.id]));
 const TRIM_PRESETS = {
   ...Object.fromEntries(Object.entries(KIT_PRESETS).map(([name, id]) => [name, KIT_4_12[id].points])),
   "F-Channel": [[0, 0], [0, 10.5], [7, 10.5], [7, 4], [10, 4], [10, 0]],
@@ -3282,8 +3283,8 @@ export default function ShopOrderApp() {
   }, [coilWidth, profile]);
   // Clips default to the panel profile being ordered, so "Clips — <profile>" matches the panel.
   useEffect(() => { if (shapeType === "panel") setAccProfile(profile); }, [shapeType, profile]);
-  const [points, setPoints] = useState(TRIM_PRESETS["Eave"]);
-  const [preset, setPreset] = useState("Eave");
+  const [points, setPoints] = useState(TRIM_PRESETS["Eave / Drip Edge"]);
+  const [preset, setPreset] = useState("Eave / Drip Edge");
   const [viewResetKey, setViewResetKey] = useState(0);
   const [hemStart, setHemStart] = useState("none");
   const [hemEnd, setHemEnd] = useState("none");
@@ -4043,7 +4044,7 @@ export default function ShopOrderApp() {
       const base = {
         id: uid(), type: "trim", partName: "Sample Part",
         customerName: "Sample Customer", phone: "(555) 555-0100",
-        points: TRIM_PRESETS["Eave"], lengthPerPiece: 10, hemStart: "none", hemEnd: "none", paintSide: "left",
+        points: TRIM_PRESETS["Eave / Drip Edge"], lengthPerPiece: 10, hemStart: "none", hemEnd: "none", paintSide: "left",
         quantity: 4, gaugeId: GAUGE_OPTIONS[0].id, paintId: PAINT_OPTIONS[0].id, brand: "Fortified Metal",
         notes: "", status: "Pending", createdAt: daysAgo(1),
         ...trimColor("Fortified Metal", "Charcoal Gray"),
@@ -4083,10 +4084,10 @@ export default function ShopOrderApp() {
     const samples = [
       // Dave Rutherford — 2 trim pieces + 1 panel run, all Pending
       mkTrim({ jobId: jobDave, partName: "Eave — North Slope", customerName: "Dave Rutherford", phone: "(817) 555-0142",
-        points: TRIM_PRESETS["Eave"], quantity: 12, lengthPerPiece: 10, hemStart: "closed-left",
+        points: TRIM_PRESETS["Eave / Drip Edge"], quantity: 12, lengthPerPiece: 10, hemStart: "closed-left",
         brand: "Berridge", ...trimColor("Berridge", "Charcoal Grey"), status: "Pending", createdAt: daysAgo(1) }),
       mkTrim({ jobId: jobDave, partName: "Rake — West Gable", customerName: "Dave Rutherford", phone: "(817) 555-0142",
-        points: TRIM_PRESETS["Rake"], quantity: 8, lengthPerPiece: 10, hemEnd: "open-right",
+        points: TRIM_PRESETS["Rake / Gable Trim"], quantity: 8, lengthPerPiece: 10, hemEnd: "open-right",
         brand: "Berridge", ...trimColor("Berridge", "Charcoal Grey"), status: "Pending", createdAt: daysAgo(1) }),
       mkTrim({ jobId: jobDave, partName: "Ridge Cap — North Slope", customerName: "Dave Rutherford", phone: "(817) 555-0142",
         points: TRIM_PRESETS["Ridge Cap"], quantity: 4, lengthPerPiece: 10,
@@ -4122,7 +4123,7 @@ export default function ShopOrderApp() {
 
       // Tammy Ostrowski — 2 trim pieces + 1 panel run, all Completed
       mkTrim({ jobId: jobTammy, partName: "Eave — Shop Addition", customerName: "Tammy Ostrowski", phone: "(214) 555-0163",
-        points: TRIM_PRESETS["Eave"], quantity: 20, lengthPerPiece: 10, hemStart: "closed-left", hemEnd: "closed-left",
+        points: TRIM_PRESETS["Eave / Drip Edge"], quantity: 20, lengthPerPiece: 10, hemStart: "closed-left", hemEnd: "closed-left",
         brand: "Fortified Metal", ...trimColor("Fortified Metal", "Copper Metallic"), status: "Completed", createdAt: daysAgo(9) }),
       mkTrim({ jobId: jobTammy, partName: "Ridge Cap — Shop Addition", customerName: "Tammy Ostrowski", phone: "(214) 555-0163",
         points: TRIM_PRESETS["Ridge Cap"], quantity: 5, lengthPerPiece: 10,
@@ -4212,7 +4213,7 @@ export default function ShopOrderApp() {
     setOutletShape("box"); setFlangeW(4); setFlangeD(4); setOutletDiameter(4); setOutletLength(6); setFlangeTapered(true);
     setFlangeLength(4); setOutletRoundTapered(false);
     setTopTrim(false); setBodyTaper(false); setTaperStart(0); setTaperLength(6);
-    setPoints(TRIM_PRESETS["Eave"]); setPreset("Eave");
+    setPoints(TRIM_PRESETS["Eave / Drip Edge"]); setPreset("Eave / Drip Edge");
     setHemStart("none"); setHemEnd("none"); setPaintSide("left");
     setGaugeId(GAUGE_OPTIONS[0].id); setPaintId(PAINT_OPTIONS[0].id); setBrand(BRANDS[0]); setColorName(COLORS_BY_BRAND[BRANDS[0]][0].name);
     setQuantity(4); setLengthPerPiece(10); setSheetWidth(48); setPartName("");
