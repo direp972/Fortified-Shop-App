@@ -1173,6 +1173,10 @@ function profileGirth(pts, hemStart = "none", hemEnd = "none") {
   if (!pts || pts.length < 2) return 0;
   return pts.reduce((s, p, i) => s + (i > 0 ? dist(pts[i - 1], p) : 0), 0) + hemAllowance(hemStart) + hemAllowance(hemEnd);
 }
+// Pieces a sheet yields: the girth's rounding must not cost a piece — a ½" leg at 45° is
+// stored to the thousandth and comes out 0.5006", so 48/6.0006 has to be 8, not 7. The
+// slack is a thousandth of a piece: under a hundredth of an inch across the sheet.
+const piecesPerSheet = (sheetWidth, girth) => (girth > 0 ? Math.floor(sheetWidth / girth + 1e-3) : 0);
 function unitVec(a, b) {
   const dx = b[0] - a[0], dy = b[1] - a[1];
   const m = Math.hypot(dx, dy) || 1;
@@ -4048,7 +4052,7 @@ export default function ShopOrderApp() {
       // so sample/seed data rolls up into Materials Needed the same way real orders do.
       const girth = profileGirth(merged.points, merged.hemStart, merged.hemEnd);
       const sheetWidth = merged.sheetWidth || 48;
-      const partsPerSheet = girth > 0 ? Math.floor(sheetWidth / girth) : 0;
+      const partsPerSheet = piecesPerSheet(sheetWidth, girth);
       const sheetsNeeded = partsPerSheet > 0 ? Math.ceil(merged.quantity / partsPerSheet) : 0;
       Object.assign(merged, { girth, sheetWidth, partsPerSheet, sheetsNeeded });
       merged.price = computePrice(merged, priceList, coilWidthScale);
@@ -4194,7 +4198,7 @@ export default function ShopOrderApp() {
   // Qty / sheet width are "" while a field is cleared for retyping — treat that as 0 so
   // this stays numeric (dropWidth.toFixed on "" used to white-screen the whole app).
   const sheetWidthNum = +sheetWidth || 0, quantityNum = +quantity || 0;
-  const partsPerSheet = girth > 0 ? Math.floor(sheetWidthNum / girth) : 0;
+  const partsPerSheet = piecesPerSheet(sheetWidthNum, girth);
   const sheetsNeeded = partsPerSheet > 0 ? Math.ceil(quantityNum / partsPerSheet) : 0;
   const dropWidth = partsPerSheet > 0 ? Math.max(0, sheetWidthNum - partsPerSheet * girth) : sheetWidthNum;
 
@@ -4257,7 +4261,7 @@ export default function ShopOrderApp() {
   const kitGaugeId = brand === "Copper" ? gaugeId : "24ga";
   const roofBoxItem = (it, qty) => {
     const g = profileGirth(it.points, it.hemStart, it.hemEnd);
-    const pps = g > 0 ? Math.floor(sheetWidthNum / g) : 0;
+    const pps = piecesPerSheet(sheetWidthNum, g);
     return {
       id: uid(), name: it.name, kit: it.id,
       points: it.points.map((pt) => [...pt]), hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide,
@@ -5947,7 +5951,7 @@ export default function ShopOrderApp() {
                             const qty = roofBoxSel[it.id] || 0;
                             const on = qty > 0;
                             const g = profileGirth(it.points, it.hemStart, it.hemEnd);
-                            const pps = g > 0 ? Math.floor(sheetWidthNum / g) : 0;
+                            const pps = piecesPerSheet(sheetWidthNum, g);
                             return (
                               <div key={it.id} data-testid={`box-row-${it.id}`} style={{ display: "grid", gridTemplateColumns: "22px 54px 1fr auto", gap: 10, alignItems: "center", padding: "8px 0", borderTop: `1px solid ${theme.border}`, opacity: on ? 1 : 0.72 }}>
                                 <input type="checkbox" checked={on} aria-label={`Include ${it.name}`}
