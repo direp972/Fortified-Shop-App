@@ -561,7 +561,7 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
   return [
     { id: "eave", name: "Eave / Drip Edge", dims: '3" × 2" · ½" 45° kick', per: "eave", on: true,
       where: "Bottom edge of the roof — deck flange under the panels, face down the fascia, kicked out 45° at the bottom to throw the water clear, and hemmed. The panels hook an Offset Cleat over the flange, or the lip of the D-Style Drip Edge below.",
-      points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 2), kitPt(3 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
+      points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 2), kitPt(3 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "left" },
     { id: "dstyle", name: "D-Style Drip Edge", dims: '3¾" × 2" · 1¼" lip hemmed flat · ½" 45° kick', per: "eave", on: false,
       where: "Same eave for panels that hook the trim itself (the T-style) — 2½\" on the deck, then a 1¼\" lip past the fascia, hemmed flat back under, that the panel's hemmed edge hooks and squeezes shut on: no cleat. Face down the fascia, kicked at the bottom with a closed hem; tick it in place of the Eave / Drip Edge above.",
       points: [kitPt(0, 0), kitPt(3.75, 0), kitFold(2.5, 0, "left"), kitPt(2.5, 2), kitPt(2.5 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
