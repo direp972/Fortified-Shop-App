@@ -1495,7 +1495,7 @@ function parsePitch(input) {
 // is the one kind that needs two: the upper roof's angle and the flatter lower roof's.
 const PITCH_BENDS = [
   { id: "internal", label: "Internal", hint: "Chimney back pan, cricket or upslope curb — roof climbs away from the wall", angle: (th) => 90 - th },
-  { id: "open", label: "Open", hint: "Headwall flashing — roof falls away from the wall", angle: (th) => 90 + th },
+  { id: "open", label: "External", hint: "Headwall flashing — roof falls away from the wall (an open bend)", angle: (th) => 90 + th },
   { id: "ridge", label: "Ridge", hint: "Ridge or peak — both legs on the slope", angle: (th) => 180 - 2 * th },
   { id: "hip", label: "Hip", hint: "Hip cap or valley pan — the slopes meet on the diagonal, so the fold is flatter than the ridge", angle: (th) => 180 - (Math.acos(Math.cos((th * Math.PI) / 180) ** 2) * 180) / Math.PI },
   { id: "break", label: "Break", hint: "Pitch break — the upper roof breaks to a flatter one; type both, like 6:12 to 3:12", twoPitch: true, angle: (th, th2 = 0) => 90 + (th - th2) },
@@ -1568,7 +1568,8 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const [draft, setDraft] = useState("");
   const [pitchOpen, setPitchOpen] = useState(false);
   const [pitch, setPitch] = useState(4);
-  const [pitchKind, setPitchKind] = useState("ridge"); // the kind of bend a typed pitch is applied as, until a card says otherwise
+  const [pitchKind, setPitchKind] = useState("open");   // the kind of bend a typed pitch is applied as at the bend that is open
+  const [stickyKind, setStickyKind] = useState("open"); // Internal or External, whichever was tapped last — it carries from bend to bend and part to part
   // A profile loaded from the box or the preset row brings the pitch it was drawn at, so the
   // chips start there and a bend's kind can be read off the drawing.
   useEffect(() => { setPitch(roofPitch || 4); }, [roofPitch, viewResetKey]);
@@ -1782,13 +1783,17 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const openLength = (i) => { if (i < 1 || i > points.length - 1) return; const t = lengthDraft(i); setEditor({ kind: "length", i, orig: t }); setDraft(t); };
   // A hem's fold is a fixed 180°, not a bend to edit — the angle sheet skips it.
   const angleEditable = (i) => i >= 1 && i <= points.length - 2 && !foldSide(points[i + 1]);
+  // The kind a typed pitch bends this joint as: a ridge or hip bend, as drawn at the drawing's
+  // pitch, is always its own kind; every other bend takes Internal or External, whichever was
+  // tapped last (External to start), so the choice carries from bend to bend and part to part.
+  const kindForBend = (i) => {
+    const auto = inferPitchKind(insideAngle(points[i - 1], points[i], points[i + 1]), (Math.atan(pitch / 12) * 180) / Math.PI);
+    return auto === "ridge" || auto === "hip" ? auto : stickyKind;
+  };
   const openAngle = (i) => {
     if (!angleEditable(i)) return;
     const t = angleDraft(i);
-    // A bend that is already a ridge, hip, open or internal bend at the drawing's pitch keeps that
-    // kind for a typed pitch; anything else keeps whatever kind was used last.
-    const kind = inferPitchKind(insideAngle(points[i - 1], points[i], points[i + 1]), (Math.atan(pitch / 12) * 180) / Math.PI);
-    if (kind) setPitchKind(kind);
+    setPitchKind(kindForBend(i));
     setEditor({ kind: "angle", i, orig: t }); setDraft(t);
   };
   const openFold = (end) => {
@@ -1829,6 +1834,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     while (editor.kind === "angle" && j >= stepRange[0] && j <= stepRange[1] && !angleEditable(j)) j += delta;
     if (j < stepRange[0] || j > stepRange[1]) return;
     const t = editor.kind === "length" ? lengthDraft(j) : angleDraft(j);
+    if (editor.kind === "angle") setPitchKind(kindForBend(j));
     setEditor({ ...editor, i: j, orig: t });
     setDraft(t);
   };
@@ -2371,7 +2377,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
                         <div style={{ display: "grid", gridTemplateColumns: `repeat(${cards.length}, 1fr)`, gap: 6, marginTop: 4 }}>
                           {cards.map((c) => (
                             <button key={c.id} type="button" data-testid={`pitch-${c.id}`} title={c.hint}
-                              onClick={() => { if (!c.twoPitch) setPitchKind(c.id); applyAngle(editor.i, Math.round(c.value)); const t = String(Math.round(c.value)); setDraft(t); setEditor({ ...editor, orig: t }); setPitchOpen(true); setInvalid(false); }}
+                              onClick={() => { if (!c.twoPitch) setPitchKind(c.id); if (c.id === "internal" || c.id === "open") setStickyKind(c.id); applyAngle(editor.i, Math.round(c.value)); const t = String(Math.round(c.value)); setDraft(t); setEditor({ ...editor, orig: t }); setPitchOpen(true); setInvalid(false); }}
                               style={btn(typed ? c.id === doneKind.id : parseFloat(draft) === Math.round(c.value), { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "6px 4px" })}>
                               <PitchPicture kind={c.id === "hip" || c.id === "break" ? "ridge" : c.id} th={c.id === "hip" || c.id === "break" ? (180 - c.value) / 2 : th} />
                               <span className="mono" style={{ fontSize: 13, color: SAFETY }}>{fmtDeg(c.value)}</span>
