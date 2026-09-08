@@ -3406,6 +3406,7 @@ export default function ShopOrderApp() {
   const [roofBoxSeam, setRoofBoxSeam] = useState(1.5);
   const [roofBoxLower, setRoofBoxLower] = useState(3);
   const [roofBoxSel, setRoofBoxSel] = useState({}); // id -> qty (0 = not in the box)
+  const [boxReturn, setBoxReturn] = useState(null); // the kit id of the box piece on the canvas, or "edit" for a part opened from the box's list — the box comes back when that work is done
   const [tabLoaded, setTabLoaded] = useState(false);
   // Job Vault — each member's saved trim/panel configs (Supabase vault_items, owner-only)
   const [vaultItems, setVaultItems] = useState([]);
@@ -4307,7 +4308,7 @@ export default function ShopOrderApp() {
   const clearDrawing = () => {
     setPoints([]); setHemStart("none"); setHemEnd("none"); setPaintSide("left");
     setQuantity(4); setLengthPerPiece(10); setPartName("");
-    setEditingId(null);
+    setEditingId(null); setBoxReturn(null);
   };
 
   // The part on the canvas as an order item — a new one, or the edited version of `base`, which
@@ -4333,10 +4334,12 @@ export default function ShopOrderApp() {
 
   const addToBasket = () => {
     if (points.length < 2) { setToast("Draw at least two points before adding this part to the order."); return; }
-    const item = draftPart();
+    const fromBox = boxReturn && boxReturn !== "edit" ? boxReturn : null;
+    const item = fromBox ? { ...draftPart(), kit: fromBox } : draftPart();
     setBasket((b) => [...b, item]);
     clearDrawing();
     setPartPhoto(null);
+    if (fromBox) setRoofBoxOpen(true); // back to the box to pick the next piece
     setToast(`"${item.name}" added to the order — ${basket.length + 1} part${basket.length + 1 === 1 ? "" : "s"} so far.`);
     setTimeout(() => setToast(""), 3000);
   };
@@ -4349,9 +4352,10 @@ export default function ShopOrderApp() {
   // side, name, quantity, length, sheet width, photo, gauge, paint and colour — to be changed and
   // put back in its place. Whatever was on the canvas and the form is kept aside and comes back
   // when the edit ends, so tapping a part to look at it never costs a drawing in progress.
-  const editBasketItem = (it) => {
-    if (!editingId) editSnapshot.current = { points, hemStart, hemEnd, paintSide, partName, quantity, lengthPerPiece, sheetWidth, partPhoto, drawnPitch, preset, materialCategory, gaugeId, paintId, brand, colorName };
+  const editBasketItem = (it, fromBox = false) => {
+    if (!editingId) editSnapshot.current = { points, hemStart, hemEnd, paintSide, partName, quantity, lengthPerPiece, sheetWidth, partPhoto, drawnPitch, preset, materialCategory, gaugeId, paintId, brand, colorName, boxReturn };
     setEditingId(it.id);
+    if (fromBox) { setRoofBoxOpen(false); setBoxReturn("edit"); }
     setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
     setHemStart(it.hemStart || "none"); setHemEnd(it.hemEnd || "none"); setPaintSide(it.paintSide || "left");
     setPartName(it.name); setQuantity(it.quantity); setLengthPerPiece(it.lengthPerPiece); setSheetWidth(it.sheetWidth);
@@ -4368,7 +4372,9 @@ export default function ShopOrderApp() {
     const s = editSnapshot.current;
     editSnapshot.current = null;
     setEditingId(null);
+    if (boxReturn === "edit") setRoofBoxOpen(true); // the part was opened from the box's list — back to the box
     if (!s) { clearDrawing(); setPartPhoto(null); return; }
+    setBoxReturn(s.boxReturn || null);
     setPoints(s.points); setHemStart(s.hemStart); setHemEnd(s.hemEnd); setPaintSide(s.paintSide);
     setPartName(s.partName); setQuantity(s.quantity); setLengthPerPiece(s.lengthPerPiece); setSheetWidth(s.sheetWidth);
     setPartPhoto(s.partPhoto); setDrawnPitch(s.drawnPitch); setPreset(s.preset);
@@ -4392,7 +4398,11 @@ export default function ShopOrderApp() {
   const roofBoxPitchRef = useRef(null);
   useEffect(() => {
     if (!roofBoxOpen) return;
-    setRoofBoxSel((sel) => (Object.keys(sel).length ? sel : { ...ROOF_KIT_DEFAULT_SEL }));
+    setRoofBoxSel((sel) => {
+      const next = { ...(Object.keys(sel).length ? sel : ROOF_KIT_DEFAULT_SEL) };
+      for (const id of Object.keys(next)) if (basket.some((b) => b.kit === id)) next[id] = 0; // already in the order — tick it again for more
+      return next;
+    });
     const onKey = (e) => { if (e.key === "Escape") setRoofBoxOpen(false); };
     window.addEventListener("keydown", onKey);
     const focusTimer = setTimeout(() => roofBoxPitchRef.current?.focus(), 0);
@@ -4427,6 +4437,7 @@ export default function ShopOrderApp() {
   // Load one kit piece into the canvas to tweak legs before adding it the usual way.
   const drawRoofBoxItem = (it) => {
     if (editingId) restoreCanvas(); // a piece from the box is a new part, not the edited one
+    setBoxReturn(it.id);
     setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
     setHemStart(it.hemStart); setHemEnd(it.hemEnd); setPaintSide(it.paintSide); setPartName(it.name); setDrawnPitch(roofBoxPitch);
     setViewResetKey((k) => k + 1); setRoofBoxOpen(false);
@@ -5984,11 +5995,11 @@ export default function ShopOrderApp() {
                       padding: "5px 11px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer",
                       border: "1px solid #A0602E", background: "linear-gradient(180deg, #B8703A, #A0602E)", color: "#fff", display: "flex", alignItems: "center", gap: 5,
                     }}>
-                    <Package size={12} /> Roof in a Box
+                    <Package size={12} /> {boxReturn ? "← Back to Roof in a Box" : "Roof in a Box"}
                   </button>
                   {Object.keys(TRIM_PRESETS).map((p) => (
                     <button key={p} onClick={() => {
-                      setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt])); setDrawnPitch(4);
+                      setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt])); setDrawnPitch(4); setBoxReturn(null);
                       const f = presetFolds(p);
                       if (f) { setHemStart(f.hemStart); setHemEnd(f.hemEnd); setPaintSide(f.paintSide); }
                       setViewResetKey((k) => k + 1);
@@ -6002,7 +6013,7 @@ export default function ShopOrderApp() {
                   ))}
                   {customPresetsLoaded && customPresets.map((cp) => (
                     <span key={cp.id} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
-                      <button onClick={() => { setPreset(cp.name); setPoints(cp.points.map((pt) => [...pt])); setViewResetKey((k) => k + 1); }}
+                      <button onClick={() => { setPreset(cp.name); setPoints(cp.points.map((pt) => [...pt])); setBoxReturn(null); setViewResetKey((k) => k + 1); }}
                         style={{
                           padding: "5px 8px 5px 10px", borderRadius: "999px 0 0 999px", fontSize: 11, cursor: "pointer",
                           border: `1px solid ${SAFETY}`, borderRight: "none", background: preset === cp.name ? SAFETY : "#fff", color: preset === cp.name ? "#fff" : SAFETY,
@@ -6080,10 +6091,30 @@ export default function ShopOrderApp() {
                             {gaugeLabel} · {brand} · {colorName}<br />{lengthPerPiece} ft pieces · {sheetWidthNum}" sheets
                           </div>
                         </div>
+                        {basket.length > 0 && (
+                          <div data-testid="box-in-order" style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, background: "rgba(212,175,55,0.10)", border: `1px solid rgba(212,175,55,0.35)` }}>
+                            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                              <span className="disp" style={{ fontSize: 10.5, color: theme.textSecondary }}>In the order now</span>
+                              <span className="mono" style={{ fontSize: 10.5, color: theme.text, fontWeight: 600 }}>{basket.length} part{basket.length === 1 ? "" : "s"} · {basketPartsCount} pcs · {basketSheets} sheet{basketSheets === 1 ? "" : "s"}</span>
+                              <span style={{ fontSize: 10.5, color: theme.textSecondary }}>— tap one to change it</span>
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                              {basket.map((b) => (
+                                <button key={b.id} type="button" onClick={() => editBasketItem(b, true)} title="Open this part on the canvas to change it" data-testid="box-in-order-part"
+                                  style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 8px 3px 3px", borderRadius: 999, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, fontSize: 11, cursor: "pointer" }}>
+                                  <span style={{ background: INK, borderRadius: 4, padding: 2, display: "flex" }}><ShapeThumb order={{ type: "trim", points: b.points, hemStart: b.hemStart, hemEnd: b.hemEnd, colorHex: b.colorHex }} size={18} /></span>
+                                  <span style={{ fontWeight: 600 }}>{b.name}</span><span className="mono" style={{ color: theme.textSecondary }}>×{b.quantity}</span>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
                         <div style={{ marginTop: 10 }}>
                           {roofKit.map((it) => {
                             const qty = roofBoxSel[it.id] || 0;
                             const on = qty > 0;
+                            const inOrder = basket.filter((b) => b.kit === it.id);
+                            const inOrderPcs = inOrder.reduce((sum, b) => sum + (+b.quantity || 0), 0);
                             const g = profileGirth(it.points, it.hemStart, it.hemEnd);
                             const pps = piecesPerSheet(sheetWidthNum, g);
                             return (
@@ -6094,7 +6125,9 @@ export default function ShopOrderApp() {
                                   <ShapeThumb order={{ type: "trim", points: it.points, hemStart: it.hemStart, hemEnd: it.hemEnd, colorHex: colorObj.hex }} size={48} />
                                 </div>
                                 <div style={{ minWidth: 0 }}>
-                                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{it.name} <span className="mono" style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 500 }}>{it.dims}</span></div>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{it.name} <span className="mono" style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 500 }}>{it.dims}</span>
+                                    {inOrder.length > 0 && <span className="mono" data-testid="box-row-in-order" style={{ marginLeft: 8, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.06em", color: SAFETY, border: `1px solid ${SAFETY}`, borderRadius: 999, padding: "1px 7px" }}>IN ORDER · {inOrderPcs} pc{inOrderPcs === 1 ? "" : "s"}</span>}
+                                  </div>
                                   <div style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 1.4 }}>{it.where}</div>
                                   <div className="mono" style={{ fontSize: 10, color: theme.textSecondary, marginTop: 2 }}>
                                     Girth {fmtIn(g)}" · {Math.max(0, it.points.length - 2)} bend{it.points.length === 3 ? "" : "s"} · {pps} pcs/sheet · one {lengthPerPiece} ft piece per {lengthPerPiece} ft of {it.per}
