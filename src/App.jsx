@@ -614,6 +614,7 @@ const ROOF_KIT_DEFAULT_SEL = Object.fromEntries(buildRoofKit().map((it) => [it.i
 // the box gives it (Roof in a Box redraws the pitch-driven ones to any pitch), plus the shop
 // staples that aren't roof trims.
 const KIT_4_12 = Object.fromEntries(buildRoofKit({ pitch: 4 }).map((it) => [it.id, it]));
+const PITCHED_KIT = new Set(Object.values(KIT_4_12).filter((it) => it.pitched).map((it) => it.id)); // the pieces whose shape follows the roof pitch
 const KIT_PRESETS = Object.fromEntries(Object.values(KIT_4_12).map((it) => [it.name, it.id]));
 const TRIM_PRESETS = {
   ...Object.fromEntries(Object.entries(KIT_PRESETS).map(([name, id]) => [name, KIT_4_12[id].points])),
@@ -4413,7 +4414,9 @@ export default function ShopOrderApp() {
     return base.map((it) => {
       const own = roofBoxRowPitch[it.id];
       if (!it.pitched || !own || own === roofBoxPitch) return it;
-      if (!kitsAt[own]) kitsAt[own] = buildRoofKit({ pitch: own, seamHeight: roofBoxSeam, lowerPitch: roofBoxLower });
+      // a transition bent to its own pitch still has to break to something flatter than itself
+      const lower = own <= roofBoxLower ? Math.max(ROOF_PITCHES[0], ...ROOF_PITCHES.filter((r) => r < own)) : roofBoxLower;
+      if (!kitsAt[own]) kitsAt[own] = buildRoofKit({ pitch: own, seamHeight: roofBoxSeam, lowerPitch: lower });
       return { ...kitsAt[own].find((k) => k.id === it.id), pitch: own };
     });
   })();
@@ -4460,11 +4463,12 @@ export default function ShopOrderApp() {
   };
   // One row straight into the order at its quantity (1 if it is unticked), the box staying open.
   const addRoofBoxRow = (it) => {
-    const qty = Math.max(1, Math.round(+roofBoxSel[it.id] || 1));
-    const item = roofBoxItem(it, qty);
+    const fromCanvas = boxPending && boxPending.kit === it.id; // this very piece is on the canvas — that one goes in, legs as tweaked
+    const item = fromCanvas ? boxPending : roofBoxItem(it, Math.max(1, Math.round(+roofBoxSel[it.id] || 1)));
     setBasket((b) => [...b, item]);
     setRoofBoxSel((sel) => ({ ...sel, [it.id]: 0 })); // in the order now — tick again for more
-    setBoxNote(`Added ${item.name} ×${qty}${it.pitched ? ` at ${fmtPitch(it.pitch)}` : ""}.`);
+    if (fromCanvas) { clearDrawing(); setPartPhoto(null); }
+    setBoxNote(`Added ${item.name} ×${item.quantity}${it.pitched ? ` at ${fmtPitch(item.pitch || it.pitch)}` : ""}${fromCanvas ? ", as drawn on the canvas" : ""}.`);
   };
   // Load one kit piece into the canvas to tweak legs before adding it the usual way.
   const drawRoofBoxItem = (it) => {
@@ -4920,6 +4924,13 @@ export default function ShopOrderApp() {
           100% { transform: scale(1); }
         }
         .pop-in { animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        /* Roof in a Box rows: tick, picture, words, controls — on a phone the controls drop under the words */
+        .box-row { display: grid; grid-template-columns: 22px 54px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+        .box-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+        @media (max-width: 560px) {
+          .box-row { grid-template-columns: 22px 54px minmax(0, 1fr); }
+          .box-row .box-controls { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+        }
         @keyframes wiggle {
           0%, 100% { transform: rotate(0deg); }
           25% { transform: rotate(-4deg); }
@@ -6144,7 +6155,7 @@ export default function ShopOrderApp() {
                                   <button key={b.id} type="button" onClick={() => (editing ? setRoofBoxOpen(false) : editBasketItem(b, true))} title={editing ? "This part is on the canvas now — back to it" : "Open this part on the canvas to change it"} data-testid="box-in-order-part"
                                     style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 8px 3px 3px", borderRadius: 999, border: `1px solid ${editing ? SAFETY : theme.border}`, background: editing ? "rgba(212,175,55,0.18)" : theme.inputBg, color: theme.text, fontSize: 11, cursor: "pointer" }}>
                                     <span style={{ background: INK, borderRadius: 4, padding: 2, display: "flex" }}><ShapeThumb order={{ type: "trim", points: b.points, hemStart: b.hemStart, hemEnd: b.hemEnd, colorHex: b.colorHex }} size={18} /></span>
-                                    <span style={{ fontWeight: 600 }}>{b.name}</span><span className="mono" style={{ color: theme.textSecondary }}>×{b.quantity}</span>
+                                    <span style={{ fontWeight: 600 }}>{b.name}</span><span className="mono" style={{ color: theme.textSecondary }}>×{b.quantity}{b.kit && PITCHED_KIT.has(b.kit) && b.pitch ? ` · ${fmtPitch(b.pitch)}` : ""}</span>
                                     {editing && <span className="mono" style={{ fontSize: 9, color: SAFETY, fontWeight: 700, letterSpacing: "0.08em" }}>EDITING</span>}
                                   </button>
                                 );
@@ -6167,7 +6178,7 @@ export default function ShopOrderApp() {
                             const g = profileGirth(it.points, it.hemStart, it.hemEnd);
                             const pps = piecesPerSheet(sheetWidthNum, g);
                             return (
-                              <div key={it.id} data-testid={`box-row-${it.id}`} style={{ display: "grid", gridTemplateColumns: "22px 54px 1fr auto", gap: 10, alignItems: "center", padding: "8px 0", borderTop: `1px solid ${theme.border}`, opacity: on ? 1 : 0.72 }}>
+                              <div key={it.id} data-testid={`box-row-${it.id}`} className="box-row" style={{ padding: "8px 0", borderTop: `1px solid ${theme.border}`, opacity: on ? 1 : 0.72 }}>
                                 <input type="checkbox" checked={on} aria-label={`Include ${it.name}`}
                                   onChange={(e) => setRoofBoxSel((sel) => ({ ...sel, [it.id]: e.target.checked ? 1 : 0 }))} style={{ width: 16, height: 16, cursor: "pointer" }} />
                                 <div style={{ background: INK, borderRadius: 6, padding: 3, display: "flex" }}>
@@ -6182,14 +6193,14 @@ export default function ShopOrderApp() {
                                     Girth {fmtIn(g)}" · {Math.max(0, it.points.length - 2)} bend{it.points.length === 3 ? "" : "s"} · {pps} pcs/sheet · one {lengthPerPiece} ft piece per {lengthPerPiece} ft of {it.per}
                                   </div>
                                 </div>
-                                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5 }}>
+                                <div className="box-controls">
                                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                     {it.pitched ? (
                                       <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", alignItems: "center", gap: 4 }} title="The roof pitch this piece is bent to — change it for this piece alone">Pitch
                                         <select value={it.pitch} aria-label={`${it.name} pitch`} data-testid={`box-pitch-${it.id}`} className="mono"
                                           onChange={(e) => { const r = +e.target.value; setRoofBoxRowPitch((m) => { const next = { ...m }; if (r === roofBoxPitch) delete next[it.id]; else next[it.id] = r; return next; }); }}
                                           style={{ padding: "4px 5px", borderRadius: 6, border: `1px solid ${it.pitch !== roofBoxPitch ? SAFETY : theme.border}`, background: theme.inputBg, color: theme.text, fontSize: 11.5, fontWeight: 600 }}>
-                                          {ROOF_PITCHES.map((r) => <option key={r} value={r}>{fmtPitch(r)}</option>)}
+                                          {ROOF_PITCHES.filter((r) => it.id !== "transition" || r > ROOF_PITCHES[0]).map((r) => <option key={r} value={r}>{fmtPitch(r)}</option>)}
                                         </select>
                                       </label>
                                     ) : (
@@ -6202,9 +6213,9 @@ export default function ShopOrderApp() {
                                     </label>
                                   </div>
                                   <div style={{ display: "flex", gap: 6 }}>
-                                    <button type="button" onClick={() => addRoofBoxRow(it)} data-testid={`box-row-add-${it.id}`} title="Add just this trim to the order at the quantity shown"
+                                    <button type="button" onClick={() => addRoofBoxRow(it)} data-testid={`box-row-add-${it.id}`} title={boxPending && boxPending.kit === it.id ? "This piece is on the canvas — add it as drawn there" : "Add just this trim to the order at the quantity shown"}
                                       style={{ fontSize: 10.5, fontWeight: 700, padding: "4px 9px", borderRadius: 6, border: "none", background: SAFETY, color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>
-                                      Add to order
+                                      {boxPending && boxPending.kit === it.id ? "Add from canvas" : "Add to order"}
                                     </button>
                                     <button type="button" onClick={() => drawRoofBoxItem(it)} title="Open this trim on the drawing canvas"
                                       style={{ fontSize: 10.5, fontWeight: 600, padding: "4px 8px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, cursor: "pointer", whiteSpace: "nowrap" }}>
@@ -6360,7 +6371,7 @@ export default function ShopOrderApp() {
                             <strong>{it.name}</strong>{editing && <span className="mono" style={{ fontSize: 9.5, color: SAFETY, fontWeight: 700, marginLeft: 6, letterSpacing: "0.08em" }}>EDITING</span>} — Qty {it.quantity} · {fmtIn(it.girth)}" girth · {it.sheetsNeeded} sheet{it.sheetsNeeded === 1 ? "" : "s"} · {fmtIn(it.dropWidth)}" drop
                             <br />
                             <span style={{ fontSize: 10.5, color: theme.textSecondary }}>
-                              {it.colorName} · {itGauge?.label} · {itBends} bend{itBends === 1 ? "" : "s"} · Paint side: {it.paintSide === "left" ? "Left" : "Right"}
+                              {it.colorName} · {itGauge?.label} · {itBends} bend{itBends === 1 ? "" : "s"} · Paint side: {it.paintSide === "left" ? "Left" : "Right"}{it.kit && PITCHED_KIT.has(it.kit) && it.pitch ? ` · ${fmtPitch(it.pitch)}` : ""}
                             </span>
                           </span>
                           <span className="mono" style={{ fontSize: 11, color: theme.textSecondary }}>{money(it.price)}</span>
