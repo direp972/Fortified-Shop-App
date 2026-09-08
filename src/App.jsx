@@ -1488,7 +1488,7 @@ const PITCH_BENDS = [
 ];
 const pitchBendAngle = (id, th) => (PITCH_BENDS.find((b) => b.id === id) || PITCH_BENDS[2]).angle(th);
 const FRACTION_CHIPS = [["⅛", "1/8"], ["¼", "1/4"], ["⅜", "3/8"], ["½", "1/2"], ["⅝", "5/8"], ["¾", "3/4"], ["⅞", "7/8"]];
-const fmtDeg = (d) => { const r = Math.round(d * 10) / 10; return `${Number.isInteger(r) ? r : r.toFixed(1)}°`; };
+const fmtDeg = (d) => `${Math.round(d)}°`; // bends are called out to the whole degree — the brake is not set finer
 const trimNum = (v) => String(Math.round(v * 1000) / 1000);
 
 // Picker pictures for the fold sheet: a leg coming down with the fold at its end, all four
@@ -1758,7 +1758,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   // The sheet opens on the number as its tag reads it — sub-inch without the leading zero
   // (parseLength takes ".5" the same as "0.5", so what's typed back still reads fine).
   const lengthDraft = (i) => (unitSystem === "metric" ? String(Math.round(dist(points[i - 1], points[i]) * 25.4)) : trimNum(+fmtIn(dist(points[i - 1], points[i]))).replace(/^0\./, "."));
-  const angleDraft = (i) => trimNum(Math.round(insideAngle(points[i - 1], points[i], points[i + 1]) * 10) / 10);
+  const angleDraft = (i) => String(Math.round(insideAngle(points[i - 1], points[i], points[i + 1])));
   const openLength = (i) => { if (i < 1 || i > points.length - 1) return; const t = lengthDraft(i); setEditor({ kind: "length", i, orig: t }); setDraft(t); };
   // A hem's fold is a fixed 180°, not a bend to edit — the angle sheet skips it.
   const angleEditable = (i) => i >= 1 && i <= points.length - 2 && !foldSide(points[i + 1]);
@@ -1783,7 +1783,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
       // A pitch becomes the angle for the chosen kind of bend; anything else must be a whole number
       // of degrees (a ° or "deg" is fine) — "4:0" or "4x" is refused, not read as 4°.
       const p = parsePitch(draft);
-      return applyAngle(editor.i, p ? pitchBendAngle(pitchKind, p.th) : Number(draft.replace(/°|deg(?:rees)?/i, "").trim() || NaN));
+      return applyAngle(editor.i, Math.round(p ? pitchBendAngle(pitchKind, p.th) : Number(draft.replace(/°|deg(?:rees)?/i, "").trim() || NaN)));
     }
     if (editor.kind === "rotate") { const deg = parseFloat(draft); if (!isFinite(deg)) return false; applyRotation(deg); }
     return true;
@@ -2340,8 +2340,8 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
                         <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 4 }}>
                           {cards.map((c) => (
                             <button key={c.id} type="button" data-testid={`pitch-${c.id}`} title={c.hint}
-                              onClick={() => { setPitchKind(c.id); applyAngle(editor.i, c.value); const t = trimNum(Math.round(c.value * 10) / 10); setDraft(t); setEditor({ ...editor, orig: t }); setInvalid(false); }}
-                              style={btn(typed ? c.id === doneKind.id : Math.abs(parseFloat(draft) - c.value) < 0.06, { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "6px 4px" })}>
+                              onClick={() => { setPitchKind(c.id); applyAngle(editor.i, Math.round(c.value)); const t = String(Math.round(c.value)); setDraft(t); setEditor({ ...editor, orig: t }); setInvalid(false); }}
+                              style={btn(typed ? c.id === doneKind.id : parseFloat(draft) === Math.round(c.value), { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "6px 4px" })}>
                               <PitchPicture kind={c.id === "hip" ? "ridge" : c.id} th={c.id === "hip" ? (180 - c.value) / 2 : th} />
                               <span className="mono" style={{ fontSize: 13, color: SAFETY }}>{fmtDeg(c.value)}</span>
                               <span style={{ fontSize: 10.5 }}>{c.label}</span>
