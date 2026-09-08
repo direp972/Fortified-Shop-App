@@ -4309,16 +4309,32 @@ export default function ShopOrderApp() {
     setEditingId(null);
   };
 
+  // The part on the canvas as an order item — a new one, or the edited version of `base`, which
+  // keeps its id, kit, gauge, paint and colour (those are not on the canvas) and its name if the
+  // name box was emptied.
+  const draftPart = (base) => {
+    const own = base
+      ? { gaugeId: base.gaugeId, paintId: base.paintId, brand: base.brand, colorName: base.colorName, colorHex: base.colorHex }
+      : { gaugeId, paintId, brand, colorName, colorHex: colorObj.hex };
+    return {
+      ...(base || {}), id: base?.id || uid(),
+      name: partName.trim() || base?.name || `Part ${basket.length + 1}`,
+      points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
+      girth, partsPerSheet, sheetsNeeded, dropWidth, photo: partPhoto, pitch: drawnPitch, ...own,
+      price: computePrice({ type: "trim", points, quantity, lengthPerPiece, ...own }, priceList, coilWidthScale),
+    };
+  };
+  // Every part the order is made of: the list, plus the canvas draft as one more — or, while a
+  // part from the list is back on the canvas, the draft standing in for that part.
+  const editingItem = editingId ? basket.find((i) => i.id === editingId) || null : null;
+  const orderParts = () => {
+    if (points.length < 2) return [...basket];
+    return editingItem ? basket.map((i) => (i.id === editingItem.id ? draftPart(i) : i)) : [...basket, draftPart()];
+  };
+
   const addToBasket = () => {
     if (points.length < 2) { setToast("Draw at least two points before adding this part to the order."); return; }
-    const item = {
-      id: uid(),
-      name: partName.trim() || `Part ${basket.length + 1}`,
-      points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
-      girth, partsPerSheet, sheetsNeeded, dropWidth, photo: partPhoto, pitch: drawnPitch,
-      gaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
-      price: computePrice({ type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, brand, colorName }, priceList, coilWidthScale),
-    };
+    const item = draftPart();
     setBasket((b) => [...b, item]);
     clearDrawing();
     setPartPhoto(null);
@@ -4344,16 +4360,9 @@ export default function ShopOrderApp() {
     setToast(`Editing "${it.name}" — change what you need, then Update Part.`); setTimeout(() => setToast(""), 3500);
   };
   const updateBasketItem = () => {
-    const old = basket.find((i) => i.id === editingId);
-    if (!old) { setEditingId(null); return; }
+    if (!editingItem) { setEditingId(null); return; }
     if (points.length < 2) { setToast("Draw at least two points before updating this part."); return; }
-    const item = {
-      ...old,
-      name: partName.trim() || old.name,
-      points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
-      girth, partsPerSheet, sheetsNeeded, dropWidth, photo: partPhoto, pitch: drawnPitch,
-      price: computePrice({ type: "trim", points, quantity, lengthPerPiece, gaugeId: old.gaugeId, paintId: old.paintId, brand: old.brand, colorName: old.colorName }, priceList, coilWidthScale),
-    };
+    const item = draftPart(editingItem);
     setBasket((b) => b.map((i) => (i.id === editingId ? item : i)));
     clearDrawing();
     setPartPhoto(null);
@@ -4438,9 +4447,8 @@ export default function ShopOrderApp() {
 
   const basketPartsCount = basket.reduce((s, i) => s + i.quantity, 0);
   const basketSheets = basket.reduce((s, i) => s + i.sheetsNeeded, 0);
-  const basketTotal = basket.reduce((s, i) => s + i.price, 0);
   const combinedEstimate = shapeType === "trim"
-    ? basketTotal + (points.length >= 2 ? estimate : 0)
+    ? orderParts().reduce((s, i) => s + i.price, 0)
     : estimate;
 
   // PO numbers come from a server-side counter — customers only see their own
@@ -4465,14 +4473,7 @@ export default function ShopOrderApp() {
     }
 
     if (shapeType === "trim") {
-      const items = [...basket];
-      if (points.length >= 2) {
-        items.push({
-          id: uid(), name: partName.trim() || `Part ${basket.length + 1}`,
-          points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
-          girth, partsPerSheet, sheetsNeeded, gaugeId, paintId, brand, colorName, colorHex: colorObj.hex, photo: partPhoto,
-        });
-      }
+      const items = orderParts();
       if (items.length === 0) { setToast("Draw at least two points, or add a part to the order first."); return; }
       setSubmitting(true);
       const jobId = uid();
@@ -4617,14 +4618,7 @@ export default function ShopOrderApp() {
   // is order-shaped so computePrice and ShapeThumb both accept it as-is.
   const buildVaultPayloads = () => {
     if (shapeType === "trim") {
-      const parts = [...basket];
-      if (points.length >= 2) {
-        parts.push({
-          name: partName.trim() || `Part ${basket.length + 1}`,
-          points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
-          gaugeId, paintId, brand, colorName, colorHex: colorObj.hex, photo: partPhoto,
-        });
-      }
+      const parts = orderParts();
       return parts.map((it, idx) => ({
         type: "trim", partName: it.name, points: it.points, lengthPerPiece: it.lengthPerPiece,
         hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide, quantity: it.quantity,
@@ -6419,7 +6413,7 @@ export default function ShopOrderApp() {
           <div style={{ background: INK, borderRadius: 10, padding: 14, marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
               <div style={{ color: "#CFE3EF", fontSize: 11 }}>
-                {shapeType === "trim" ? `Estimated total${basket.length > 0 ? ` · ${basket.length + (points.length >= 2 ? 1 : 0)} part(s)` : ""}` : "Estimated total"}
+                {shapeType === "trim" ? `Estimated total${basket.length > 0 ? ` · ${orderParts().length} part(s)` : ""}` : "Estimated total"}
               </div>
               <div className="mono" style={{ color: "#fff", fontSize: 22, fontWeight: 600 }}>{shapeType === "panel" && coilOverMax ? coilGateText : money(combinedEstimate)}</div>
             </div>
