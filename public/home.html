@@ -87,13 +87,7 @@
   #brands .scrim{background:linear-gradient(180deg,var(--night) 0,var(--night) calc(100% - var(--wallh)),rgba(11,30,44,.35) calc(100% - var(--wallh) + 40px),rgba(11,30,44,0) calc(100% - var(--wallh) + 90px))}
 }
 
-/* aisle: a gold-edged banner of the coil rows that drifts at walking pace */
-.aisle{position:relative;height:clamp(170px,21vw,400px);margin-top:clamp(34px,5vw,56px);overflow:hidden;background:var(--night);box-shadow:inset 0 1px 0 var(--gold),inset 0 -1px 0 var(--gold)}
-.aisle img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;object-position:50% 55%}
-.aisle::after{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(11,30,44,.5),transparent 18%,transparent 82%,rgba(11,30,44,.5))}
-@media(prefers-reduced-motion:no-preference){.aisle img{animation:aisle-drift 60s ease-in-out infinite alternate}}
-@keyframes aisle-drift{from{object-position:0% 55%}to{object-position:100% 55%}}
-@media(max-width:640px){.aisle{height:180px}.hero.photo .hero-panes{grid-template-columns:1fr}}
+@media(max-width:640px){.hero.photo .hero-panes{grid-template-columns:1fr}}
 
 /* closing card: the forklift and the yellow rail in the corner */
 .dock{position:relative;overflow:hidden;isolation:isolate}
@@ -283,12 +277,6 @@
 .faq-d p{margin:0;padding:12px 18px 16px;color:#4E6273;font-size:14.5px;line-height:1.65}
 </style>
 
-<div class="aisle" aria-hidden="true">
-  <picture>
-    <source type="image/webp" srcset="/img/coil-aisle-1200.webp 1200w,/img/coil-aisle-2400.webp 2400w" sizes="(max-width:640px) 200vw,100vw">
-    <img src="/img/coil-aisle-2400.jpg" srcset="/img/coil-aisle-1200.jpg 1200w,/img/coil-aisle-2400.jpg 2400w" sizes="(max-width:640px) 200vw,100vw" width="2400" height="550" alt="" loading="lazy" decoding="async">
-  </picture>
-</div>
 
 <div class="wrap" id="getlisted" style="padding-block:clamp(34px,5vw,56px)">
   <div class="dock" style="display:flex;flex-wrap:wrap;gap:24px;align-items:center;justify-content:space-between;padding:26px 28px;background:var(--night);color:#fff;border-radius:var(--r);box-shadow:var(--shadow-2)">
