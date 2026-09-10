@@ -502,11 +502,18 @@ function buildCard(l){
   decorate(c);
   return c;
 }
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}
+  return a;
+}
 (async()=>{
   try{
-    const r=await fetch(SUPA+"/rest/v1/directory_listings?select=name,badges,address,city,area_keywords,lat,lng,locations,abilities,colors,coil_desc,fab_desc,website,phone,photos,logo_url,logo_bg,licensed_states,featured,gmaps_url&status=eq.live&order=featured.desc,name.asc",{headers:{apikey:KEY}});
+    const r=await fetch(SUPA+"/rest/v1/directory_listings?select=name,badges,address,city,area_keywords,lat,lng,locations,abilities,colors,coil_desc,fab_desc,website,phone,photos,logo_url,logo_bg,licensed_states,featured,gmaps_url&status=eq.live&order=featured.desc",{headers:{apikey:KEY}});
     if(!r.ok)return;
-    const rows=await r.json();
+    const all=await r.json();
+    // Listings come up in a fresh random order on every visit so no shop is
+    // stuck at the bottom for its name — featured shops still lead the list.
+    const rows=shuffle(all.filter(l=>l&&l.featured)).concat(shuffle(all.filter(l=>!(l&&l.featured))));
     const have=new Set(cards.map(c=>c.dataset.name.toLowerCase()));
     let added=false;
     for(const l of rows){
