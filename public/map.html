@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Supplier &amp; Fabricator Map — Browse Listings by State | RoofCoil</title>
+<meta name="description" content="Every listed sheet metal supplier, fabricator and contractor on one map. Click a state to zoom in and see who can run coil, standing seam, trim and on-site roll forming there." />
+<link rel="canonical" href="https://www.roofcoil.com/map.html">
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="RoofCoil" />
+<meta property="og:url" content="https://www.roofcoil.com/map.html" />
+<meta property="og:title" content="Supplier &amp; Fabricator Map — Browse Listings by State" />
+<meta property="og:description" content="Click a state to zoom in on the shops listed there." />
+<meta property="og:image" content="https://www.roofcoil.com/og-card.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<link rel="stylesheet" href="/styles.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3.1.0/dist/topojson-client.min.js"></script>
+<script src="/auth.js" defer></script>
+<script defer src="/_vercel/insights/script.js"></script>
+<style>
+.mapgrid{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:18px;align-items:start}
+@media(max-width:900px){.mapgrid{grid-template-columns:1fr}}
+.mapcard{background:var(--card);border:1px solid rgba(15,61,92,.1);border-radius:var(--r);box-shadow:var(--shadow-2);overflow:hidden;position:sticky;top:12px}
+@media(max-width:900px){.mapcard{position:static}}
+#map{height:min(72vh,720px);min-height:420px;width:100%;background:#DCE6EE}
+.maptop{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;padding:12px 16px;border-bottom:1px solid rgba(15,61,92,.1);background:linear-gradient(180deg,var(--night),var(--ink) 160%);color:#EAF1F6}
+.maptop .crumb{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:#8FA9BC;margin:0}
+.maptop .where{font-family:var(--disp);font-size:18px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin:0}
+.maptop .where b{color:var(--gold);font-weight:600}
+.maptop .back{margin-left:auto;font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;background:rgba(255,255,255,.07);border:1.5px solid rgba(255,255,255,.25);color:#fff;border-radius:999px;padding:8px 14px;cursor:pointer;display:none}
+.maptop .back:hover{border-color:var(--gold);color:var(--gold)}
+.maptop .note{font-size:12px;color:#C7D6E2;width:100%}
+.panel{background:var(--card);border:1px solid rgba(15,61,92,.1);border-radius:var(--r);box-shadow:var(--shadow-1);padding:18px 18px 8px;max-height:min(80vh,800px);overflow:auto}
+@media(max-width:900px){.panel{max-height:none}}
+.panel h2{font-family:var(--disp);font-size:16px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-deep);margin:0 0 4px}
+.panel .sub{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--steel);margin:0 0 12px}
+.stlist{list-style:none;margin:0;padding:0}
+.stlist li{display:flex;align-items:center;gap:10px;padding:9px 6px;border-top:1px solid rgba(15,61,92,.08);cursor:pointer;border-radius:8px}
+.stlist li:hover{background:var(--paper)}
+.stlist .ab{font-family:var(--mono);font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--ink-deep);background:linear-gradient(180deg,var(--gold-soft),var(--gold));border-radius:6px;padding:3px 7px;min-width:26px;text-align:center}
+.stlist .nm{font-size:14px;font-weight:600;color:var(--ink-deep);flex:1}
+.stlist .ct{font-family:var(--mono);font-size:10.5px;color:var(--steel);letter-spacing:.06em}
+.mco{border:1px solid rgba(15,61,92,.12);border-radius:12px;padding:12px 14px;margin-bottom:10px;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.mco:hover,.mco.on{border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,175,55,.25)}
+.mco h3{font-family:var(--disp);font-size:15px;font-weight:600;text-transform:uppercase;letter-spacing:.03em;color:var(--ink-deep);margin:0 0 6px;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}
+.mco .loc{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;color:var(--steel);margin:0}
+.mco p{margin:6px 0 0;font-size:13px;line-height:1.55;color:#4E6273}
+.mco a{color:var(--copper);font-weight:600;text-decoration:none}
+.cobadge{font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;font-weight:600;padding:3px 9px;border-radius:999px}
+.cobadge.coil{background:linear-gradient(180deg,var(--gold-soft),var(--gold));color:var(--ink-deep)}
+.cobadge.fab{background:var(--patina);color:#fff}
+.cobadge.turnkey{background:#A0602E;color:#fff}
+.mco.lic{border-style:dashed}
+.sect{font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--steel);margin:16px 0 8px}
+.empty{border:1px dashed rgba(15,61,92,.25);border-radius:12px;padding:16px;color:var(--steel);font-size:13.5px;line-height:1.6;margin-bottom:10px}
+.empty a{color:var(--copper);font-weight:600}
+.pin{width:16px;height:16px;border-radius:50% 50% 50% 0;background:linear-gradient(180deg,var(--gold-soft),var(--gold));border:2px solid var(--ink-deep);transform:rotate(-45deg);box-shadow:0 2px 6px rgba(0,0,0,.35);transition:transform .15s,opacity .2s}
+.pin.dim{opacity:.35}
+.pin.on{transform:rotate(-45deg) scale(1.35);background:var(--copper);border-color:#fff}
+.leaflet-popup-content-wrapper{border-radius:12px;font-family:var(--body)}
+.leaflet-popup-content{margin:12px 14px;font-size:13px;line-height:1.5}
+.leaflet-popup-content h4{font-family:var(--disp);font-size:15px;text-transform:uppercase;letter-spacing:.03em;margin:0 0 4px;color:var(--ink-deep)}
+.leaflet-popup-content a{color:var(--copper);font-weight:600;text-decoration:none}
+.leaflet-container{font-family:var(--body)}
+.stlabel{font-family:var(--mono);font-size:10px;letter-spacing:.08em;font-weight:600;color:var(--ink-deep);text-shadow:0 0 3px #fff,0 0 3px #fff;pointer-events:none;text-align:center}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<a class="ribbon" href="/get-listed.html"><b>Suppliers &amp; fabricators</b><span>Get your shop listed &mdash; free</span><i>&rarr;</i></a>
+<header class="nav"><div class="nav-in">
+  <a class="brand" href="/"><b>Roof<i>Coil</i></b><span>Sheet metal search</span></a>
+  <nav class="nav-links">
+    <a href="/">Home</a>
+    <a href="/suppliers.html">Find a supplier</a>
+    <a href="/map.html" class="on">Map</a>
+    <a href="/articles/">Resources</a>
+    <a href="/get-listed.html">Get listed</a>
+  </nav>
+  <a class="nav-phone" href="tel:+19729447963">972-944-7963</a><span data-auth-slot></span>
+</div></header>
+
+<div class="dhero" style="min-height:0">
+  <div class="seam dseam" style="--c:#26262A"></div>
+  <div class="scrim"></div>
+  <div class="wrap" style="padding-block:clamp(30px,4.5vw,50px)">
+    <p class="eyebrow" style="color:#C7D6E2">Suppliers, fabricators &amp; contractors</p>
+    <h1 style="font-family:var(--disp);font-size:clamp(26px,4vw,42px);text-transform:uppercase;font-weight:700;margin:6px 0;text-shadow:0 2px 18px rgba(0,0,0,.5)">Every listing on the map</h1>
+    <p class="sub">Click a state to zoom in. Every shop stays pinned — tap a pin or a card for the details.</p>
+  </div>
+</div>
+
+<div class="wrap" style="padding-block:clamp(22px,3.5vw,40px)">
+<div class="mapgrid">
+  <div class="mapcard">
+    <div class="maptop">
+      <div>
+        <p class="crumb">Browse by state</p>
+        <p class="where" id="where">All states · <b id="tot">…</b></p>
+      </div>
+      <button class="back" id="back">← All states</button>
+      <p class="note" id="note">Loading listings…</p>
+    </div>
+    <div id="map" role="application" aria-label="Map of listed suppliers and fabricators"></div>
+  </div>
+  <aside class="panel" id="panel">
+    <h2 id="p-title">States with listings</h2>
+    <p class="sub" id="p-sub">Pick one to zoom in</p>
+    <div id="p-body"></div>
+  </aside>
+</div>
+<p style="margin-top:18px;font-size:13.5px;color:#4E6273">Need to narrow by ability or color? Use the <a href="/suppliers.html" style="color:var(--copper);font-weight:600">full search</a>. Not on the map yet? <a href="/get-listed.html" style="color:var(--copper);font-weight:600">Get listed</a> — it's free.</p>
+</div>
+
+<footer><div class="f-bot" style="flex-direction:column;gap:10px;align-items:flex-start">
+  <nav style="display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12.5px">
+    <a href="/standing-seam-panels.html" style="color:#CFE0EC;text-decoration:none">Standing seam panels</a>
+    <a href="/sheet-metal-trim.html" style="color:#CFE0EC;text-decoration:none">Sheet metal trim</a>
+    <a href="/roll-forming.html" style="color:#CFE0EC;text-decoration:none">On-site roll forming</a>
+    <a href="/coil-and-flats.html" style="color:#CFE0EC;text-decoration:none">Coil &amp; flat sheet</a>
+    <a href="/articles/" style="color:#CFE0EC;text-decoration:none">Resources</a>
+    <a href="/suppliers.html" style="color:#CFE0EC;text-decoration:none">Find a supplier</a>
+    <a href="/map.html" style="color:#CFE0EC;text-decoration:none">Map</a>
+    <a href="/get-listed.html" style="color:#CFE0EC;text-decoration:none">Get listed</a>
+    <a href="/members.html" style="color:#CFE0EC;text-decoration:none">Member tools</a>
+  </nav>
+  <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;width:100%">
+    <span>© 2026 RoofCoil · <a href="tel:+19729447963" style="color:inherit;text-decoration:none">972-944-7963</a> · <a href="mailto:orders@roofcoil.com" style="color:inherit;text-decoration:none">orders@roofcoil.com</a></span>
+    <span class="mono" style="letter-spacing:.12em;text-transform:uppercase">Browse by state</span>
+  </div>
+</div></footer>
+
+<script>
+const SUPA="https://znueitseoqijhkkvdomc.supabase.co";
+const KEY="sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
+const STATES_URL="https://cdn.jsdelivr.net/npm/us-atlas@3.0.1/states-10m.json";
+
+// Census FIPS → postal abbreviation, name. us-atlas keys each state by FIPS.
+const FIPS={"01":["AL","Alabama"],"02":["AK","Alaska"],"04":["AZ","Arizona"],"05":["AR","Arkansas"],"06":["CA","California"],"08":["CO","Colorado"],"09":["CT","Connecticut"],"10":["DE","Delaware"],"11":["DC","District of Columbia"],"12":["FL","Florida"],"13":["GA","Georgia"],"15":["HI","Hawaii"],"16":["ID","Idaho"],"17":["IL","Illinois"],"18":["IN","Indiana"],"19":["IA","Iowa"],"20":["KS","Kansas"],"21":["KY","Kentucky"],"22":["LA","Louisiana"],"23":["ME","Maine"],"24":["MD","Maryland"],"25":["MA","Massachusetts"],"26":["MI","Michigan"],"27":["MN","Minnesota"],"28":["MS","Mississippi"],"29":["MO","Missouri"],"30":["MT","Montana"],"31":["NE","Nebraska"],"32":["NV","Nevada"],"33":["NH","New Hampshire"],"34":["NJ","New Jersey"],"35":["NM","New Mexico"],"36":["NY","New York"],"37":["NC","North Carolina"],"38":["ND","North Dakota"],"39":["OH","Ohio"],"40":["OK","Oklahoma"],"41":["OR","Oregon"],"42":["PA","Pennsylvania"],"44":["RI","Rhode Island"],"45":["SC","South Carolina"],"46":["SD","South Dakota"],"47":["TN","Tennessee"],"48":["TX","Texas"],"49":["UT","Utah"],"50":["VT","Vermont"],"51":["VA","Virginia"],"53":["WA","Washington"],"54":["WV","West Virginia"],"55":["WI","Wisconsin"],"56":["WY","Wyoming"],"72":["PR","Puerto Rico"]};
+const ABBR={};for(const k in FIPS)ABBR[FIPS[k][0]]=FIPS[k][1];
+const NAME2ABBR={};for(const k in FIPS)NAME2ABBR[FIPS[k][1].toLowerCase()]=FIPS[k][0];
+
+const $=s=>document.querySelector(s);
+const el=(tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e};
+
+// ── Map ─────────────────────────────────────────────────────────────────────
+const US_BOUNDS=[[24.2,-125.5],[49.6,-66.5]];
+const map=L.map('map',{scrollWheelZoom:false,worldCopyJump:false});
+map.fitBounds(US_BOUNDS);
+map.on('focus',()=>map.scrollWheelZoom.enable());
+map.on('blur',()=>map.scrollWheelZoom.disable());
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',{
+  maxZoom:19,subdomains:'abcd',
+  attribution:'&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
+}).addTo(map);
+
+const stateLayers={};  // abbr → Leaflet GeoJSON feature layer
+const stateFeatures=[];// [{abbr, geom}] for point-in-polygon fallback
+const points=[];       // one per pinned location: {listing, lat, lng, city, abbr, marker}
+const byState={};      // abbr → [points]
+let selected=null;
+
+const STYLE={
+  base:{color:'#0F3D5C',weight:1,opacity:.55,fillColor:'#0F3D5C',fillOpacity:.04},
+  has:{color:'#0F3D5C',weight:1.2,opacity:.8,fillColor:'#D4AF37',fillOpacity:.22},
+  hover:{fillOpacity:.38,weight:2},
+  on:{color:'#A0602E',weight:2.5,opacity:1,fillColor:'#D4AF37',fillOpacity:.08},
+};
+function styleFor(abbr){
+  if(selected===abbr)return STYLE.on;
+  return byState[abbr]&&byState[abbr].length?STYLE.has:STYLE.base;
+}
+function restyle(){for(const a in stateLayers)stateLayers[a].setStyle(styleFor(a))}
+
+// ── Geometry helpers ────────────────────────────────────────────────────────
+function ringHas(ring,x,y){
+  let inside=false;
+  for(let i=0,j=ring.length-1;i<ring.length;j=i++){
+    const xi=ring[i][0],yi=ring[i][1],xj=ring[j][0],yj=ring[j][1];
+    if(((yi>y)!==(yj>y))&&(x<(xj-xi)*(y-yi)/(yj-yi)+xi))inside=!inside;
+  }
+  return inside;
+}
+function polyHas(coords,x,y){
+  if(!ringHas(coords[0],x,y))return false;
+  for(let i=1;i<coords.length;i++)if(ringHas(coords[i],x,y))return false;
+  return true;
+}
+function stateAt(lat,lng){
+  for(const f of stateFeatures){
+    const g=f.geom;
+    if(g.type==='Polygon'){if(polyHas(g.coordinates,lng,lat))return f.abbr}
+    else if(g.type==='MultiPolygon'){for(const p of g.coordinates)if(polyHas(p,lng,lat))return f.abbr}
+  }
+  return null;
+}
+// "Sherman, TX" / "Sherman TX" / "Sherman, Texas" → TX
+function stateFromCity(city){
+  if(!city)return null;
+  const s=String(city).trim();
+  let m=s.match(/[,\s]\s*([A-Za-z]{2})\.?$/);
+  if(m&&ABBR[m[1].toUpperCase()])return m[1].toUpperCase();
+  m=s.match(/,\s*([A-Za-z .]+)$/);
+  if(m&&NAME2ABBR[m[1].trim().toLowerCase()])return NAME2ABBR[m[1].trim().toLowerCase()];
+  return null;
+}
+// "TX, OK, LA" / "Texas and Oklahoma" → ["TX","OK","LA"]
+function statesFromList(txt){
+  if(!txt)return [];
+  const out=new Set();
+  String(txt).split(/[,;\/&|]|\band\b|\s+/i).forEach(t=>{
+    t=t.trim().replace(/\.$/,'');if(!t)return;
+    if(ABBR[t.toUpperCase()])out.add(t.toUpperCase());
+    else if(NAME2ABBR[t.toLowerCase()])out.add(NAME2ABBR[t.toLowerCase()]);
+  });
+  // two-word names ("New Mexico") get split above — catch them whole too
+  for(const n in NAME2ABBR)if(n.includes(' ')&&String(txt).toLowerCase().includes(n))out.add(NAME2ABBR[n]);
+  return [...out];
+}
+
+// ── Listings ────────────────────────────────────────────────────────────────
+function fmtPhone(p){
+  const d=String(p||'').replace(/\D/g,'');
+  return d.length===10?d.slice(0,3)+'-'+d.slice(3,6)+'-'+d.slice(6):String(p||'');
+}
+function safeHttp(raw){
+  if(!raw)return null;
+  let s=String(raw).trim();if(!/^https?:\/\//i.test(s))s='https://'+s;
+  try{const u=new URL(s);return (u.protocol==='https:'||u.protocol==='http:')?u:null}catch(e){return null}
+}
+function badgeNodes(l){
+  const out=[];const b=l.badges||[];
+  if(b.includes('coil'))out.push(el('span','cobadge coil','Supply Materials'));
+  if(b.includes('fab'))out.push(el('span','cobadge fab','Fabrication'));
+  if(b.includes('turnkey'))out.push(el('span','cobadge turnkey','Turnkey'));
+  return out;
+}
+// Every location a listing operates from. A branch may carry its own city
+// and coordinates; if the listing predates multi-location support it just
+// has the top-level lat/lng.
+function listingPoints(l){
+  const locs=(Array.isArray(l.locations)?l.locations:[]).filter(x=>x&&isFinite(parseFloat(x.lat))&&isFinite(parseFloat(x.lng)));
+  if(locs.length)return locs.map(x=>({lat:+x.lat,lng:+x.lng,city:x.city||l.city||'',address:x.address||''}));
+  if(isFinite(parseFloat(l.lat))&&isFinite(parseFloat(l.lng)))return [{lat:+l.lat,lng:+l.lng,city:l.city||'',address:l.address||''}];
+  return [];
+}
+
+// Popup built with DOM nodes only — listing text is applicant-submitted.
+function popupFor(pt){
+  const l=pt.listing;const w=el('div');
+  const h=el('h4',null,l.name);w.appendChild(h);
+  const bd=badgeNodes(l);if(bd.length){const r=el('div');r.style.cssText='display:flex;flex-wrap:wrap;gap:5px;margin-bottom:6px';bd.forEach(b=>r.appendChild(b));w.appendChild(r)}
+  const where=[pt.address,pt.city].filter(Boolean).join(' · ');
+  if(where)w.appendChild(el('div',null,where));
+  const bits=[];
+  if(l.phone){const a=el('a',null,fmtPhone(l.phone));a.href='tel:'+String(l.phone).replace(/[^\d+]/g,'');bits.push(a)}
+  const u=safeHttp(l.website);if(u){const a=el('a',null,u.hostname.replace(/^www\./,''));a.href=u.href;a.target='_blank';a.rel='noopener nofollow';bits.push(a)}
+  const s=el('a',null,'Full listing');s.href='/suppliers.html?loc='+encodeURIComponent((pt.city||'').split(',')[0].trim());bits.push(s);
+  const row=el('div');row.style.marginTop='6px';
+  bits.forEach((n,i)=>{if(i)row.appendChild(document.createTextNode(' · '));row.appendChild(n)});
+  w.appendChild(row);
+  return w;
+}
+function makeMarker(pt){
+  const icon=L.divIcon({className:'',html:'<div class="pin"></div>',iconSize:[16,16],iconAnchor:[8,16],popupAnchor:[0,-14]});
+  const m=L.marker([pt.lat,pt.lng],{icon,title:pt.listing.name,riseOnHover:true}).addTo(map);
+  m.bindPopup(popupFor(pt));
+  // clicking a pin from the whole-map view also selects its state so the panel follows
+  m.on('click',()=>{if(pt.abbr&&selected!==pt.abbr)selectState(pt.abbr);highlight(pt)});
+  return m;
+}
+function setPinClass(pt){
+  const e=pt.marker.getElement();if(!e)return;
+  const pin=e.querySelector('.pin');if(!pin)return;
+  pin.classList.toggle('dim',!!selected&&pt.abbr!==selected);
+}
+function highlight(pt){
+  points.forEach(p=>{const e=p.marker.getElement();const pin=e&&e.querySelector('.pin');if(pin)pin.classList.toggle('on',p===pt)});
+  document.querySelectorAll('.mco').forEach(c=>c.classList.toggle('on',c._pt===pt));
+}
+
+// ── Side panel ──────────────────────────────────────────────────────────────
+function cardFor(pt,extraClass){
+  const l=pt.listing;const c=el('div','mco'+(extraClass?' '+extraClass:''));c._pt=pt;
+  const h=el('h3');h.appendChild(document.createTextNode(l.name));badgeNodes(l).forEach(b=>h.appendChild(b));c.appendChild(h);
+  const where=[pt.address,pt.city].filter(Boolean).join(' · ');
+  if(where)c.appendChild(el('p','loc',where));
+  const bits=[];
+  if(l.phone)bits.push(document.createTextNode(fmtPhone(l.phone)));
+  const u=safeHttp(l.website);if(u){const a=el('a',null,u.hostname.replace(/^www\./,''));a.href=u.href;a.target='_blank';a.rel='noopener nofollow';a.onclick=e=>e.stopPropagation();bits.push(a)}
+  if(bits.length){const p=el('p');bits.forEach((n,i)=>{if(i)p.appendChild(document.createTextNode(' · '));p.appendChild(n)});c.appendChild(p)}
+  if(l.licensed_states){const p=el('p');const b=el('b',null,'Licensed in: ');b.style.color='var(--ink-deep)';p.appendChild(b);p.appendChild(document.createTextNode(l.licensed_states));c.appendChild(p)}
+  c.onclick=()=>{
+    map.flyTo([pt.lat,pt.lng],Math.max(map.getZoom(),9),{duration:.6});
+    pt.marker.openPopup();highlight(pt);
+    if(window.innerWidth<=900)$('#map').scrollIntoView({behavior:'smooth',block:'start'});
+  };
+  return c;
+}
+function renderAll(){
+  const body=$('#p-body');body.innerHTML='';
+  $('#p-title').textContent='States with listings';$('#p-sub').textContent='Pick one to zoom in';
+  const abbrs=Object.keys(byState).filter(a=>byState[a].length).sort((a,b)=>byState[b].length-byState[a].length||ABBR[a].localeCompare(ABBR[b]));
+  if(!abbrs.length){
+    const e=el('div','empty');e.appendChild(document.createTextNode(points.length?'Listings are on the map — pick a state outline to zoom in.':'No listings have loaded yet. '));
+    if(!points.length){const a=el('a',null,'Get listed');a.href='/get-listed.html';e.appendChild(a);e.appendChild(document.createTextNode(' to be the first pin.'))}
+    body.appendChild(e);return;
+  }
+  const ul=el('ul','stlist');
+  abbrs.forEach(a=>{
+    const li=el('li');li.appendChild(el('span','ab',a));li.appendChild(el('span','nm',ABBR[a]));
+    const n=byState[a].length;li.appendChild(el('span','ct',n+(n===1?' shop':' shops')));
+    li.onclick=()=>selectState(a);ul.appendChild(li);
+  });
+  body.appendChild(ul);
+  const unplaced=points.filter(p=>!p.abbr);
+  if(unplaced.length){
+    body.appendChild(el('p','sect','Pinned outside the states above'));
+    unplaced.forEach(p=>body.appendChild(cardFor(p)));
+  }
+}
+function renderState(abbr){
+  const body=$('#p-body');body.innerHTML='';
+  const pts=byState[abbr]||[];
+  $('#p-title').textContent=ABBR[abbr];
+  $('#p-sub').textContent=pts.length?pts.length+(pts.length===1?' listing':' listings'):'No listings yet';
+  if(!pts.length){
+    const e=el('div','empty');e.appendChild(document.createTextNode('Nobody is listed in '+ABBR[abbr]+' yet. Know a shop that should be? '));
+    const a=el('a',null,'Get them listed');a.href='/get-listed.html';e.appendChild(a);e.appendChild(document.createTextNode(' — it’s free.'));body.appendChild(e);
+  }
+  const seen=new Set();
+  pts.sort((a,b)=>(b.listing.featured?1:0)-(a.listing.featured?1:0)||a.listing.name.localeCompare(b.listing.name))
+     .forEach(p=>{body.appendChild(cardFor(p))});
+  pts.forEach(p=>seen.add(p.listing));
+  // Turnkey crews licensed to work in this state even if based elsewhere
+  const lic=[];
+  points.forEach(p=>{
+    if(seen.has(p.listing)||lic.some(x=>x.listing===p.listing))return;
+    if(statesFromList(p.listing.licensed_states).includes(abbr))lic.push(p);
+  });
+  if(lic.length){
+    body.appendChild(el('p','sect','Licensed to work in '+ABBR[abbr]));
+    lic.forEach(p=>body.appendChild(cardFor(p,'lic')));
+  }
+}
+
+// ── State selection ─────────────────────────────────────────────────────────
+function selectState(abbr,opts){
+  selected=abbr;restyle();
+  points.forEach(setPinClass);
+  const lyr=stateLayers[abbr];
+  if(lyr)map.flyToBounds(lyr.getBounds(),{padding:[20,20],duration:.8});
+  else if(byState[abbr]&&byState[abbr].length)map.flyToBounds(L.latLngBounds(byState[abbr].map(p=>[p.lat,p.lng])).pad(.4),{duration:.8});
+  const n=(byState[abbr]||[]).length;
+  $('#where').innerHTML='';$('#where').appendChild(document.createTextNode(ABBR[abbr]+' · '));
+  $('#where').appendChild(el('b',null,n+(n===1?' listing':' listings')));
+  $('#back').style.display='inline-block';
+  $('#note').textContent='Other states stay pinned in the background — click one to jump there, or back out to the whole map.';
+  renderState(abbr);
+  if(!(opts&&opts.silent)){
+    const u=new URL(location.href);u.searchParams.set('state',abbr);history.replaceState(null,'',u);
+  }
+  if(window.innerWidth<=900&&!(opts&&opts.silent))$('#map').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function clearState(){
+  selected=null;restyle();points.forEach(setPinClass);
+  map.flyToBounds(US_BOUNDS,{duration:.8});map.closePopup();
+  $('#where').innerHTML='';$('#where').appendChild(document.createTextNode('All states · '));
+  $('#where').appendChild(el('b',null,points.length+(points.length===1?' pin':' pins')));
+  $('#back').style.display='none';
+  $('#note').textContent='Gold states have listings. Click one to zoom in.';
+  renderAll();
+  const u=new URL(location.href);u.searchParams.delete('state');history.replaceState(null,'',u);
+}
+$('#back').onclick=clearState;
+
+// ── Load everything ─────────────────────────────────────────────────────────
+async function loadStates(){
+  try{
+    const r=await fetch(STATES_URL);if(!r.ok)throw new Error(r.status);
+    const topo=await r.json();
+    const fc=topojson.feature(topo,topo.objects.states);
+    fc.features.forEach(f=>{
+      const info=FIPS[String(f.id).padStart(2,'0')];if(!info)return;
+      const abbr=info[0];f.properties={abbr,name:info[1]};
+      stateFeatures.push({abbr,geom:f.geometry});
+    });
+    L.geoJSON(fc,{
+      style:f=>styleFor(f.properties.abbr),
+      onEachFeature:(f,layer)=>{
+        const a=f.properties.abbr;stateLayers[a]=layer;
+        layer.on('mouseover',()=>{if(selected!==a)layer.setStyle(STYLE.hover)});
+        layer.on('mouseout',()=>layer.setStyle(styleFor(a)));
+        layer.on('click',()=>{if(selected===a)clearState();else selectState(a)});
+        layer.bindTooltip(info=>info.feature.properties.name,{sticky:true,direction:'top',opacity:.95});
+      }
+    }).addTo(map);
+    return true;
+  }catch(e){
+    console.warn('state outlines unavailable',e);
+    return false;
+  }
+}
+async function loadListings(){
+  const r=await fetch(SUPA+"/rest/v1/directory_listings?select=name,badges,address,city,lat,lng,locations,website,phone,licensed_states,featured&status=eq.live&order=featured.desc,name.asc",{headers:{apikey:KEY}});
+  if(!r.ok)throw new Error(r.status);
+  const rows=await r.json();
+  const have=new Set();
+  for(const l of rows){
+    if(!l||!l.name)continue;
+    const k=l.name.toLowerCase();if(have.has(k))continue;have.add(k);
+    for(const p of listingPoints(l)){
+      const pt={listing:l,lat:p.lat,lng:p.lng,city:p.city,address:p.address,abbr:null,marker:null};
+      points.push(pt);
+    }
+  }
+}
+(async()=>{
+  const [outlines]=await Promise.all([loadStates(),loadListings().catch(e=>{console.warn('listings unavailable',e);$('#note').textContent='Listings could not be loaded right now — try again in a minute.'})]);
+  points.forEach(pt=>{
+    pt.abbr=stateFromCity(pt.city)||(outlines?stateAt(pt.lat,pt.lng):null);
+    if(pt.abbr)(byState[pt.abbr]=byState[pt.abbr]||[]).push(pt);
+    pt.marker=makeMarker(pt);
+  });
+  restyle();
+  // Markers keep their own layer above the state fills, so pins are always clickable
+  // and a state zoom never hides them.
+  $('#tot').textContent=points.length+(points.length===1?' pin':' pins');
+  const want=(new URLSearchParams(location.search).get('state')||'').toUpperCase();
+  if(want&&ABBR[want])selectState(want,{silent:true});
+  else{
+    $('#note').textContent=outlines?'Gold states have listings. Click one to zoom in.':'State outlines could not load — the pins still work.';
+    renderAll();
+  }
+})();
+</script>
+</body>
+</html>
