@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase, Package } from "lucide-react";
+import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase, Package, Pencil } from "lucide-react";
 import * as THREE from "three";
 import { storage } from "./lib/storage";
 import { supabase } from "./lib/supabaseClient";
@@ -559,25 +559,25 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
   const KICK = 0.5 / Math.SQRT2; // a ½" leg kicked out at 45° — the drip on every fascia trim
 
   return [
-    { id: "eave", name: "Eave / Drip Edge", dims: '3" × 2" · ½" 45° kick', per: "eave", on: true,
-      where: "Bottom edge of the roof — deck flange under the panels, face down the fascia, kicked out 45° at the bottom to throw the water clear, and hemmed. The panels hook an Offset Cleat over the flange, or the lip of the D-Style Drip Edge below.",
-      points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 2), kitPt(3 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
-    { id: "dstyle", name: "D-Style Drip Edge", dims: '3¾" × 2" · 1¼" lip hemmed flat · ½" 45° kick', per: "eave", on: false,
-      where: "Same eave for panels that hook the trim itself (the T-style) — 2½\" on the deck, then a 1¼\" lip past the fascia, hemmed flat back under, that the panel's hemmed edge hooks and squeezes shut on: no cleat. Face down the fascia, kicked at the bottom with a closed hem; tick it in place of the Eave / Drip Edge above.",
+    { id: "eave", name: "Eave / Drip Edge", dims: '3" × 2" · ½" 45° kick', per: "eave", on: false,
+      where: "Bottom edge of the roof — deck flange under the panels, face down the fascia, kicked out 45° at the bottom to throw the water clear, and hemmed. The panels hook an Offset Cleat over the flange; tick it in place of the D-Style Drip Edge below when the job runs a cleat.",
+      points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 2), kitPt(3 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "left" },
+    { id: "dstyle", name: "D-Style Drip Edge", dims: '3¾" × 2" · 1¼" lip hemmed flat · ½" 45° kick', per: "eave", on: true,
+      where: "The eave the box starts with — for panels that hook the trim itself (the T-style): 2½\" on the deck, then a 1¼\" lip past the fascia, hemmed flat back under, that the panel's hemmed edge hooks and squeezes shut on: no cleat. Face down the fascia, kicked at the bottom with a closed hem.",
       points: [kitPt(0, 0), kitPt(3.75, 0), kitFold(2.5, 0, "left"), kitPt(2.5, 2), kitPt(2.5 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
     { id: "apron", name: "Gutter Apron", dims: '4½" × 2" · 15° kick', per: "eave with gutters", on: false,
       where: "Eave trim for gutter runs — a longer deck flange and a face kicked out over the gutter's back.",
-      points: [kitPt(0, 0), kitPt(4.5, 0), kitPt(4.5 + 2 * Math.sin(apronKick), 2 * Math.cos(apronKick))], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
+      points: [kitPt(0, 0), kitPt(4.5, 0), kitPt(4.5 + 2 * Math.sin(apronKick), 2 * Math.cos(apronKick))], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
     { id: "rake", name: "Rake / Gable Trim", dims: '3" × 5½" · ½" 45° kick', per: "rake edge", on: true,
       where: "Gable ends — the top leg covers the panel's turned-up edge and the rake cleat, the face drops over the fascia, kicked and hemmed at the bottom.",
-      points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 5.5), kitPt(3 + KICK, 5.5 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
+      points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 5.5), kitPt(3 + KICK, 5.5 + KICK)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
     { id: "higheave", name: "High-Side Eave", dims: '5" × 5½" · ½" 45° kick', per: "high eave (single-slope roofs)", on: false,
       where: "Top edge of a shed or single-slope roof — sits over the Z-closure and drops down the high fascia, kicked and hemmed.",
-      points: [kitPt(0, 0), kitPt(5, 0), kitPt(5, 5.5), kitPt(5 + KICK, 5.5 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
-    { id: "ridge", name: "Ridge Cap", dims: `${capLeg}" legs · bent to ${fmtPitch(pitch)}`, per: "ridge", on: true,
+      points: [kitPt(0, 0), kitPt(5, 0), kitPt(5, 5.5), kitPt(5 + KICK, 5.5 + KICK)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
+    { id: "ridge", name: "Ridge Cap", dims: `${capLeg}" legs · bent to ${fmtPitch(pitch)}`, per: "ridge", on: true, pitched: true,
       where: "Peak of the roof over the Z-closures, both legs hemmed for the drip. Bent to the roof pitch.",
       points: cap(ridgeHalf), hemStart: "open-left", hemEnd: "open-left", paintSide: "right" },
-    { id: "hip", name: "Hip Cap", dims: `${capLeg}" legs · hip angle for ${fmtPitch(pitch)}`, per: "hip", on: false,
+    { id: "hip", name: "Hip Cap", dims: `${capLeg}" legs · hip angle for ${fmtPitch(pitch)}`, per: "hip", on: false, pitched: true,
       where: "Same cap over a hip — the two slopes meet along the diagonal, so the fold is flatter than the ridge.",
       points: cap(hipHalf), hemStart: "open-left", hemEnd: "open-left", paintSide: "right" },
     { id: "valley", name: "W-Valley — Hemmed (uncleated)", dims: `${W}" wings · 1" diverter · hemmed edges`, per: "valley", on: true,
@@ -587,21 +587,21 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
       where: "Same pan with flat wings — an offset cleat runs along each edge and the panels hem over the cleat. Tick the Offset Cleat below, two lengths per valley.",
       points: valleyPan, hemStart: "none", hemEnd: "none", paintSide: "right" },
     { id: "sidewall", name: "Sidewall Flashing", dims: '4" × 4" · ⅜" kickout', per: "sidewall", on: true,
-      where: "Where the roof runs along a wall — roof leg over the panel, wall leg behind the siding or counter flashing, hemmed top.",
-      points: [kitPt(-0.375, 0.25), kitPt(0, 0), kitPt(4, 0), kitPt(4, -4)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
-    { id: "endwall", name: "Headwall Flashing", dims: `5" × 4" · wall leg plumb for ${fmtPitch(pitch)}`, per: "headwall", on: true,
+      where: "Where the roof runs along a wall — roof leg over the panel, wall leg behind the siding or counter flashing.",
+      points: [kitPt(-0.375, 0.25), kitPt(0, 0), kitPt(4, 0), kitPt(4, -4)], hemStart: "none", hemEnd: "none", paintSide: "right" },
+    { id: "endwall", name: "Headwall Flashing", dims: `5" × 4" · wall leg plumb for ${fmtPitch(pitch)}`, per: "headwall", on: true, pitched: true,
       where: "Where the roof runs up into a wall (an endwall) — sits over the Z-closure, wall leg plumb at your pitch behind the siding or counter flashing.",
-      points: [kitPt(-0.375, 0.25), kitPt(0, 0), kitPt(5, 0), kitPt(5 + 4 * wallTilt.x, 4 * wallTilt.y)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
+      points: [kitPt(-0.375, 0.25), kitPt(0, 0), kitPt(5, 0), kitPt(5 + 4 * wallTilt.x, 4 * wallTilt.y)], hemStart: "none", hemEnd: "none", paintSide: "right" },
     { id: "counter", name: "Counter Flashing — Reglet", dims: '1" reglet · 4" face · ½" 45° kick', per: "sidewall and headwall against masonry", on: true,
       where: "Covers the top of the sidewall and headwall flashing — 1\" leg set into a saw-cut or mortar joint, 4\" face down the wall, kicked out and hemmed at the bottom.",
-      points: [kitPt(1, -0.25), kitPt(0, 0), kitPt(0, 4), kitPt(-KICK, 4 + KICK)], hemStart: "none", hemEnd: "open-right", paintSide: "left" },
+      points: [kitPt(1, -0.25), kitPt(0, 0), kitPt(0, 4), kitPt(-KICK, 4 + KICK)], hemStart: "none", hemEnd: "closed-right", paintSide: "left" },
     { id: "counter2", name: "Counter Flashing — Surface Mount", dims: '½" sealant kick · 4" face · ½" 45° kick', per: "sidewall and headwall on siding, stucco or block", on: false,
       where: "Same job where nothing can be cut into the wall — the top edge kicks out 45° to hold a bead of sealant, screwed through the face.",
-      points: [kitPt(-KICK, -KICK), kitPt(0, 0), kitPt(0, 4), kitPt(-KICK, 4 + KICK)], hemStart: "none", hemEnd: "open-right", paintSide: "left" },
+      points: [kitPt(-KICK, -KICK), kitPt(0, 0), kitPt(0, 4), kitPt(-KICK, 4 + KICK)], hemStart: "none", hemEnd: "closed-right", paintSide: "left" },
     { id: "zclosure", name: "Z-Closure", dims: `1" × ${H}" × 1"`, per: "ridge and hip (two per length, one on each slope), plus headwalls and pitch breaks", on: true,
       where: "Fills the seam height between panels under the ridge and hip caps, at headwalls and pitch breaks; sealed to the pan. Eaves are usually hemmed over a cleat instead.",
       points: [kitPt(0, 0), kitPt(1, 0), kitPt(1, -H), kitPt(2, -H)], hemStart: "none", hemEnd: "none", paintSide: "right" },
-    { id: "transition", name: "Pitch Transition", dims: `4" × ${riser}" × 4" · ${fmtPitch(pitch)} to ${fmtPitch(Math.min(lowerPitch, pitch))}`, per: "pitch break", on: false,
+    { id: "transition", name: "Pitch Transition", dims: `4" × ${riser}" × 4" · ${fmtPitch(pitch)} to ${fmtPitch(Math.min(lowerPitch, pitch))}`, per: "pitch break", on: false, pitched: true,
       where: "Where a steep roof breaks to a flatter one — upper leg under the upper panels, steps up over the lower Z-closure, lower leg follows the flatter pitch.",
       points: [kitPt(0, 0), kitPt(4, 0), kitPt(4, -riser), kitPt(4 + 4 * Math.cos(dTrans), -riser - 4 * Math.sin(dTrans))], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
     { id: "cleat", name: "Offset Cleat", dims: '1" × ⅜" × 1½"', per: "eave and rake under the trim, and both edges of a cleated valley", on: false,
@@ -611,13 +611,13 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
 }
 const ROOF_KIT_DEFAULT_SEL = Object.fromEntries(buildRoofKit().map((it) => [it.id, it.on ? 1 : 0]));
 // Quick presets on the trim canvas: every piece of the kit at a 4:12 roof, under the name
-// the box gives it (Roof in a Box redraws the pitch-driven ones to any pitch), plus the shop
-// staples that aren't roof trims.
+// the box gives it (Roof in a Box redraws the pitch-driven ones to any pitch), plus Custom
+// for a blank start.
 const KIT_4_12 = Object.fromEntries(buildRoofKit({ pitch: 4 }).map((it) => [it.id, it]));
+const PITCHED_KIT = new Set(Object.values(KIT_4_12).filter((it) => it.pitched).map((it) => it.id)); // the pieces whose shape follows the roof pitch
 const KIT_PRESETS = Object.fromEntries(Object.values(KIT_4_12).map((it) => [it.name, it.id]));
 const TRIM_PRESETS = {
   ...Object.fromEntries(Object.entries(KIT_PRESETS).map(([name, id]) => [name, KIT_4_12[id].points])),
-  "F-Channel": [[0, 0], [0, 10.5], [7, 10.5], [7, 4], [10, 4], [10, 0]],
   "Custom": [[0, 0], [0, 6]],
 };
 // A preset from the kit brings its standard end folds and painted side along with the shape;
@@ -3397,12 +3397,19 @@ export default function ShopOrderApp() {
   const matSaveChain = useRef(Promise.resolve()); // serializes board writes so rapid taps can't land out of order
   const [submitting, setSubmitting] = useState(false);
   const [basket, setBasket] = useState([]);
+  const [editingId, setEditingId] = useState(null); // the part from the list that is back on the canvas to be changed
+  const editSnapshot = useRef(null); // what the canvas and form held before a part was tapped — put back when the edit ends
+  const canvasTopRef = useRef(null);
   // Roof in a Box — the standard 24 ga standing seam trim set, drawn to pitch
   const [roofBoxOpen, setRoofBoxOpen] = useState(false);
   const [roofBoxPitch, setRoofBoxPitch] = useState(4);
   const [roofBoxSeam, setRoofBoxSeam] = useState(1.5);
   const [roofBoxLower, setRoofBoxLower] = useState(3);
   const [roofBoxSel, setRoofBoxSel] = useState({}); // id -> qty (0 = not in the box)
+  const [roofBoxRowPitch, setRoofBoxRowPitch] = useState({}); // id -> the pitch that one piece is bent to, when it differs from the roof's
+  const [boxNote, setBoxNote] = useState(""); // one line the box shows after a round trip — "Added Ridge Cap ×4 — pick the next piece."
+  const [boxStripAll, setBoxStripAll] = useState(false); // the "In the order now" strip shows eight parts until asked for all
+  const [boxReturn, setBoxReturn] = useState(null); // the kit id of the box piece on the canvas, or "edit" for a part opened from the box's list — the box comes back when that work is done
   const [tabLoaded, setTabLoaded] = useState(false);
   // Job Vault — each member's saved trim/panel configs (Supabase vault_items, owner-only)
   const [vaultItems, setVaultItems] = useState([]);
@@ -4082,6 +4089,7 @@ export default function ShopOrderApp() {
           throw new Error("Couldn't make sense of that sketch");
         }
         setPoints(parsed.map((p) => [+p[0], +p[1]]));
+        setBoxReturn((r) => (r === "edit" ? r : null)); // a scanned shape is not the box piece
         setViewResetKey((k) => k + 1);
         setToast("Sketch scanned — check the shape and adjust any points/lengths before using it.");
         setTimeout(() => setToast(""), 5000);
@@ -4193,7 +4201,7 @@ export default function ShopOrderApp() {
 
       // Marcus Webb — 2 trim pieces + 1 panel run, all Ready for Pickup
       mkTrim({ jobId: jobMarcus, partName: "F-Channel — Soffit Return", customerName: "Marcus Webb", phone: "(469) 555-0177",
-        points: TRIM_PRESETS["F-Channel"], quantity: 10, lengthPerPiece: 10,
+        points: [[0, 0], [0, 10.5], [7, 10.5], [7, 4], [10, 4], [10, 0]], quantity: 10, lengthPerPiece: 10,
         brand: "Adax Metals", ...trimColor("Adax Metals", "Matte Black"), status: "Ready for Pickup", createdAt: daysAgo(5) }),
       mkTrim({ jobId: jobMarcus, partName: "Z-Bar — Wainscot Transition", customerName: "Marcus Webb", phone: "(469) 555-0177",
         points: [[0, 0], [0, 7.5], [6, 1.5], [6, 9]], quantity: 14, lengthPerPiece: 10,
@@ -4298,40 +4306,124 @@ export default function ShopOrderApp() {
     setHemStart("none"); setHemEnd("none"); setPaintSide("left");
     setGaugeId(GAUGE_OPTIONS[0].id); setPaintId(PAINT_OPTIONS[0].id); setBrand(BRANDS[0]); setColorName(COLORS_BY_BRAND[BRANDS[0]][0].name);
     setQuantity(4); setLengthPerPiece(10); setSheetWidth(48); setPartName("");
+    setEditingId(null); setBoxReturn(null); editSnapshot.current = null; setRoofBoxOpen(false);
     setCustomerName(""); setPhone(""); setNotes("");
   };
 
   const clearDrawing = () => {
     setPoints([]); setHemStart("none"); setHemEnd("none"); setPaintSide("left");
     setQuantity(4); setLengthPerPiece(10); setPartName("");
+    setEditingId(null); setBoxReturn(null);
+  };
+
+  // The part on the canvas as an order item — a new one, or the edited version of `base`, which
+  // keeps its id and kit and its name if the name box was emptied. Gauge, paint and colour come
+  // from the form, which carries the part's own while it is being edited.
+  const draftPart = (base) => {
+    const own = { gaugeId, paintId, brand, colorName, colorHex: colorObj.hex };
+    return {
+      ...(base || {}), id: base?.id || uid(),
+      name: partName.trim() || base?.name || `Part ${basket.length + 1}`,
+      points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
+      girth, partsPerSheet, sheetsNeeded, dropWidth, photo: partPhoto, pitch: drawnPitch, ...own,
+      price: computePrice({ type: "trim", points, quantity, lengthPerPiece, ...own }, priceList, coilWidthScale),
+    };
+  };
+  // Every part the order is made of: the list, plus the canvas draft as one more — or, while a
+  // part from the list is back on the canvas, the draft standing in for that part.
+  const editingItem = editingId ? basket.find((i) => i.id === editingId) || null : null;
+  const orderParts = () => {
+    if (points.length < 2) return [...basket];
+    return editingItem ? basket.map((i) => (i.id === editingItem.id ? draftPart(i) : i)) : [...basket, draftPart()];
   };
 
   const addToBasket = () => {
     if (points.length < 2) { setToast("Draw at least two points before adding this part to the order."); return; }
-    const item = {
-      id: uid(),
-      name: partName.trim() || `Part ${basket.length + 1}`,
-      points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
-      girth, partsPerSheet, sheetsNeeded, dropWidth, photo: partPhoto,
-      gaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
-      price: computePrice({ type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, brand, colorName }, priceList, coilWidthScale),
-    };
+    const fromBox = boxReturn && boxReturn !== "edit" ? boxReturn : null;
+    const item = fromBox ? { ...draftPart(), kit: fromBox } : draftPart();
     setBasket((b) => [...b, item]);
     clearDrawing();
     setPartPhoto(null);
+    if (fromBox) { // back to the box to pick the next piece — its row unticked, since it is in the order now
+      setRoofBoxSel((sel) => ({ ...sel, [fromBox]: 0 }));
+      setBoxNote(`Added ${item.name} ×${item.quantity} — pick the next piece.`);
+      setRoofBoxOpen(true);
+    }
     setToast(`"${item.name}" added to the order — ${basket.length + 1} part${basket.length + 1 === 1 ? "" : "s"} so far.`);
     setTimeout(() => setToast(""), 3000);
   };
 
-  const removeBasketItem = (id) => setBasket((b) => b.filter((i) => i.id !== id));
+  const removeBasketItem = (id) => {
+    const gone = basket.find((i) => i.id === id);
+    setBasket((b) => b.filter((i) => i.id !== id));
+    // the last of a kit piece leaving the order ticks its box row back the way the box ships it
+    if (gone?.kit && !basket.some((i) => i.id !== id && i.kit === gone.kit)) setRoofBoxSel((sel) => (Object.keys(sel).length ? { ...sel, [gone.kit]: ROOF_KIT_DEFAULT_SEL[gone.kit] || 0 } : sel));
+    if (id === editingId) restoreCanvas();
+  };
+  // Tap a part in the list and it comes back onto the canvas and the form — legs, folds, painted
+  // side, name, quantity, length, sheet width, photo, gauge, paint and colour — to be changed and
+  // put back in its place. Whatever was on the canvas and the form is kept aside and comes back
+  // when the edit ends, so tapping a part to look at it never costs a drawing in progress.
+  const editBasketItem = (it, fromBox = false) => {
+    if (!editingId) editSnapshot.current = { points, hemStart, hemEnd, paintSide, partName, quantity, lengthPerPiece, sheetWidth, partPhoto, drawnPitch, preset, materialCategory, gaugeId, paintId, brand, colorName, boxReturn };
+    setEditingId(it.id);
+    if (fromBox) { setRoofBoxOpen(false); setBoxReturn("edit"); }
+    setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
+    setHemStart(it.hemStart || "none"); setHemEnd(it.hemEnd || "none"); setPaintSide(it.paintSide || "left");
+    setPartName(it.name); setQuantity(it.quantity); setLengthPerPiece(it.lengthPerPiece); setSheetWidth(it.sheetWidth);
+    setPartPhoto(it.photo || null); setDrawnPitch(it.pitch || 4);
+    setMaterialCategory(UNPAINTED_MATERIALS.includes(it.brand) ? "unpainted" : "painted");
+    if (it.gaugeId) setGaugeId(it.gaugeId); if (it.paintId) setPaintId(it.paintId);
+    if (it.brand) setBrand(it.brand); if (it.colorName) setColorName(it.colorName); // brand then colour directly — handleBrandChange would reset the colour
+    setViewResetKey((k) => k + 1);
+    canvasTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setToast(`Editing "${it.name}" — change what you need, then Update Part.`); setTimeout(() => setToast(""), 3500);
+  };
+  // The edit is over: the canvas and form go back to what they held before the part was tapped.
+  const restoreCanvas = () => {
+    const s = editSnapshot.current;
+    editSnapshot.current = null;
+    setEditingId(null);
+    if (boxReturn === "edit") setRoofBoxOpen(true); // the part was opened from the box's list — back to the box
+    if (!s) { clearDrawing(); setPartPhoto(null); return; }
+    setBoxReturn(s.boxReturn || null);
+    setPoints(s.points); setHemStart(s.hemStart); setHemEnd(s.hemEnd); setPaintSide(s.paintSide);
+    setPartName(s.partName); setQuantity(s.quantity); setLengthPerPiece(s.lengthPerPiece); setSheetWidth(s.sheetWidth);
+    setPartPhoto(s.partPhoto); setDrawnPitch(s.drawnPitch); setPreset(s.preset);
+    setMaterialCategory(s.materialCategory); setGaugeId(s.gaugeId); setPaintId(s.paintId); setBrand(s.brand); setColorName(s.colorName);
+    setViewResetKey((k) => k + 1);
+  };
+  const updateBasketItem = () => {
+    if (!editingItem) { setEditingId(null); return; }
+    if (points.length < 2) { setToast("Draw at least two points before updating this part."); return; }
+    const item = draftPart(editingItem);
+    setBasket((b) => b.map((i) => (i.id === editingId ? item : i)));
+    if (boxReturn === "edit") setBoxNote(`Updated ${item.name} ×${item.quantity}.`);
+    restoreCanvas();
+    setToast(`"${item.name}" updated.`); setTimeout(() => setToast(""), 3000);
+  };
+  const cancelEdit = () => { restoreCanvas(); setToast("Left as it was."); setTimeout(() => setToast(""), 2000); };
 
   /* ---------- Roof in a Box ---------- */
-  const roofKit = buildRoofKit({ pitch: roofBoxPitch, seamHeight: roofBoxSeam, lowerPitch: roofBoxLower });
+  // Every piece at the roof's pitch, carrying the pitch it was bent to — except a piece the roofer
+  // gave its own pitch, which is bent from a kit built at that pitch instead.
+  const roofKit = (() => {
+    const base = buildRoofKit({ pitch: roofBoxPitch, seamHeight: roofBoxSeam, lowerPitch: roofBoxLower }).map((it) => ({ ...it, pitch: roofBoxPitch }));
+    const kitsAt = {};
+    return base.map((it) => {
+      const own = roofBoxRowPitch[it.id];
+      if (!it.pitched || !own || own === roofBoxPitch) return it;
+      // a transition bent to its own pitch still has to break to something flatter than itself
+      const lower = own <= roofBoxLower ? Math.max(ROOF_PITCHES[0], ...ROOF_PITCHES.filter((r) => r < own)) : roofBoxLower;
+      if (!kitsAt[own]) kitsAt[own] = buildRoofKit({ pitch: own, seamHeight: roofBoxSeam, lowerPitch: lower });
+      return { ...kitsAt[own].find((k) => k.id === it.id), pitch: own };
+    });
+  })();
   // Opening the box (tile, button or ?view=box) starts it with the usual pieces ticked
   // and puts the order on 24 gauge, which is what the kit is drawn for.
   const roofBoxPitchRef = useRef(null);
   useEffect(() => {
-    if (!roofBoxOpen) return;
+    if (!roofBoxOpen) { setBoxNote(""); setBoxStripAll(false); return; }
     setRoofBoxSel((sel) => (Object.keys(sel).length ? sel : { ...ROOF_KIT_DEFAULT_SEL }));
     const onKey = (e) => { if (e.key === "Escape") setRoofBoxOpen(false); };
     window.addEventListener("keydown", onKey);
@@ -4350,27 +4442,43 @@ export default function ShopOrderApp() {
       points: it.points.map((pt) => [...pt]), hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide,
       quantity: qty, lengthPerPiece, sheetWidth: sheetWidthNum,
       girth: g, partsPerSheet: pps, sheetsNeeded: pps > 0 ? Math.ceil(qty / pps) : 0, dropWidth: pps > 0 ? Math.max(0, sheetWidthNum - pps * g) : sheetWidthNum,
-      photo: null, gaugeId: kitGaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
+      photo: null, pitch: it.pitch ?? roofBoxPitch, gaugeId: kitGaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
       price: computePrice({ type: "trim", points: it.points, quantity: qty, lengthPerPiece, gaugeId: kitGaugeId, paintId, brand, colorName }, priceList, coilWidthScale),
     };
   };
   const roofBoxPicked = roofKit.filter((it) => (roofBoxSel[it.id] || 0) > 0).map((it) => roofBoxItem(it, Math.max(1, Math.round(+roofBoxSel[it.id] || 1))));
+  // A box piece opened on the canvas and not yet added rides along with the box's Add.
+  const boxPending = boxReturn && boxReturn !== "edit" && points.length >= 2 ? { ...draftPart(), kit: boxReturn } : null;
   const addRoofBoxToOrder = () => {
-    if (roofBoxPicked.length === 0) { setToast("Tick at least one trim to add the box to the order."); setTimeout(() => setToast(""), 3000); return; }
-    setBasket((b) => [...b, ...roofBoxPicked]);
-    clearDrawing(); // same as Add Part: the canvas draft must not ride along as an extra part
-    setPartPhoto(null);
+    const added = boxPending ? [boxPending, ...roofBoxPicked] : roofBoxPicked;
+    if (added.length === 0) { setToast("Tick at least one trim to add the box to the order."); setTimeout(() => setToast(""), 3000); return; }
+    setBasket((b) => [...b, ...added]);
+    setRoofBoxSel((sel) => { const next = { ...sel }; for (const it of added) if (it.kit) next[it.kit] = 0; return next; }); // in the order now — tick again for more
+    if (!editingId) { clearDrawing(); setPartPhoto(null); } // same as Add Part: the canvas draft must not ride along as an extra part — unless it is a part being edited, which orderParts already counts once
     setRoofBoxOpen(false);
-    const pcs = roofBoxPicked.reduce((sum, it) => sum + it.quantity, 0);
-    setToast(`Roof in a Box — ${roofBoxPicked.length} trim${roofBoxPicked.length === 1 ? "" : "s"}, ${pcs} piece${pcs === 1 ? "" : "s"} added to the order.`);
+    const pcs = added.reduce((sum, it) => sum + (+it.quantity || 0), 0);
+    setToast(`Roof in a Box — ${added.length} trim${added.length === 1 ? "" : "s"}, ${pcs} piece${pcs === 1 ? "" : "s"} added to the order${boxPending ? ` (the ${boxPending.name} from the canvas with them)` : ""}.`);
     setTimeout(() => setToast(""), 4000);
+  };
+  // One row straight into the order at its quantity (1 if it is unticked), the box staying open.
+  const addRoofBoxRow = (it) => {
+    const fromCanvas = boxPending && boxPending.kit === it.id; // this very piece is on the canvas — that one goes in, legs as tweaked
+    const item = fromCanvas ? boxPending : roofBoxItem(it, Math.max(1, Math.round(+roofBoxSel[it.id] || 1)));
+    setBasket((b) => [...b, item]);
+    setRoofBoxSel((sel) => ({ ...sel, [it.id]: 0 })); // in the order now — tick again for more
+    if (fromCanvas) { clearDrawing(); setPartPhoto(null); }
+    setBoxNote(`Added ${item.name} ×${item.quantity}${it.pitched ? ` at ${fmtPitch(item.pitch || it.pitch)}` : ""}${fromCanvas ? ", as drawn on the canvas" : ""}.`);
   };
   // Load one kit piece into the canvas to tweak legs before adding it the usual way.
   const drawRoofBoxItem = (it) => {
+    if (editingId) restoreCanvas(); // a piece from the box is a new part, not the edited one
+    const replaced = boxPending && boxPending.kit !== it.id ? boxPending.name : null;
+    setBoxReturn(it.id);
     setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
-    setHemStart(it.hemStart); setHemEnd(it.hemEnd); setPaintSide(it.paintSide); setPartName(it.name); setDrawnPitch(roofBoxPitch);
+    setHemStart(it.hemStart); setHemEnd(it.hemEnd); setPaintSide(it.paintSide); setPartName(it.name); setDrawnPitch(it.pitch ?? roofBoxPitch);
+    setQuantity(roofBoxSel[it.id] > 0 ? roofBoxSel[it.id] : 4);
     setViewResetKey((k) => k + 1); setRoofBoxOpen(false);
-    setToast(`${it.name} is on the canvas — adjust any leg, then Add Part to Order.`); setTimeout(() => setToast(""), 3500);
+    setToast(`${it.name} is on the canvas — adjust any leg, then Add Part to Order.${replaced ? ` It took the place of the ${replaced} that was there.` : ""}`); setTimeout(() => setToast(""), 4000);
   };
 
   // Screws only sell in lots of 100 — the qty spinner steps by the lot size and any
@@ -4402,9 +4510,8 @@ export default function ShopOrderApp() {
 
   const basketPartsCount = basket.reduce((s, i) => s + i.quantity, 0);
   const basketSheets = basket.reduce((s, i) => s + i.sheetsNeeded, 0);
-  const basketTotal = basket.reduce((s, i) => s + i.price, 0);
   const combinedEstimate = shapeType === "trim"
-    ? basketTotal + (points.length >= 2 ? estimate : 0)
+    ? orderParts().reduce((s, i) => s + i.price, 0)
     : estimate;
 
   // PO numbers come from a server-side counter — customers only see their own
@@ -4429,14 +4536,7 @@ export default function ShopOrderApp() {
     }
 
     if (shapeType === "trim") {
-      const items = [...basket];
-      if (points.length >= 2) {
-        items.push({
-          id: uid(), name: partName.trim() || `Part ${basket.length + 1}`,
-          points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
-          girth, partsPerSheet, sheetsNeeded, gaugeId, paintId, brand, colorName, colorHex: colorObj.hex, photo: partPhoto,
-        });
-      }
+      const items = orderParts();
       if (items.length === 0) { setToast("Draw at least two points, or add a part to the order first."); return; }
       setSubmitting(true);
       const jobId = uid();
@@ -4581,14 +4681,7 @@ export default function ShopOrderApp() {
   // is order-shaped so computePrice and ShapeThumb both accept it as-is.
   const buildVaultPayloads = () => {
     if (shapeType === "trim") {
-      const parts = [...basket];
-      if (points.length >= 2) {
-        parts.push({
-          name: partName.trim() || `Part ${basket.length + 1}`,
-          points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
-          gaugeId, paintId, brand, colorName, colorHex: colorObj.hex, photo: partPhoto,
-        });
-      }
+      const parts = orderParts();
       return parts.map((it, idx) => ({
         type: "trim", partName: it.name, points: it.points, lengthPerPiece: it.lengthPerPiece,
         hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide, quantity: it.quantity,
@@ -4682,6 +4775,8 @@ export default function ShopOrderApp() {
   const loadVaultItem = (item, sourceLabel = "your Job Vault") => {
     const p = item.payload || {};
     const kind = p.type || item.kind;
+    if (editingId) restoreCanvas(); // a saved item is a new part, not the edited one
+    setBoxReturn(null); setRoofBoxOpen(false); // and not the box piece either
     setTab("order");
     setShapeType(kind);
     setOrderStep("details");
@@ -4828,6 +4923,13 @@ export default function ShopOrderApp() {
           100% { transform: scale(1); }
         }
         .pop-in { animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        /* Roof in a Box rows: tick, picture, words, controls — on a phone the controls drop under the words */
+        .box-row { display: grid; grid-template-columns: 22px 54px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+        .box-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+        @media (max-width: 560px) {
+          .box-row { grid-template-columns: 22px 54px minmax(0, 1fr); }
+          .box-row .box-controls { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+        }
         @keyframes wiggle {
           0%, 100% { transform: rotate(0deg); }
           25% { transform: rotate(-4deg); }
@@ -5932,17 +6034,18 @@ export default function ShopOrderApp() {
               </>
             ) : (
               <>
-                <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                <div ref={canvasTopRef} style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                   <button type="button" onClick={() => setRoofBoxOpen(true)} title="The standard trims for a 24 ga standing seam roof, drawn to your pitch"
                     style={{
                       padding: "5px 11px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer",
                       border: "1px solid #A0602E", background: "linear-gradient(180deg, #B8703A, #A0602E)", color: "#fff", display: "flex", alignItems: "center", gap: 5,
                     }}>
-                    <Package size={12} /> Roof in a Box
+                    <Package size={12} /> {boxReturn ? "← Back to Roof in a Box" : "Roof in a Box"}
                   </button>
                   {Object.keys(TRIM_PRESETS).map((p) => (
                     <button key={p} onClick={() => {
                       setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt])); setDrawnPitch(4);
+                      if (boxReturn && boxReturn !== "edit") { setPartName(""); setBoxReturn(null); }
                       const f = presetFolds(p);
                       if (f) { setHemStart(f.hemStart); setHemEnd(f.hemEnd); setPaintSide(f.paintSide); }
                       setViewResetKey((k) => k + 1);
@@ -5956,7 +6059,7 @@ export default function ShopOrderApp() {
                   ))}
                   {customPresetsLoaded && customPresets.map((cp) => (
                     <span key={cp.id} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
-                      <button onClick={() => { setPreset(cp.name); setPoints(cp.points.map((pt) => [...pt])); setViewResetKey((k) => k + 1); }}
+                      <button onClick={() => { setPreset(cp.name); setPoints(cp.points.map((pt) => [...pt])); if (boxReturn && boxReturn !== "edit") { setPartName(""); setBoxReturn(null); } setViewResetKey((k) => k + 1); }}
                         style={{
                           padding: "5px 8px 5px 10px", borderRadius: "999px 0 0 999px", fontSize: 11, cursor: "pointer",
                           border: `1px solid ${SAFETY}`, borderRight: "none", background: preset === cp.name ? SAFETY : "#fff", color: preset === cp.name ? "#fff" : SAFETY,
@@ -6015,7 +6118,7 @@ export default function ShopOrderApp() {
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end", marginTop: 12 }}>
                           <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", flexDirection: "column", gap: 3 }}>Roof pitch
                             <select ref={roofBoxPitchRef} value={roofBoxPitch} className="mono" style={selStyle} data-testid="box-pitch"
-                              onChange={(e) => { const pch = +e.target.value; setRoofBoxPitch(pch); setRoofBoxLower((low) => (low < pch ? low : Math.max(ROOF_PITCHES[0], ...ROOF_PITCHES.filter((r) => r < pch)))); }}>
+                              onChange={(e) => { const pch = +e.target.value; setRoofBoxPitch(pch); setRoofBoxRowPitch({}); setRoofBoxLower((low) => (low < pch ? low : Math.max(ROOF_PITCHES[0], ...ROOF_PITCHES.filter((r) => r < pch)))); }}>
                               {ROOF_PITCHES.map((r) => <option key={r} value={r}>{fmtPitch(r)}</option>)}
                             </select>
                           </label>
@@ -6034,36 +6137,90 @@ export default function ShopOrderApp() {
                             {gaugeLabel} · {brand} · {colorName}<br />{lengthPerPiece} ft pieces · {sheetWidthNum}" sheets
                           </div>
                         </div>
+                        {boxNote && (
+                          <div data-testid="box-note" style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: theme.text, display: "flex", alignItems: "center", gap: 6 }}><Check size={14} color={SAFETY} /> {boxNote}</div>
+                        )}
+                        {basket.length > 0 && (
+                          <div data-testid="box-in-order" style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, background: "rgba(212,175,55,0.10)", border: `1px solid rgba(212,175,55,0.35)` }}>
+                            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                              <span className="disp" style={{ fontSize: 10.5, color: theme.textSecondary }}>In the order now</span>
+                              <span className="mono" style={{ fontSize: 10.5, color: theme.text, fontWeight: 600 }}>{basket.length} part{basket.length === 1 ? "" : "s"} · {basketPartsCount} pcs · {basketSheets} sheet{basketSheets === 1 ? "" : "s"}</span>
+                              <span style={{ fontSize: 10.5, color: theme.textSecondary }}>— tap one to change it</span>
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                              {(boxStripAll ? basket : basket.slice(0, 8)).map((b) => {
+                                const editing = b.id === editingId;
+                                return (
+                                  <button key={b.id} type="button" onClick={() => (editing ? setRoofBoxOpen(false) : editBasketItem(b, true))} title={editing ? "This part is on the canvas now — back to it" : "Open this part on the canvas to change it"} data-testid="box-in-order-part"
+                                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 8px 3px 3px", borderRadius: 999, border: `1px solid ${editing ? SAFETY : theme.border}`, background: editing ? "rgba(212,175,55,0.18)" : theme.inputBg, color: theme.text, fontSize: 11, cursor: "pointer" }}>
+                                    <span style={{ background: INK, borderRadius: 4, padding: 2, display: "flex" }}><ShapeThumb order={{ type: "trim", points: b.points, hemStart: b.hemStart, hemEnd: b.hemEnd, colorHex: b.colorHex }} size={18} /></span>
+                                    <span style={{ fontWeight: 600 }}>{b.name}</span><span className="mono" style={{ color: theme.textSecondary }}>×{b.quantity}{b.kit && PITCHED_KIT.has(b.kit) && b.pitch ? ` · ${fmtPitch(b.pitch)}` : ""}</span>
+                                    {editing && <span className="mono" style={{ fontSize: 9, color: SAFETY, fontWeight: 700, letterSpacing: "0.08em" }}>EDITING</span>}
+                                  </button>
+                                );
+                              })}
+                              {basket.length > 8 && (
+                                <button type="button" onClick={() => setBoxStripAll((v) => !v)} data-testid="box-in-order-more"
+                                  style={{ padding: "3px 10px", borderRadius: 999, border: `1px dashed ${theme.border}`, background: "transparent", color: theme.textSecondary, fontSize: 11, cursor: "pointer" }}>
+                                  {boxStripAll ? "Show fewer" : `+${basket.length - 8} more`}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
                         <div style={{ marginTop: 10 }}>
                           {roofKit.map((it) => {
                             const qty = roofBoxSel[it.id] || 0;
                             const on = qty > 0;
+                            const inOrder = basket.filter((b) => b.kit === it.id && +b.quantity > 0);
+                            const inOrderPcs = inOrder.reduce((sum, b) => sum + (+b.quantity || 0), 0);
                             const g = profileGirth(it.points, it.hemStart, it.hemEnd);
                             const pps = piecesPerSheet(sheetWidthNum, g);
                             return (
-                              <div key={it.id} data-testid={`box-row-${it.id}`} style={{ display: "grid", gridTemplateColumns: "22px 54px 1fr auto", gap: 10, alignItems: "center", padding: "8px 0", borderTop: `1px solid ${theme.border}`, opacity: on ? 1 : 0.72 }}>
+                              <div key={it.id} data-testid={`box-row-${it.id}`} className="box-row" style={{ padding: "8px 0", borderTop: `1px solid ${theme.border}`, opacity: on ? 1 : 0.72 }}>
                                 <input type="checkbox" checked={on} aria-label={`Include ${it.name}`}
                                   onChange={(e) => setRoofBoxSel((sel) => ({ ...sel, [it.id]: e.target.checked ? 1 : 0 }))} style={{ width: 16, height: 16, cursor: "pointer" }} />
                                 <div style={{ background: INK, borderRadius: 6, padding: 3, display: "flex" }}>
                                   <ShapeThumb order={{ type: "trim", points: it.points, hemStart: it.hemStart, hemEnd: it.hemEnd, colorHex: colorObj.hex }} size={48} />
                                 </div>
                                 <div style={{ minWidth: 0 }}>
-                                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{it.name} <span className="mono" style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 500 }}>{it.dims}</span></div>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{it.name} <span className="mono" style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 500 }}>{it.dims}</span>
+                                    {inOrder.length > 0 && <span className="mono" data-testid="box-row-in-order" style={{ marginLeft: 8, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.06em", color: SAFETY, border: `1px solid ${SAFETY}`, borderRadius: 999, padding: "1px 7px" }}>IN ORDER · {inOrderPcs} pc{inOrderPcs === 1 ? "" : "s"}</span>}
+                                  </div>
                                   <div style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 1.4 }}>{it.where}</div>
                                   <div className="mono" style={{ fontSize: 10, color: theme.textSecondary, marginTop: 2 }}>
                                     Girth {fmtIn(g)}" · {Math.max(0, it.points.length - 2)} bend{it.points.length === 3 ? "" : "s"} · {pps} pcs/sheet · one {lengthPerPiece} ft piece per {lengthPerPiece} ft of {it.per}
                                   </div>
                                 </div>
-                                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                                  <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", alignItems: "center", gap: 4 }}>Qty
-                                    <input type="number" min={1} step={1} value={on ? qty : ""} disabled={!on} placeholder="—" aria-label={`${it.name} quantity`}
-                                      onChange={(e) => setRoofBoxSel((sel) => ({ ...sel, [it.id]: Math.max(1, Math.round(+e.target.value) || 1) }))}
-                                      className="mono" style={{ width: 52, padding: "5px 6px", border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: theme.inputBg, color: theme.text }} />
-                                  </label>
-                                  <button type="button" onClick={() => drawRoofBoxItem(it)} title="Open this trim on the drawing canvas"
-                                    style={{ fontSize: 10.5, fontWeight: 600, padding: "4px 8px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, cursor: "pointer", whiteSpace: "nowrap" }}>
-                                    Open on canvas
-                                  </button>
+                                <div className="box-controls">
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                    {it.pitched ? (
+                                      <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", alignItems: "center", gap: 4 }} title="The roof pitch this piece is bent to — change it for this piece alone">Pitch
+                                        <select value={it.pitch} aria-label={`${it.name} pitch`} data-testid={`box-pitch-${it.id}`} className="mono"
+                                          onChange={(e) => { const r = +e.target.value; setRoofBoxRowPitch((m) => { const next = { ...m }; if (r === roofBoxPitch) delete next[it.id]; else next[it.id] = r; return next; }); }}
+                                          style={{ padding: "4px 5px", borderRadius: 6, border: `1px solid ${it.pitch !== roofBoxPitch ? SAFETY : theme.border}`, background: theme.inputBg, color: theme.text, fontSize: 11.5, fontWeight: 600 }}>
+                                          {ROOF_PITCHES.filter((r) => it.id !== "transition" || r > ROOF_PITCHES[0]).map((r) => <option key={r} value={r}>{fmtPitch(r)}</option>)}
+                                        </select>
+                                      </label>
+                                    ) : (
+                                      <span style={{ fontSize: 10, color: theme.textSecondary }} title="This piece is the same at any roof pitch">any pitch</span>
+                                    )}
+                                    <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", alignItems: "center", gap: 4 }}>Qty
+                                      <input type="number" min={1} step={1} value={on ? qty : ""} disabled={!on} placeholder="—" aria-label={`${it.name} quantity`}
+                                        onChange={(e) => setRoofBoxSel((sel) => ({ ...sel, [it.id]: Math.max(1, Math.round(+e.target.value) || 1) }))}
+                                        className="mono" style={{ width: 52, padding: "5px 6px", border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: theme.inputBg, color: theme.text }} />
+                                    </label>
+                                  </div>
+                                  <div style={{ display: "flex", gap: 6 }}>
+                                    <button type="button" onClick={() => addRoofBoxRow(it)} data-testid={`box-row-add-${it.id}`} title={boxPending && boxPending.kit === it.id ? "This piece is on the canvas — add it as drawn there" : "Add just this trim to the order at the quantity shown"}
+                                      style={{ fontSize: 10.5, fontWeight: 700, padding: "4px 9px", borderRadius: 6, border: "none", background: SAFETY, color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>
+                                      {boxPending && boxPending.kit === it.id ? "Add from canvas" : "Add to order"}
+                                    </button>
+                                    <button type="button" onClick={() => drawRoofBoxItem(it)} title="Open this trim on the drawing canvas"
+                                      style={{ fontSize: 10.5, fontWeight: 600, padding: "4px 8px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                      Open on canvas
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             );
@@ -6072,6 +6229,7 @@ export default function ShopOrderApp() {
                         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 12, paddingTop: 12, borderTop: `1px solid ${theme.border}` }}>
                           <div className="mono" style={{ fontSize: 11.5, color: theme.text, fontWeight: 600 }} data-testid="box-totals">
                             {roofBoxPicked.length} trim{roofBoxPicked.length === 1 ? "" : "s"} · {totalPcs} pcs · {totalSheets} sheet{totalSheets === 1 ? "" : "s"} · est. {money(totalPrice)}
+                            {boxPending && <span data-testid="box-pending" style={{ display: "block", fontWeight: 500, color: theme.textSecondary }}>+ the {boxPending.name} ×{boxPending.quantity} on the canvas goes in with them</span>}
                           </div>
                           <div style={{ display: "flex", gap: 8 }}>
                             <button type="button" onClick={() => setRoofBoxOpen(false)}
@@ -6089,7 +6247,7 @@ export default function ShopOrderApp() {
                 <TrimCanvas points={points} setPoints={setPoints} colorHex={colorObj.hex} hemStart={hemStart} hemEnd={hemEnd} paintSide={paintSide} roofPitch={drawnPitch}
                   setHemStart={setHemStart} setHemEnd={setHemEnd} setPaintSide={setPaintSide} viewResetKey={viewResetKey} />
                 <div style={{ display: "flex", alignItems: "center", marginTop: 8, gap: 8, flexWrap: "wrap" }}>
-                  <button onClick={() => setPoints((p) => p.slice(0, -1))}
+                  <button onClick={() => { if (points.length <= 1 && boxReturn !== "edit") setBoxReturn(null); setPoints((p) => p.slice(0, -1)); }}
                     style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, padding: "5px 9px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, cursor: "pointer" }}>
                     <Undo2 size={12} /> Undo
                   </button>
@@ -6110,7 +6268,7 @@ export default function ShopOrderApp() {
                       onBlur={(e) => { if (e.target.value === "") setSheetWidth(48); }}
                       className="mono" style={{ width: 48, padding: "5px 6px", border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12 }} />
                   </label>
-                  <button onClick={() => { setPoints([]); setHemStart("none"); setHemEnd("none"); setPaintSide("left"); }} title="Start the drawing over — folds and painted side reset with it"
+                  <button onClick={() => { setPoints([]); setHemStart("none"); setHemEnd("none"); setPaintSide("left"); if (boxReturn && boxReturn !== "edit") { setPartName(""); setBoxReturn(null); } }} title="Start the drawing over — folds and painted side reset with it"
                     style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, padding: "5px 9px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, cursor: "pointer" }}>
                     <Trash2 size={12} /> Clear
                   </button>
@@ -6156,15 +6314,32 @@ export default function ShopOrderApp() {
                   )}
                 </div>
 
-                <button onClick={addToBasket}
-                  className="disp"
-                  style={{
-                    width: "100%", marginTop: 10, padding: "10px", borderRadius: 8, border: `2px solid ${SAFETY}`,
-                    background: theme.inputBg, color: SAFETY, fontSize: 12, fontWeight: 700, cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                  }}>
-                  <Plus size={14} /> Add Part to Order
-                </button>
+                {editingId && basket.some((i) => i.id === editingId) ? (
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <button onClick={updateBasketItem} className="disp" data-testid="update-part"
+                      style={{
+                        flex: 1, padding: "10px", borderRadius: 8, border: "none",
+                        background: SAFETY, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      }}>
+                      <Check size={14} /> Update Part
+                    </button>
+                    <button onClick={cancelEdit} className="disp" data-testid="cancel-edit"
+                      style={{ padding: "10px 14px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={addToBasket}
+                    className="disp" data-testid="add-part"
+                    style={{
+                      width: "100%", marginTop: 10, padding: "10px", borderRadius: 8, border: `2px solid ${SAFETY}`,
+                      background: theme.inputBg, color: SAFETY, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    }}>
+                    <Plus size={14} /> Add Part to Order
+                  </button>
+                )}
 
                 {basket.length > 0 && (
                   <div style={{ marginTop: 10, borderTop: "1px solid #EEE9DC", paddingTop: 10 }}>
@@ -6174,11 +6349,17 @@ export default function ShopOrderApp() {
                         {basketPartsCount} pcs · {basketSheets} sheet{basketSheets === 1 ? "" : "s"}
                       </span>
                     </div>
+                    <div style={{ fontSize: 10.5, color: theme.textSecondary, marginBottom: 4 }}>Tap a part to bring it back onto the canvas and change it.</div>
                     {basket.map((it, idx) => {
                       const itGauge = findGauge(it.gaugeId, it.brand);
                       const itBends = Math.max(0, it.points.length - 2);
+                      const editing = it.id === editingId;
                       return (
-                        <div key={it.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0", borderBottom: idx < basket.length - 1 ? "1px solid #F3F0E7" : "none" }}>
+                        <div key={it.id} role="button" tabIndex={0} data-testid="basket-row" title="Tap to edit this part"
+                          onClick={() => editBasketItem(it)} onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === "Enter" || e.key === " ") { e.preventDefault(); editBasketItem(it); } }}
+                          style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 6px", margin: "0 -6px", borderRadius: 6, cursor: "pointer",
+                            borderBottom: idx < basket.length - 1 && !editing ? "1px solid #F3F0E7" : "none",
+                            background: editing ? "rgba(212,175,55,0.12)" : "transparent", boxShadow: editing ? `inset 3px 0 0 ${SAFETY}` : "none" }}>
                           <div style={{ background: INK, borderRadius: 5, padding: 3, flexShrink: 0 }}>
                             <ShapeThumb order={{ type: "trim", points: it.points, hemStart: it.hemStart, hemEnd: it.hemEnd, colorHex: it.colorHex }} size={28} />
                           </div>
@@ -6186,18 +6367,22 @@ export default function ShopOrderApp() {
                             <img src={it.photo} alt="Reference" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 5, border: `1px solid ${theme.border}`, flexShrink: 0 }} />
                           )}
                           <span style={{ fontSize: 11.5, color: theme.text, flex: 1 }}>
-                            <strong>{it.name}</strong> — Qty {it.quantity} · {fmtIn(it.girth)}" girth · {it.sheetsNeeded} sheet{it.sheetsNeeded === 1 ? "" : "s"} · {fmtIn(it.dropWidth)}" drop
+                            <strong>{it.name}</strong>{editing && <span className="mono" style={{ fontSize: 9.5, color: SAFETY, fontWeight: 700, marginLeft: 6, letterSpacing: "0.08em" }}>EDITING</span>} — Qty {it.quantity} · {fmtIn(it.girth)}" girth · {it.sheetsNeeded} sheet{it.sheetsNeeded === 1 ? "" : "s"} · {fmtIn(it.dropWidth)}" drop
                             <br />
                             <span style={{ fontSize: 10.5, color: theme.textSecondary }}>
-                              {it.colorName} · {itGauge?.label} · {itBends} bend{itBends === 1 ? "" : "s"} · Paint side: {it.paintSide === "left" ? "Left" : "Right"}
+                              {it.colorName} · {itGauge?.label} · {itBends} bend{itBends === 1 ? "" : "s"} · Paint side: {it.paintSide === "left" ? "Left" : "Right"}{it.kit && PITCHED_KIT.has(it.kit) && it.pitch ? ` · ${fmtPitch(it.pitch)}` : ""}
                             </span>
                           </span>
                           <span className="mono" style={{ fontSize: 11, color: theme.textSecondary }}>{money(it.price)}</span>
-                          <button onClick={() => printPartAsPDF(it)} title="Export as PDF"
+                          <button onClick={(e) => { e.stopPropagation(); editBasketItem(it); }} title="Edit this part" aria-label={`Edit ${it.name}`}
+                            style={{ border: "none", background: "none", color: editing ? SAFETY : theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
+                            <Pencil size={13} />
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); printPartAsPDF(it); }} title="Export as PDF"
                             style={{ border: "none", background: "none", color: theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
                             <Printer size={13} />
                           </button>
-                          <button onClick={() => removeBasketItem(it.id)}
+                          <button onClick={(e) => { e.stopPropagation(); removeBasketItem(it.id); }} title="Remove" aria-label={`Remove ${it.name}`}
                             style={{ border: "none", background: "none", color: theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
                             <Trash2 size={12} />
                           </button>
@@ -6356,7 +6541,7 @@ export default function ShopOrderApp() {
           <div style={{ background: INK, borderRadius: 10, padding: 14, marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
               <div style={{ color: "#CFE3EF", fontSize: 11 }}>
-                {shapeType === "trim" ? `Estimated total${basket.length > 0 ? ` · ${basket.length + (points.length >= 2 ? 1 : 0)} part(s)` : ""}` : "Estimated total"}
+                {shapeType === "trim" ? `Estimated total${basket.length > 0 ? ` · ${orderParts().length} part(s)` : ""}` : "Estimated total"}
               </div>
               <div className="mono" style={{ color: "#fff", fontSize: 22, fontWeight: 600 }}>{shapeType === "panel" && coilOverMax ? coilGateText : money(combinedEstimate)}</div>
             </div>
