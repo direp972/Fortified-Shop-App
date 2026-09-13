@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Get Listed on RoofCoil — Suppliers, Fabricators &amp; Contractors | RoofCoil</title>
-<meta name="description" content="Suppliers, fabricators and turnkey contractors: list what you run — panels, trim, coil, gutters, on-site roll forming — plus your colors and locations, so anyone searching RoofCoil for sheet metal finds you." />
+<meta name="description" content="Suppliers, fabricators and turnkey contractors: list what you run — standing seam and exposed fastener panels, trim, coil, gutters, on-site roll forming — plus your colors and locations, so anyone searching RoofCoil for sheet metal finds you." />
 <link rel="canonical" href="https://www.roofcoil.com/get-listed.html">
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="RoofCoil" />
@@ -85,6 +85,9 @@
     <div class="step"><h3><span class="sn">3</span>What can you run?</h3>
       <div class="fld"><label>Tap every ability — this is exactly how contractors filter the directory</label>
         <div class="chipgrid" id="f-types"></div>
+      </div>
+      <div class="fld"><label>Exposed fastener panels you roll — tap each profile. Generic shape names, so every contractor recognizes yours whatever your brand calls it</label>
+        <div class="chipgrid" id="f-efpanels"></div>
       </div>
       <div class="fld"><label>Panel gauges you run — tap all that apply</label>
         <div class="chipgrid" id="f-gauges"></div>
@@ -206,6 +209,11 @@ const ABILITIES=[
   "On-site gutter roll forming",
   "Turnkey — supply · fabrication · labor",
 ];
+// Exposed fastener (screw-down) profiles by the generic shape name a contractor
+// uses, never one maker's trade name — every profile here is rolled by more
+// than one manufacturer. Tapping one also lights the "Exposed fastener"
+// umbrella ability so the broad directory filter still finds the shop.
+const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated","5V-crimp","M-panel / box-rib wall","1/2″ corrugated (low-profile)","U-panel","Ag panel / tuff rib"];
 const GUTTER_PROFILES=["5″ K-style gutter","6″ K-style gutter","7″ K-style gutter","5″ half-round gutter","6″ half-round gutter","6″ box gutter","7″ box gutter","8″ box gutter","6″ euro box gutter","Fascia gutter","Straight-face / square gutter"];
 const GUTTER_MATERIALS=["Gutter — .027 aluminum","Gutter — .032 aluminum","Gutter — 26 ga painted steel","Gutter — 24 ga painted steel","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
 const STOCK_COLORS=["Regal White","Almond","Ash Gray","Slate Gray","Burnished Slate","Charcoal","Medium Bronze","Dark Bronze","Matte Black","Evergreen","Copper Metallic","Galvalume","Texas Silver","Bare Copper","Bonderized"];
@@ -214,6 +222,7 @@ const GAUGES=["29 ga","28 ga","26 ga","24 ga","22 ga","20 ga"];
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
 const chip=(t)=>`<button type="button" class="seg" data-v="${t}">${t}</button>`;
 $("#f-types").innerHTML=ABILITIES.map(chip).join("");
+$("#f-efpanels").innerHTML=EF_PANELS.map(chip).join("");
 // gutter chips drop the redundant "gutter" wording — the section heading says it;
 // the stored value keeps the full label so search matching stays exact
 const gchip=(t)=>{const d=t.replace(/ gutter$/,"").replace(/^Gutter — /,"");const label=d.charAt(0).toUpperCase()+d.slice(1);return `<button type="button" class="seg" data-v="${t}">${label}</button>`};
@@ -237,7 +246,14 @@ document.addEventListener("rc:auth",e=>{
   if(!$("#f-co").value)$("#f-co").value=md.company||"";
   if(!$("#f-em").value)$("#f-em").value=s.user.email||"";
 });
-$$("#f-types .seg, #f-gutters .seg, #f-gutmats .seg, #f-gauges .seg, #f-colors .seg, #f-brands .seg").forEach(b=>b.onclick=()=>b.classList.toggle("sel"));
+$$("#f-types .seg, #f-efpanels .seg, #f-gutters .seg, #f-gutmats .seg, #f-gauges .seg, #f-colors .seg, #f-brands .seg").forEach(b=>b.onclick=()=>b.classList.toggle("sel"));
+// a specific screw-down profile implies the umbrella ability
+const EF_LABEL="Exposed fastener";
+$$("#f-efpanels .seg").forEach(b=>b.addEventListener("click",()=>{
+  if(!b.classList.contains("sel"))return;
+  const u=[...$$("#f-types .seg")].find(x=>x.dataset.v===EF_LABEL);
+  if(u&&!u.classList.contains("sel")){u.classList.add("sel");syncOpenLocChips()}
+}));
 // the licensed-states question only appears once Turnkey is tapped
 const TURNKEY_LABEL="Turnkey — supply · fabrication · labor";
 function syncLic(){const on=[...$$("#f-types .seg.sel")].some(b=>b.dataset.v===TURNKEY_LABEL);$("#f-licrow").style.display=on?"":"none"}
@@ -248,7 +264,7 @@ $$("#f-types .seg").forEach(b=>b.addEventListener("click",syncLic));
    branch that only rolls gutters never has its whole company re-entered:
    everything inherits from the company unless a subset is tapped.        */
 const locsBox=$("#f-locs");
-const currentAbilities=()=>[...$$("#f-types .seg.sel, #f-gutters .seg.sel, #f-gutmats .seg.sel")].map(b=>b.dataset.v);
+const currentAbilities=()=>[...$$("#f-types .seg.sel, #f-efpanels .seg.sel, #f-gutters .seg.sel, #f-gutmats .seg.sel")].map(b=>b.dataset.v);
 function syncLocLabels(){
   const rows=[...locsBox.children];
   rows.forEach((r,i)=>{
@@ -278,7 +294,7 @@ function syncLocChips(row){
 }
 // abilities tapped later in steps 3–4 flow into every subset panel that's open
 const syncOpenLocChips=()=>$$("#f-locs .locrow").forEach(r=>{if(r.querySelector(".l-sub").classList.contains("sel"))syncLocChips(r)});
-$$("#f-types .seg, #f-gutters .seg, #f-gutmats .seg").forEach(b=>b.addEventListener("click",syncOpenLocChips));
+$$("#f-types .seg, #f-efpanels .seg, #f-gutters .seg, #f-gutmats .seg").forEach(b=>b.addEventListener("click",syncOpenLocChips));
 function addLocRow(){
   const row=document.createElement("div");row.className="locrow";
   row.innerHTML='<div class="frow">'
@@ -365,9 +381,12 @@ $("#f-go").onclick=async()=>{
   hideErr();
   const co=$("#f-co").value.trim(),name=$("#f-name").value.trim(),em=$("#f-em").value.trim();
   const types=[...$$("#f-types .seg.sel")].map(b=>b.dataset.v);
+  const efpanels=[...$$("#f-efpanels .seg.sel")].map(b=>b.dataset.v);
   const gutters=[...$$("#f-gutters .seg.sel")].map(b=>b.dataset.v);
   const gutmats=[...$$("#f-gutmats .seg.sel")].map(b=>b.dataset.v);
-  const allAbilities=types.concat(gutters,gutmats);
+  const allAbilities=types.concat(efpanels,gutters,gutmats);
+  // a listed screw-down profile always carries the umbrella facet with it
+  if(efpanels.length&&!allAbilities.includes(EF_LABEL))allAbilities.splice(types.length,0,EF_LABEL);
   // write-in profiles ride along for review — they only reach the live listing
   // if staff approve them in the directory admin
   const extraProfiles=$("#f-moretypes").value.split(",").map(s=>s.trim()).filter(Boolean);
