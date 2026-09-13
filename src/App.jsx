@@ -559,11 +559,11 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
   const KICK = 0.5 / Math.SQRT2; // a ½" leg kicked out at 45° — the drip on every fascia trim
 
   return [
-    { id: "eave", name: "Eave / Drip Edge", dims: '3" × 2" · ½" 45° kick', per: "eave", on: true,
-      where: "Bottom edge of the roof — deck flange under the panels, face down the fascia, kicked out 45° at the bottom to throw the water clear, and hemmed. The panels hook an Offset Cleat over the flange, or the lip of the D-Style Drip Edge below.",
+    { id: "eave", name: "Eave / Drip Edge", dims: '3" × 2" · ½" 45° kick', per: "eave", on: false,
+      where: "Bottom edge of the roof — deck flange under the panels, face down the fascia, kicked out 45° at the bottom to throw the water clear, and hemmed. The panels hook an Offset Cleat over the flange; tick it in place of the D-Style Drip Edge below when the job runs a cleat.",
       points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 2), kitPt(3 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "left" },
-    { id: "dstyle", name: "D-Style Drip Edge", dims: '3¾" × 2" · 1¼" lip hemmed flat · ½" 45° kick', per: "eave", on: false,
-      where: "Same eave for panels that hook the trim itself (the T-style) — 2½\" on the deck, then a 1¼\" lip past the fascia, hemmed flat back under, that the panel's hemmed edge hooks and squeezes shut on: no cleat. Face down the fascia, kicked at the bottom with a closed hem; tick it in place of the Eave / Drip Edge above.",
+    { id: "dstyle", name: "D-Style Drip Edge", dims: '3¾" × 2" · 1¼" lip hemmed flat · ½" 45° kick', per: "eave", on: true,
+      where: "The eave the box starts with — for panels that hook the trim itself (the T-style): 2½\" on the deck, then a 1¼\" lip past the fascia, hemmed flat back under, that the panel's hemmed edge hooks and squeezes shut on: no cleat. Face down the fascia, kicked at the bottom with a closed hem.",
       points: [kitPt(0, 0), kitPt(3.75, 0), kitFold(2.5, 0, "left"), kitPt(2.5, 2), kitPt(2.5 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
     { id: "apron", name: "Gutter Apron", dims: '4½" × 2" · 15° kick', per: "eave with gutters", on: false,
       where: "Eave trim for gutter runs — a longer deck flange and a face kicked out over the gutter's back.",
