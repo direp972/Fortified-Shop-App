@@ -633,16 +633,17 @@ function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4"
   const [D, W] = downspout.split("×").map(Number); // downspout: D out from the wall, W across it
   const F = fascia;              // edge metal: the face down the fascia — a gravel stop, a drip edge or a snap-on fascia, and the hook strip under them
   const CANT = 0.75, TOP = 0.75; // gravel stop: the cant stands ¾" above the deck (ATAS, Ohio 07 71 00), ¾" back from the edge of the nailer — the step out to the face is a shop default, no source sizes it
-  const GS_FLANGE = 4, DE_FLANGE = 3, SNAP_TOP = 2.375; // the legs on the roof: gravel stop 4" (ATAS, Ohio), drip edge 3" (DMI, K&M), snap-on 2⅜" (Vortex One-Edge) — the ½" kick and ½" open hem are the kit's; ATAS and Ohio spec ¾" and 1", stretched on the canvas for a spec job
+  const GS_FLANGE = 4, DE_FLANGE = 3, SNAP_TOP = 2.375; // the legs on the roof: gravel stop 4" (ATAS, Ohio), drip edge 3" (DMI, K&M), snap-on 2⅜" (Vortex One-Edge) — the ½" kick and ½" open hem are the kit's; the ATAS toggle bends the spec's ¾" and 1"
   const counters = buildRoofKit().filter((it) => it.id === "counter" || it.id === "counter2");
   // The bottom of the three covers: the face ends at y and the drip kicks out 45° — the kit's ½" kick with a ½"
-  // open hem as the end fold, or, to the ATAS and Ohio specs, a ¾" kick with a 1" open hem drawn as a leg
-  // folded back along the kick's line, a quarter inch past the corner and up the inside of the face.
+  // open hem as the end fold, or, to the ATAS spec, a ¾" kick with a 1" open hem drawn as legs: the hem folds
+  // back along the kick to the corner, then turns to run the last ¼" up the inside of the face.
   const DRIP = atas ? 0.75 / Math.SQRT2 : KICK;
-  const edgeEnd = (y) => (atas ? [kitPt(0, y), kitPt(-DRIP, y + DRIP), kitFold(-DRIP + Math.SQRT1_2, y + DRIP - Math.SQRT1_2, "right")] : [kitPt(0, y), kitPt(-DRIP, y + DRIP)]);
+  const edgeEnd = (y) => (atas ? [kitPt(0, y), kitPt(-DRIP, y + DRIP), kitFold(0, y, "right"), kitPt(0, y - 0.25)] : [kitPt(0, y), kitPt(-DRIP, y + DRIP)]);
   const edgeHem = atas ? "none" : "open-right";
   const edgeDrip = atas ? '¾" 45° kick · 1" open hem' : '½" 45° kick';
-  const es = (name) => (es1 ? `${name} — ES-1` : name); // the job calls for tested edge metal: the coping and edge pieces say so on the order
+  const kickWord = atas ? '¾" kick with a 1" open hem' : '½" kick with an open hem';
+  const es = (name) => (es1 ? `${name} (ES-1)` : name); // the job calls for tested edge metal: the coping and edge pieces say so on the order
   // A coping cleat drops an inch less than the face it holds, so its kick lands on the hook's free edge; the hook
   // strip under the edge metal drops the whole face, so its kick nests inside the cover's kicked hem. Drawn plumb
   // with the wall or the nailer on its right, the way the caps' outside face is drawn — the kick turns out, away from it.
@@ -673,13 +674,13 @@ function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4"
     // the kick), so the open hem folds right: back under the kick toward the nailer, the pocket the strip's kick
     // nests in. The strip is the coping cleat's shape as tall as the face, so its kick root meets the cover's.
     { id: "gravelstop", name: es("Gravel Stop Fascia"), dims: `4" roof flange · ¾" cant · ${inWord(F)} face · ${edgeDrip}`, per: "roof edge", on: false,
-      where: "The edge of a low-slope roof with no parapet and no gutter — the 4\" flange on the deck is stripped into the membrane, the cant stands up ¾\" to hold the gravel and the water back from the edge, steps ¾\" out to the edge of the nailer, and the face drops over it to a ½\" kick with an open hem that hooks the Hook Strip: no fastener through the face, the cleated edge the ES-1 systems are built on. Where the spec or the inspector calls for a tested ES-1 edge, that system is bought, not bent. One Hook Strip per length, set ¾\" proud of the nailer, up inside the cant.",
+      where: `The edge of a low-slope roof with no parapet and no gutter — the 4\" flange on the deck is stripped into the membrane, the cant stands up ¾\" to hold the gravel and the water back from the edge, steps ¾\" out to the edge of the nailer, and the face drops over it to a ${kickWord} that hooks the Hook Strip: no fastener through the face, the cleated edge the ES-1 systems are built on. Where the spec or the inspector calls for a tested ES-1 edge, that edge comes from a certified shop. One Hook Strip per length, set ¾\" proud of the nailer, up inside the cant.`,
       points: [kitPt(TOP + GS_FLANGE, 0), kitPt(TOP, 0), kitPt(TOP, -CANT), kitPt(0, -CANT), ...edgeEnd(F - CANT)], hemStart: "none", hemEnd: edgeHem, paintSide: "left" },
     { id: "dripedge", name: es("Drip Edge — Membrane Roof"), dims: `3" roof flange · ${inWord(F)} face · ${edgeDrip}`, per: "roof edge", on: false,
-      where: "The same edge where the roof drains over it, into a gutter or clear of the wall, so no cant — a 3\" flange flat on the deck, stripped into the membrane, the face down the nailer to a ½\" kick with an open hem that hooks the Hook Strip set flush with the nailer top. Not the Eave or the D-Style Drip Edge of the standing seam box: no panel hooks this one, it hangs on the Hook Strip and nothing else. One Hook Strip per length.",
+      where: `The same edge where the roof drains over it, into a gutter or clear of the wall, so no cant — a 3\" flange flat on the deck, stripped into the membrane, the face down the nailer to a ${kickWord} that hooks the Hook Strip set flush with the nailer top. Not the Eave or the D-Style Drip Edge of the standing seam box: no panel hooks this one, it hangs on the Hook Strip and nothing else. One Hook Strip per length.`,
       points: [kitPt(DE_FLANGE, 0), kitPt(0, 0), ...edgeEnd(F)], hemStart: "none", hemEnd: edgeHem, paintSide: "left" },
     { id: "snapfascia", name: es("Snap-On Fascia"), dims: `2⅜" top return · ${inWord(F)} face · ${edgeDrip}`, per: "roof edge", on: false,
-      where: "The two-piece edge on a single-ply roof, put on last — the membrane is terminated over the nailer and the Hook Strip screwed flush with its top; the cover's 2⅜\" return lies on the nailer over the termination, the face drops over the strip, and the ½\" kick with its open hem snaps under the strip's lip. Nothing stripped in, no fastener showing, and it comes off without touching the roof. One Hook Strip per length. For a canted nailer, open it on the canvas and tilt the return to the bevel. When the spec names an anchor-bar system, the bar comes from that maker and only the cover is bent.",
+      where: `The two-piece edge on a single-ply roof, put on last — the membrane is terminated over the nailer and the Hook Strip screwed flush with its top; the cover's 2⅜\" return lies on the nailer over the termination, the face drops over the strip, and the ${kickWord} snaps under the strip's lip. Nothing stripped in, no fastener showing, and it comes off without touching the roof. One Hook Strip per length. For a canted nailer, open it on the canvas and tilt the return to the bevel. When the spec names an anchor-bar system, the bar comes from that maker and only the cover is bent.`,
       points: [kitPt(SNAP_TOP, 0), kitPt(0, 0), ...edgeEnd(F)], hemStart: "none", hemEnd: edgeHem, paintSide: "left" },
     { id: "hookstrip", name: es("Hook Strip / Continuous Cleat"), dims: `${inWord(F)} × ½" 45° kick`, per: "roof edge, under the edge metal", on: false,
       where: "Continuous cleat the Gravel Stop, the Drip Edge and the Snap-On Fascia hook — a strip as tall as the face it holds, screwed flat to the face of the nailer 12\" o.c., the bottom ½\" kicked out 45° so the cover's kicked hem snaps over it. Top edge where the top of the face lands: flush with the nailer under the Drip Edge and the Snap-On Fascia, ¾\" above it under the Gravel Stop, inside the cant. One length per length of edge metal. Usually 24 ga bare or paint-grip; 22 ga where the spec calls for it — FM 1-49 wants the cleat a gauge heavier than the cover.",
@@ -942,7 +943,7 @@ function formatFeetInches(totalInches) {
 
 // Renders a trim profile as a plain, static SVG string (not the interactive drawing
 // tool) for print/export — clean outline with length labels at each segment.
-function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = "none") {
+function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = "none", paintSide = "left") {
   if (!points || points.length < 2) return "";
   const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
   const size = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 1);
@@ -959,7 +960,13 @@ function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = 
     const len = dist(points[i - 1], points[i]);
     const mx = (pathPts[i - 1][0] + pathPts[i][0]) / 2;
     const my = (pathPts[i - 1][1] + pathPts[i][1]) / 2;
-    labels += `<text x="${mx.toFixed(1)}" y="${(my - 8).toFixed(1)}" font-size="11" text-anchor="middle" font-family="monospace" fill="#333">${fmtIn(len)}"</text>`;
+    const folded = i > 1 && foldSide(points[i]);
+    let lx = mx, ly = my - 8;
+    if (folded || len < 1.5) { // a short leg, or a hem drawn as a leg over the leg it folds along: the label sits off to the side — a leg's on the painted side, a hem's on the unpainted side, where it folds
+      const [px, py] = folded ? sidePerp(unitVec(pathPts[i - 2], pathPts[i - 1]), folded) : sidePerp(unitVec(pathPts[i - 1], pathPts[i]), paintSide); // a fold's side is named off the leg it folds along
+      lx = mx + px * 16; ly = my + py * 16 + 4;
+    }
+    labels += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="11" text-anchor="middle" font-family="monospace" fill="#333" stroke="#fff" stroke-width="3" paint-order="stroke">${fmtIn(len)}"${folded ? " hem" : ""}</text>`;
   }
   const dotSvg = pathPts.map((p) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${colorHex || "#333"}" />`).join("");
   // End folds are drawn in inches inside a scaled group so the same geometry the canvas
@@ -980,11 +987,11 @@ function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = 
 // print dialog — the person can "Save as PDF" from there. No PDF library needed or
 // available in this environment, so this is the reliable cross-browser path.
 function printPartAsPDF(item) {
-  const svg = generateProfileSvgString(item.points, item.colorHex, item.hemStart, item.hemEnd);
+  const svg = generateProfileSvgString(item.points, item.colorHex, item.hemStart, item.hemEnd, item.paintSide);
   const win = window.open("", "_blank");
   if (!win) { window.alert("Your browser blocked the print window — please allow popups for this site and try again."); return; }
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  win.document.write(`<!doctype html><html><head><title>${esc(item.name || "Trim Part")}</title>
+  win.document.write(`<!doctype html><html><head><title>${esc(item.name || item.partName || "Trim Part")}</title>
     <style>
       body{font-family:system-ui,-apple-system,sans-serif;padding:28px;color:#1C1C1E;max-width:720px;margin:0 auto;}
       h1{font-size:20px;margin:0 0 2px;}
@@ -996,7 +1003,7 @@ function printPartAsPDF(item) {
       .printbtn{margin-top:28px;padding:11px 22px;background:#D4AF37;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;}
       @media print { .printbtn{display:none;} }
     </style></head><body>
-    <h1>${esc(item.name || "Trim Part")}</h1>
+    <h1>${esc(item.name || item.partName || "Trim Part")}</h1>
     <div class="sub">Fortified Sheet Metal — Order Spec Sheet</div>
     <div class="row">
       <div>${svg}</div>
@@ -6284,8 +6291,8 @@ export default function ShopOrderApp() {
                               {DOWNSPOUT_SIZES.map((d) => <option key={d} value={d}>{d}"</option>)}
                             </select>
                           </label>
-                          <label style={{ fontSize: 10.5, color: theme.text, display: "flex", alignItems: "center", gap: 5, paddingBottom: 7, cursor: "pointer" }} title={'The drip the ATAS and Ohio specs call for on the gravel stop, drip edge and snap-on fascia — a ¾" kick with a 1" open hem, in place of the kit\'s ½" and ½"'}>
-                            <input type="checkbox" checked={comAtas} onChange={(e) => setComAtas(e.target.checked)} data-testid="box-atas" style={{ width: 14, height: 14, cursor: "pointer" }} /> ATAS spec drip
+                          <label style={{ fontSize: 10.5, color: theme.text, display: "flex", alignItems: "center", gap: 5, paddingBottom: 7, cursor: "pointer" }} title={'The drip the ATAS spec calls for on the gravel stop, drip edge and snap-on fascia, in place of the kit\'s ½" kick and ½" hem'}>
+                            <input type="checkbox" checked={comAtas} onChange={(e) => setComAtas(e.target.checked)} data-testid="box-atas" style={{ width: 14, height: 14, cursor: "pointer" }} /> ATAS drip — ¾" kick, 1" hem
                           </label>
                           <label style={{ fontSize: 10.5, color: theme.text, display: "flex", alignItems: "center", gap: 5, paddingBottom: 7, cursor: "pointer" }} title="The job calls for ES-1 tested edge metal — the coping and edge pieces are marked ES-1 on the order">
                             <input type="checkbox" checked={comEs1} onChange={(e) => setComEs1(e.target.checked)} data-testid="box-es1" style={{ width: 14, height: 14, cursor: "pointer" }} /> ES-1 edge metal
@@ -6315,7 +6322,7 @@ export default function ShopOrderApp() {
                         </div>
                         {roofBoxKind === "com" && comEs1 && (
                           <div data-testid="box-es1-note" style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, background: "rgba(79,93,107,0.10)", border: "1px solid rgba(79,93,107,0.35)", fontSize: 11.5, color: theme.text, lineHeight: 1.45 }}>
-                            <b>ES-1.</b> Tested edge metal comes from a certified shop, bent to a tested design. The coping and edge pieces are marked ES-1 on the order, and that shop confirms the price.
+                            <b>ES-1.</b> Tested edge metal has to be made at a certified shop, to its listing. The coping and edge pieces are marked ES-1 on the order, and the shop will confirm the price.
                           </div>
                         )}
                         {boxNote && (
