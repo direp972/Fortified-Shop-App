@@ -127,7 +127,7 @@ const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated
 // spelling still sits in their Supabase rows. It reads as the new canonical everywhere
 // and the next save migrates the row.
 const RENAMED_ABILITIES={"u-panel":"U-panel / PBU","u panel":"U-panel / PBU","pbu-panel":"U-panel / PBU","pbu panel":"U-panel / PBU"};
-const canonAbility=a=>RENAMED_ABILITIES[String(a==null?"":a).trim().toLowerCase()]||a;
+const canonAbility=a=>{const k=String(a==null?"":a).trim().toLowerCase();return Object.prototype.hasOwnProperty.call(RENAMED_ABILITIES,k)?RENAMED_ABILITIES[k]:a};
 const canonAbilities=list=>(Array.isArray(list)?list:[]).map(canonAbility);
 const GUTTER_PROFILES=["5″ K-style gutter","6″ K-style gutter","7″ K-style gutter","5″ half-round gutter","6″ half-round gutter","6″ box gutter","7″ box gutter","8″ box gutter","6″ euro box gutter","Fascia gutter","Straight-face / square gutter"];
 const GUTTER_MATERIALS=["Gutter — .027 aluminum","Gutter — .032 aluminum","Gutter — 26 ga painted steel","Gutter — 24 ga painted steel","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
@@ -295,18 +295,25 @@ function setChips(sel,values){
 // see whose coil it is; whether the public card may name it is the applicant's call.
 // plPublicLine's wording is previewed back to the applicant by plPreview() in
 // get-listed.html — keep the two in lock-step or that preview starts lying.
-function plSource(pl){return [...((pl&&pl.sources)||[]),pl&&pl.extra_sources].filter(Boolean).join(', ')}
+// details comes straight off an unauthenticated form post, so nothing in it is trusted
+// to be the shape it should be — a bad blob must render as nothing, never throw.
+function plLabel(pl){return (pl&&typeof pl.label==='string')?pl.label.trim():''}
+function plSource(pl){
+  const list=Array.isArray(pl&&pl.sources)?pl.sources.filter(x=>typeof x==='string'):[];
+  const extra=(pl&&typeof pl.extra_sources==='string')?pl.extra_sources:'';
+  return [...list,extra].map(x=>x.trim()).filter(Boolean).join(', ');
+}
 function plPublicLine(pl){
-  if(!pl||!pl.label)return'';
+  const label=plLabel(pl);if(!label)return'';
   const src=plSource(pl);
-  return pl.show_source&&src
-    ? 'Private label — panels go out under their own '+pl.label+' name, on '+src+' coil.'
-    : 'Private label — panels go out under their own '+pl.label+' name.';
+  return pl.show_source===true&&src
+    ? 'Private label — panels go out under their own '+label+' name, on '+src+' coil.'
+    : 'Private label — panels go out under their own '+label+' name.';
 }
 function plReviewLine(pl){
-  if(!pl||!pl.label)return'';
-  return '\nprivate label: '+pl.label+' on '+(plSource(pl)||'source not given')
-    +(pl.show_source?' (cleared to name the source on the card)':' (SOURCE IS STAFF-ONLY — keep it off the card)');
+  const label=plLabel(pl);if(!label)return'';
+  return '\nprivate label: '+label+' on '+(plSource(pl)||'source not given')
+    +(pl.show_source===true?' (cleared to name the source on the card)':' (SOURCE IS STAFF-ONLY — keep it off the card)');
 }
 function prefillFromApp(a){
   const d=a.details||{};
@@ -327,7 +334,7 @@ function prefillFromApp(a){
   // structured locations from the new form arrive pre-geocoded; older
   // applications only have the plants text, one City, ST per line
   const appLocs=(d.locations||[]).filter(L=>L&&(L.address||L.city));
-  if(appLocs.length)setAdmLocs(appLocs);
+  if(appLocs.length)setAdmLocs(appLocs.map(L=>(L&&Array.isArray(L.abilities)&&L.abilities.length)?{...L,abilities:canonAbilities(L.abilities)}:L));
   else setAdmLocs((a.plants||'').split('\n').map(s=>s.trim()).filter(Boolean).map(city=>({city})));
   const cities=[...elocs.children].map(r=>r.querySelector('.al-city').value).join(' ');
   $('#e-area').value=((cities+' '+(d.service_area||'')).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim());

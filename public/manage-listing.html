@@ -108,7 +108,7 @@ const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated
 // spelling still sits in their Supabase rows. It reads as the new canonical everywhere
 // and the next save migrates the row.
 const RENAMED_ABILITIES={"u-panel":"U-panel / PBU","u panel":"U-panel / PBU","pbu-panel":"U-panel / PBU","pbu panel":"U-panel / PBU"};
-const canonAbility=a=>RENAMED_ABILITIES[String(a==null?"":a).trim().toLowerCase()]||a;
+const canonAbility=a=>{const k=String(a==null?"":a).trim().toLowerCase();return Object.prototype.hasOwnProperty.call(RENAMED_ABILITIES,k)?RENAMED_ABILITIES[k]:a};
 const canonAbilities=list=>(Array.isArray(list)?list:[]).map(canonAbility);
 const GUTTER_PROFILES=["5″ K-style gutter","6″ K-style gutter","7″ K-style gutter","5″ half-round gutter","6″ half-round gutter","6″ box gutter","7″ box gutter","8″ box gutter","6″ euro box gutter","Fascia gutter","Straight-face / square gutter"];
 const GUTTER_MATERIALS=["Gutter — .027 aluminum","Gutter — .032 aluminum","Gutter — 26 ga painted steel","Gutter — 24 ga painted steel","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
@@ -257,7 +257,7 @@ function buildProposed(){
   if(!abilities.length)return{err:'Keep at least one ability tapped — the directory search runs on them.'};
   // a listed screw-down profile always carries the "Exposed fastener" facet with it
   if(EF_PANELS.some(v=>abilities.includes(v))&&!abilities.includes('Exposed fastener'))abilities.push('Exposed fastener');
-  if(!sameSet(abilities,listing.abilities))p.abilities=abilities;
+  if(!sameSet(abilities,canonAbilities(listing.abilities)))p.abilities=abilities;
   const colors=collect('#f-colors','#f-morecolors',STOCK_COLORS);
   if(!sameSet(colors,listing.colors))p.colors=colors;
   const coild=$('#f-coildesc').value.trim();

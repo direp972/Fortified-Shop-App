@@ -957,12 +957,18 @@ function formatFeetInches(totalInches) {
 
 // A private-label applicant sells under its own name on somebody else's coil. Staff need
 // to see whose it is, and whether the shop cleared us to name that source publicly.
+// The blob arrives from an unauthenticated form post, so no field is trusted to be the
+// shape it should be — a malformed one renders as nothing rather than throwing here and
+// taking the whole applications panel down with it.
 function privateLabelSummary(details) {
   const pl = details && details.private_label;
-  if (!pl || !pl.label) return "";
-  const src = [...(pl.sources || []), pl.extra_sources].filter(Boolean).join(", ");
-  if (!src) return `Private label: ${pl.label}`;
-  return `Private label: ${pl.label} on ${src}${pl.show_source ? "" : " — source is staff-only"}`;
+  const label = pl && typeof pl.label === "string" ? pl.label.trim() : "";
+  if (!label) return "";
+  const list = Array.isArray(pl.sources) ? pl.sources.filter((x) => typeof x === "string") : [];
+  const extra = typeof pl.extra_sources === "string" ? pl.extra_sources : "";
+  const src = [...list, extra].map((x) => x.trim()).filter(Boolean).join(", ");
+  if (!src) return `Private label: ${label}`;
+  return `Private label: ${label} on ${src}${pl.show_source === true ? "" : " — source is staff-only"}`;
 }
 
 // Renders a trim profile as a plain, static SVG string (not the interactive drawing

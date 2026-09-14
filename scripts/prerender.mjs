@@ -33,7 +33,7 @@ const EF_PANELS = ["R-panel / PBR", "7.2 panel (structural rib)", "7/8″ corrug
 // "U-panel" was renamed "U-panel / PBU" after shops were listed — rows still carrying
 // the old spelling render and group under the new canonical.
 const RENAMED_ABILITIES = { "u-panel": "U-panel / PBU", "u panel": "U-panel / PBU", "pbu-panel": "U-panel / PBU", "pbu panel": "U-panel / PBU" };
-const canonAbility = (a) => RENAMED_ABILITIES[String(a ?? "").trim().toLowerCase()] || a;
+const canonAbility = (a) => { const k = String(a ?? "").trim().toLowerCase(); return Object.prototype.hasOwnProperty.call(RENAMED_ABILITIES, k) ? RENAMED_ABILITIES[k] : a; };
 const EXPOSED = ["Exposed fastener", ...EF_PANELS];
 const TRIM = ["Trim & flashing", "3D parts — boxes · scuppers · caps"];
 const GUTTER_PROFILES = ["5″ K-style gutter", "6″ K-style gutter", "7″ K-style gutter", "5″ half-round gutter", "6″ half-round gutter", "6″ box gutter", "7″ box gutter", "8″ box gutter", "6″ euro box gutter", "Fascia gutter", "Straight-face / square gutter"];

@@ -338,7 +338,7 @@ const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated
 // spelling still sits in their Supabase rows. It reads as the new canonical everywhere
 // and the next save migrates the row.
 const RENAMED_ABILITIES={"u-panel":"U-panel / PBU","u panel":"U-panel / PBU","pbu-panel":"U-panel / PBU","pbu panel":"U-panel / PBU"};
-const canonAbility=a=>RENAMED_ABILITIES[String(a==null?"":a).trim().toLowerCase()]||a;
+const canonAbility=a=>{const k=String(a==null?"":a).trim().toLowerCase();return Object.prototype.hasOwnProperty.call(RENAMED_ABILITIES,k)?RENAMED_ABILITIES[k]:a};
 const canonAbilities=list=>(Array.isArray(list)?list:[]).map(canonAbility);
 function hasAbility(have,a){
   // also normalized here, not just at buildCard: a statically prerendered card carries
@@ -425,7 +425,8 @@ apply();
 // textContent only — never innerHTML.
 function buildCard(l){
   const c=document.createElement('div');c.className='co';
-  const locs=(Array.isArray(l.locations)?l.locations:[]).filter(x=>x&&(x.city||x.address));
+  const locs=(Array.isArray(l.locations)?l.locations:[]).filter(x=>x&&(x.city||x.address))
+    .map(x=>(Array.isArray(x.abilities)&&x.abilities.length)?{...x,abilities:canonAbilities(x.abilities)}:x);
   c.dataset.name=l.name;
   c.dataset.city=l.city||'';
   c.dataset.area=((l.city||'')+' '+(l.area_keywords||'')+' '+locs.map(x=>x.city||'').join(' ')).toLowerCase();

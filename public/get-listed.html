@@ -143,6 +143,7 @@
           </div>
         </div>
         <p class="plprev" id="f-plpreview" style="display:none"></p>
+        <button type="button" class="seg" id="f-plpull" style="display:none"></button>
         <p class="plnote" id="f-plcolornote" style="display:none"></p>
       </div>
     </div>
@@ -249,7 +250,8 @@ const STOCK_COLORS=["Regal White","Almond","Ash Gray","Slate Gray","Burnished Sl
 // COLOR_HEX in suppliers.html and prerender.mjs (or the swatch greys out), and read
 // manage-listing.html's fillForm first: it drops every non-stock color into a free-text
 // box the shop owner can wipe, which would delete them from the live listing.
-const PRIVATE_LABEL_COLORS={"United Metals":STOCK_COLORS.slice()};
+const BARE_STOCK=["Galvalume","Bare Copper","Bonderized"];
+const PRIVATE_LABEL_COLORS={"United Metals":STOCK_COLORS.filter(c=>!BARE_STOCK.includes(c))};
 const COIL_BRANDS=["Fortified Metal","Sheffield Metals","McElroy Metal","Berridge","Drexel Metals","PAC-CLAD (Petersen)","Una-Clad","Adax Metals","ATAS","Englert","Central States","United Metals","Metal Sales"];
 const GAUGES=["29 ga","28 ga","26 ga","24 ga","22 ga","20 ga"];
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
@@ -278,21 +280,28 @@ $("#f-mode-private").onclick=()=>{$("#f-mode-private").classList.toggle("sel");s
 $("#f-plshow").onclick=()=>{$("#f-plshow").classList.add("sel");$("#f-plhide").classList.remove("sel")};
 $("#f-plhide").onclick=()=>{$("#f-plhide").classList.add("sel");$("#f-plshow").classList.remove("sel")};
 
-// Naming a source whose palette we carry taps those colors in step 5 and says so out
-// loud. The label on the panel is theirs; the colors under it are the mill's, and the
-// mill's names are what the directory matches a color search against.
+// The label on the panel is theirs; the coil and the colors under it are the mill's, and
+// the mill's color names are what a color search matches against — so private label opens
+// the color grid whatever the source. Nothing is tapped on the shop's behalf: a palette we
+// happen to carry is offered as a button they press, so the claim is theirs.
 function syncPrivateLabel(){
-  const note=$("#f-plcolornote");
-  if(!$("#f-mode-private").classList.contains("sel")){note.style.display="none";return}
-  const named=[...$$("#f-plsource .seg.sel")].map(b=>b.dataset.v).filter(v=>(PRIVATE_LABEL_COLORS[v]||[]).length);
-  const pulled=[];
-  named.forEach(v=>PRIVATE_LABEL_COLORS[v].forEach(c=>{if(!pulled.includes(c))pulled.push(c)}));
-  if(!pulled.length){note.style.display="none";return}
+  const note=$("#f-plcolornote"),pull=$("#f-plpull");
+  if(!$("#f-mode-private").classList.contains("sel")){note.style.display="none";pull.style.display="none";return}
   if(!$("#f-mode-own").classList.contains("sel")){$("#f-mode-own").classList.add("sel");syncColorModes()}
-  $$("#f-colors .seg").forEach(b=>{if(pulled.includes(b.dataset.v))b.classList.add("sel")});
-  note.textContent="We tapped "+named.join(" and ")+" colors up in this step. Untap anything you don't actually run — that list is what a color search matches you on, and it stays under your label, not theirs.";
+  note.textContent="Tap your colors up in step 5, under the names the mill uses for them. That list is what a color search matches you on, and it sits under your label, not theirs.";
   note.style.display="";
+  const named=[...$$("#f-plsource .seg.sel")].map(b=>b.dataset.v).filter(v=>(PRIVATE_LABEL_COLORS[v]||[]).length);
+  pull.dataset.pull=named.join("|");
+  pull.textContent=named.length?"Tap the standard "+named.join(" and ")+" colors for me":"";
+  pull.style.display=named.length?"":"none";
 }
+$("#f-plpull").onclick=()=>{
+  const pulled=[];
+  ($("#f-plpull").dataset.pull||"").split("|").filter(Boolean)
+    .forEach(v=>(PRIVATE_LABEL_COLORS[v]||[]).forEach(c=>{if(!pulled.includes(c))pulled.push(c)}));
+  $$("#f-colors .seg").forEach(b=>{if(pulled.includes(b.dataset.v))b.classList.add("sel")});
+  $("#f-owncolors").scrollIntoView({block:"nearest"});
+};
 // Signed-in members get their contact details prefilled from their account.
 document.addEventListener("rc:auth",e=>{
   const s=e.detail&&e.detail.session;if(!s)return;
@@ -478,9 +487,11 @@ $("#f-go").onclick=async()=>{
   const plSources=privateOn?[...$$("#f-plsource .seg.sel")].map(b=>b.dataset.v):[];
   if(privateOn&&!$("#f-plname").value.trim()){showErr("You said you private-label — give us the label your panels go out under. That's the name a contractor will be looking for.");return}
   if(privateOn&&plSources.length===0&&!$("#f-plmoresource").value.trim()){showErr("Tap whose coil is under your label, or type it in — it's how someone searching that mill's color still lands on you.");return}
-  // a private-label shop is found on the colors under its label, so they ride along even
-  // if the own-colors section got toggled shut after the palette was tapped
-  const colorsOn=ownColorsOn||privateOn;
+  // a private label is only ever found on the colors under it, so leaving with none is
+  // the one way this feature quietly fails to do anything
+  if(privateOn&&$$("#f-colors .seg.sel").length===0&&!$("#f-morecolors").value.trim()){
+    $("#f-mode-own").classList.add("sel");syncColorModes();
+    showErr("Tap the colors you run, up in step 5 — a private label only gets found on the colors underneath it.");return}
   // locations: main one needs a full street address; extras need at least City, ST
   const locs=[];
   for(const row of $$("#f-locs .locrow")){
@@ -533,8 +544,8 @@ $("#f-go").onclick=async()=>{
           abilities:allAbilities,
           extra_profiles:extraProfiles,
           extra_gutters:extraGutters,
-          colors:colorsOn?[...$$("#f-colors .seg.sel")].map(b=>b.dataset.v):[],
-          extra_colors:colorsOn?$("#f-morecolors").value.trim():"",
+          colors:ownColorsOn?[...$$("#f-colors .seg.sel")].map(b=>b.dataset.v):[],
+          extra_colors:ownColorsOn?$("#f-morecolors").value.trim():"",
           brands:stockBrandsOn?[...$$("#f-brands .seg.sel")].map(b=>b.dataset.v):[],
           extra_brands:stockBrandsOn?$("#f-morebrands").value.trim():"",
           private_label:privateOn?{
