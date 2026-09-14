@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase, Package, Pencil } from "lucide-react";
+import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase, Package, Pencil, Building2 } from "lucide-react";
 import * as THREE from "three";
 import { storage } from "./lib/storage";
 import { supabase } from "./lib/supabaseClient";
@@ -522,7 +522,7 @@ const COLORS_BY_BRAND = {
 };
 
 
-/* ---------------------------------- Roof in a Box ---------------------------------- */
+/* ------------------------- Residential Standing Seam (the roof kit) ------------------------- */
 // The standard trim set for a 24 ga standing seam roof, drawn to the roof's pitch and the
 // panel's seam height. Every entry is a real profile the drawing tool can open and edit:
 // points in inches, y grows downward, drawn with the leg that sits on the panel (or the
@@ -592,7 +592,7 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
     { id: "endwall", name: "Headwall Flashing", dims: `5" × 4" · wall leg plumb for ${fmtPitch(pitch)}`, per: "headwall", on: true, pitched: true,
       where: "Where the roof runs up into a wall (an endwall) — sits over the Z-closure, wall leg plumb at your pitch behind the siding or counter flashing.",
       points: [kitPt(-0.375, 0.25), kitPt(0, 0), kitPt(5, 0), kitPt(5 + 4 * wallTilt.x, 4 * wallTilt.y)], hemStart: "none", hemEnd: "none", paintSide: "right" },
-    { id: "counter", name: "Counter Flashing — Reglet", dims: '1" reglet · 4" face · ½" 45° kick', per: "sidewall and headwall against masonry", on: true,
+    { id: "counter", name: "Counter Flashing — Saw-Cut Reglet", dims: '1" leg in a saw cut · 4" face · ½" 45° kick', per: "sidewall and headwall against masonry", on: true,
       where: "Covers the top of the sidewall and headwall flashing — 1\" leg set into a saw-cut or mortar joint, 4\" face down the wall, kicked out and hemmed at the bottom.",
       points: [kitPt(1, -0.25), kitPt(0, 0), kitPt(0, 4), kitPt(-KICK, 4 + KICK)], hemStart: "none", hemEnd: "closed-right", paintSide: "left" },
     { id: "counter2", name: "Counter Flashing — Surface Mount", dims: '½" sealant kick · 4" face · ½" 45° kick', per: "sidewall and headwall on siding, stucco or block", on: false,
@@ -610,19 +610,119 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
   ];
 }
 const ROOF_KIT_DEFAULT_SEL = Object.fromEntries(buildRoofKit().map((it) => [it.id, it.on ? 1 : 0]));
-// Quick presets on the trim canvas: every piece of the kit at a 4:12 roof, under the name
-// the box gives it (Roof in a Box redraws the pitch-driven ones to any pitch), plus Custom
-// for a blank start.
+
+/* ---------------------------------- Commercial in a Box ---------------------------------- */
+// The sheet metal for a low-slope commercial roof: coping over the parapets — face-fastened, or
+// hooked on one or two continuous cleats — the cleat itself, the edge metal for the open edges
+// (gravel stop, drip edge, snap-on fascia and the hook strip they hang on, drawn to the fascia
+// height), the two counter flashings the roof kit carries, a box gutter, and the downspout that
+// drops from it or from a collector box. Built like the roof kit — every entry a profile the canvas can open, drawn to
+// the wall, gutter and downspout sizes — except the scupper and the collector box: those are
+// built to size in the 3D tool, and their rows only take the roofer there.
+const PARAPET_WIDTHS = [8, 10, 12, 14, 16, 18, 20, 24]; // across the top of the parapet, wall plus blocking, inches
+const GUTTER_SIZES = [5, 6, 7, 8];                        // box gutter: bottom and front, inches — "a 6-inch box" is 6 × 6
+const DOWNSPOUT_SIZES = ["3×3", "4×4", "6×6", "3×4", "4×5", "4×6", "5×6"]; // downspout, out from the wall × across it, inches — the square ones first, the usual brake-metal sizes
+const FASCIA_HEIGHTS = [4, 5, 5.5, 6, 7, 8, 8.5, 9, 10]; // edge metal: the face down the fascia, inches — ATAS bends 4 / 5½ / 7 / 8½, Vortex 5 / 7 / 8 / 8½ / 9, 6 for the ticket that says six, shops go to 10
+const inWord = (v) => (Number.isInteger(v) ? `${v}"` : `${Math.floor(v)}½"`); // 12.5 -> 12½" (fracIn is not initialised yet at load)
+function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4", fascia = 5.5, atas = false, es1 = false } = {}) {
+  const KICK = 0.5 / Math.SQRT2; // a ½" leg kicked out at 45° — the drip on a face-fastened face, the lip on a cleat
+  const OUT = 4, IN = 3;         // coping faces: the street side hangs an inch lower than the roof side
+  const TF = wallWidth + 0.5;    // face-fastened cap: the wall plus ¼" of play a side
+  const TC = wallWidth + 1;      // cleated caps: ½" a side, to clear the cleat's lip and the hook hem returned inside the face
+  const G = gutterSize;          // box gutter: bottom and front this size, the back an inch taller
+  const [D, W] = downspout.split("×").map(Number); // downspout: D out from the wall, W across it
+  const F = fascia;              // edge metal: the face down the fascia — a gravel stop, a drip edge or a snap-on fascia, and the hook strip under them
+  const CANT = 0.75, TOP = 0.75; // gravel stop: the cant stands ¾" above the deck (ATAS, Ohio 07 71 00), ¾" back from the edge of the nailer — the step out to the face is a shop default, no source sizes it
+  const GS_FLANGE = 4, DE_FLANGE = 3, SNAP_TOP = 2.375; // the legs on the roof: gravel stop 4" (ATAS, Ohio), drip edge 3" (DMI, K&M), snap-on 2⅜" (Vortex One-Edge) — the ½" kick and ½" open hem are the kit's; the ATAS toggle bends the spec's ¾" and 1"
+  const counters = buildRoofKit().filter((it) => it.id === "counter" || it.id === "counter2");
+  // The bottom of the three covers: the face ends at y and the drip kicks out 45° — the kit's ½" kick with a ½"
+  // open hem as the end fold, or, to the ATAS spec, a ¾" kick with a 1" open hem drawn as legs: the hem folds
+  // back along the kick to the corner, then turns to run the last ¼" up the inside of the face.
+  const DRIP = atas ? 0.75 / Math.SQRT2 : KICK;
+  const edgeEnd = (y) => (atas ? [kitPt(0, y), kitPt(-DRIP, y + DRIP), kitFold(0, y, "right"), kitPt(0, y - 0.25)] : [kitPt(0, y), kitPt(-DRIP, y + DRIP)]);
+  const edgeHem = atas ? "none" : "open-right";
+  const edgeDrip = atas ? '¾" 45° kick · 1" open hem' : '½" 45° kick';
+  const kickWord = atas ? '¾" kick with a 1" open hem' : '½" kick with an open hem';
+  const es = (name) => (es1 ? `${name} (ES-1)` : name); // the job calls for tested edge metal: the coping and edge pieces say so on the order
+  // A coping cleat drops an inch less than the face it holds, so its kick lands on the hook's free edge; the hook
+  // strip under the edge metal drops the whole face, so its kick nests inside the cover's kicked hem. Drawn plumb
+  // with the wall or the nailer on its right, the way the caps' outside face is drawn — the kick turns out, away from it.
+  const cleat = (drop) => [kitPt(0, 0), kitPt(0, drop), kitPt(-KICK, drop + KICK)];
+  return [
+    { id: "coping0", name: es("Coping Cap — Face-Fastened"), dims: `${inWord(TF)} top · 4" outside face · 3" roof-side face · ½" 45° kicks · ${wallWidth}" wall`, per: "parapet", on: false,
+      where: "Over the top of the parapet with no cleat — the top the wall's width plus ¼\" of play a side, the outside face an inch longer than the roof side for cover on the street side (slope the blocking under the cap so it drains to the roof), each face kicked out at the bottom and hemmed, screwed through with gasketed fasteners. Every screw shows; tick a cleated cap when the street side can't.",
+      points: [kitPt(-KICK, OUT + KICK), kitPt(0, OUT), kitPt(0, 0), kitPt(TF, 0), kitPt(TF, IN), kitPt(TF + KICK, IN + KICK)], hemStart: "closed-left", hemEnd: "closed-left", paintSide: "right" },
+    { id: "coping1", name: es("Coping Cap — One Cleat"), dims: `${inWord(TC)} top · 4" outside face hooked · 3" roof-side face kicked · ${wallWidth}" wall`, per: "parapet", on: true,
+      where: "Over the parapet with the outside face dropping straight to a ¾\" hook hem that snaps under the Coping Cleat, so nothing shows from the street; the roof-side face kicked, hemmed and screwed into the blocking where only the roof sees it. The top is the wall plus ½\" a side to clear the cleat's lip. One Coping Cleat per length of cap.",
+      points: [kitPt(0, OUT), kitPt(0, 0), kitPt(TC, 0), kitPt(TC, IN), kitPt(TC + KICK, IN + KICK)], hemStart: "hook-left", hemEnd: "closed-left", paintSide: "right" },
+    { id: "coping2", name: es("Coping Cap — Two Cleats"), dims: `${inWord(TC)} top · 4" and 3" faces, both hooked · ${wallWidth}" wall`, per: "parapet", on: false,
+      where: "Both faces hemmed to hook a cleat — no exposed fasteners anywhere, and the cap floats so it can move with the heat: the spec'd way on a high-wind or ES-1 job. One Coping Cleat and one Coping Cleat — Roof Side per length of cap.",
+      points: [kitPt(0, OUT), kitPt(0, 0), kitPt(TC, 0), kitPt(TC, IN)], hemStart: "hook-left", hemEnd: "hook-left", paintSide: "right" },
+    { id: "copingcleat", name: es("Coping Cleat"), dims: '3" × ½" 45° kick', per: "parapet with a cleated cap, on the street side", on: true,
+      where: "Continuous cleat the cap's 4\" outside face hooks — a 3\" strip screwed flat to the face of the wall 12\" o.c., top edge flush with the top of the blocking, the bottom ½\" kicked out 45° so the cap's hook hem snaps under it. One length per length of cap. Usually 24 ga bare or paint-grip; 22 ga where the spec calls for it.",
+      points: cleat(OUT - 1), hemStart: "none", hemEnd: "none", paintSide: "left" },
+    { id: "copingcleat2", name: es("Coping Cleat — Roof Side"), dims: '2" × ½" 45° kick', per: "parapet with a two-cleat cap, on the roof side", on: false,
+      where: "The same cleat cut for the cap's 3\" roof-side face — a 2\" strip on the inside of the wall with the same ½\" kick, so the two-cleat cap's shorter hem lands on it. Only the Two Cleats cap needs it, one length per length of cap.",
+      points: cleat(IN - 1), hemStart: "none", hemEnd: "none", paintSide: "left" },
+    ...counters.map((it) => (it.id === "counter"
+      ? { ...it, per: "parapet, curb and wall base flashing in masonry", where: "Covers the top of the base flashing at parapets, curbs and walls — 1\" leg set into a saw-cut reglet or a raked mortar joint, 4\" face down the wall, kicked out and hemmed at the bottom." }
+      : { ...it, per: "parapet, curb and wall base flashing on stucco, EIFS, block or panel", where: "Same job on a wall nothing can be cut into — stucco, EIFS, block or panel — the top edge kicked out 45° to hold a bead of sealant, screwed through the face." })),
+    // Edge metal for the open edges — a roof has parapets or open edges, so these start unticked and the box keeps
+    // opening on the one-cleat coping. Drawn the way the caps' outside face is: the face plumb at x = 0, the nailer
+    // and the roof to its right with the roof leg flat on the nailer top at y = 0, the kick turning out. Paint is
+    // on the left of travel (the top of the roof leg, the roof side of the cant, the outside of the face, the top of
+    // the kick), so the open hem folds right: back under the kick toward the nailer, the pocket the strip's kick
+    // nests in. The strip is the coping cleat's shape as tall as the face, so its kick root meets the cover's.
+    { id: "gravelstop", name: es("Gravel Stop Fascia"), dims: `4" roof flange · ¾" cant · ${inWord(F)} face · ${edgeDrip}`, per: "roof edge", on: false,
+      where: `The edge of a low-slope roof with no parapet and no gutter — the 4\" flange on the deck is stripped into the membrane, the cant stands up ¾\" to hold the gravel and the water back from the edge, steps ¾\" out to the edge of the nailer, and the face drops over it to a ${kickWord} that hooks the Hook Strip: no fastener through the face, the cleated edge the ES-1 systems are built on. Where the spec or the inspector calls for a tested ES-1 edge, that edge comes from a certified shop. One Hook Strip per length, set ¾\" proud of the nailer, up inside the cant.`,
+      points: [kitPt(TOP + GS_FLANGE, 0), kitPt(TOP, 0), kitPt(TOP, -CANT), kitPt(0, -CANT), ...edgeEnd(F - CANT)], hemStart: "none", hemEnd: edgeHem, paintSide: "left" },
+    { id: "dripedge", name: es("Drip Edge — Membrane Roof"), dims: `3" roof flange · ${inWord(F)} face · ${edgeDrip}`, per: "roof edge", on: false,
+      where: `The same edge where the roof drains over it, into a gutter or clear of the wall, so no cant — a 3\" flange flat on the deck, stripped into the membrane, the face down the nailer to a ${kickWord} that hooks the Hook Strip set flush with the nailer top. Not the Eave or the D-Style Drip Edge of the standing seam box: no panel hooks this one, it hangs on the Hook Strip and nothing else. One Hook Strip per length.`,
+      points: [kitPt(DE_FLANGE, 0), kitPt(0, 0), ...edgeEnd(F)], hemStart: "none", hemEnd: edgeHem, paintSide: "left" },
+    { id: "snapfascia", name: es("Snap-On Fascia"), dims: `2⅜" top return · ${inWord(F)} face · ${edgeDrip}`, per: "roof edge", on: false,
+      where: `The two-piece edge on a single-ply roof, put on last — the membrane is terminated over the nailer and the Hook Strip screwed flush with its top; the cover's 2⅜\" return lies on the nailer over the termination, the face drops over the strip, and the ${kickWord} snaps under the strip's lip. Nothing stripped in, no fastener showing, and it comes off without touching the roof. One Hook Strip per length. For a canted nailer, open it on the canvas and tilt the return to the bevel. When the spec names an anchor-bar system, the bar comes from that maker and only the cover is bent.`,
+      points: [kitPt(SNAP_TOP, 0), kitPt(0, 0), ...edgeEnd(F)], hemStart: "none", hemEnd: edgeHem, paintSide: "left" },
+    { id: "hookstrip", name: es("Hook Strip / Continuous Cleat"), dims: `${inWord(F)} × ½" 45° kick`, per: "roof edge, under the edge metal", on: false,
+      where: "Continuous cleat the Gravel Stop, the Drip Edge and the Snap-On Fascia hook — a strip as tall as the face it holds, screwed flat to the face of the nailer 12\" o.c., the bottom ½\" kicked out 45° so the cover's kicked hem snaps over it. Top edge where the top of the face lands: flush with the nailer under the Drip Edge and the Snap-On Fascia, ¾\" above it under the Gravel Stop, inside the cant. One length per length of edge metal. Usually 24 ga bare or paint-grip; 22 ga where the spec calls for it — FM 1-49 wants the cleat a gauge heavier than the cover.",
+      points: cleat(F), hemStart: "none", hemEnd: "none", paintSide: "left" },
+    { id: "boxgutter", name: `Box Gutter — ${G}"`, dims: `${G}" × ${G}" · ${G + 1}" back · 1" hemmed return`, per: "gutter run", on: true,
+      where: "Along the low edge of the roof — bottom and front the gutter's size, the back an inch taller against the fascia so an overflow spills over the front and never behind it, a 1\" return across the top of the front, hemmed under, for stiffness and for the hangers to clip. Both edges hemmed. Drops to a downspout through an outlet cut in the bottom, or into a collector box.",
+      points: [kitPt(G - 1, -G), kitPt(G, -G), kitPt(G, 0), kitPt(0, 0), kitPt(0, -(G + 1))], hemStart: "closed-left", hemEnd: "closed-left", paintSide: "right" },
+    { id: "scupper", name: "Scupper", tool3d: "scupper", dims: "built to size in the 3D tool", per: "outlet through the parapet",
+      where: "Through-wall outlet that lets the roof drain out through the parapet — a sleeve sized to the wall with a flange on the roof side, into a collector box or straight down a downspout." },
+    { id: "collector", name: "Collector Box", tool3d: "collector", dims: "built to size in the 3D tool", per: "drop",
+      where: "The conductor head under a scupper or a gutter outlet — catches the water and feeds the downspout, with the outlet the downspout below fits." },
+    { id: "downspout", name: `Downspout — ${downspout}"`, dims: `${D}" out × ${W}" on the wall · 1" lock flange · ½" pocket`, per: "drop", on: true,
+      where: `Carries the water down from a box gutter's outlet or a collector box — ${W}" face against the wall, ${D}" out. Drawn as the brake bends it: a 1" flange, the four sides, and the back ending in a ½" open pocket the flange snaps into, closed with a hand seamer on the corner against the wall where it never shows. Strapped to the wall; the shop makes the elbows from the same stock.`,
+      points: [kitPt(1, 0), kitPt(0, 0), kitPt(0, D), kitPt(W, D), kitPt(W, 0), kitPt(0.5, 0)], hemStart: "none", hemEnd: "open-right", paintSide: "left" },
+  ];
+}
+const COM_KIT = buildCommercialKit();
+// Every box row's starting tick, both kits, by kit id — what a row goes back to when the last
+// of that piece leaves the order.
+const KIT_DEFAULT_SEL = { ...ROOF_KIT_DEFAULT_SEL, ...Object.fromEntries(COM_KIT.filter((it) => !it.tool3d).map((it) => [it.id, it.on ? 1 : 0])) };
+// Quick presets on the trim canvas: every piece of the roof kit at a 4:12 roof and every drawn
+// piece of the commercial kit at its stock sizes, under the names the boxes give them (the boxes
+// redraw the pitch- and size-driven ones to any pitch or size), plus Custom for a blank start.
 const KIT_4_12 = Object.fromEntries(buildRoofKit({ pitch: 4 }).map((it) => [it.id, it]));
 const PITCHED_KIT = new Set(Object.values(KIT_4_12).filter((it) => it.pitched).map((it) => it.id)); // the pieces whose shape follows the roof pitch
-const KIT_PRESETS = Object.fromEntries(Object.values(KIT_4_12).map((it) => [it.name, it.id]));
+const KIT_PRESET_ITEMS = [...Object.values(KIT_4_12), ...COM_KIT.filter((it) => !it.tool3d && !KIT_4_12[it.id])];
+const KIT_BY_ID = Object.fromEntries(KIT_PRESET_ITEMS.map((it) => [it.id, it]));
+const KIT_PRESETS = Object.fromEntries(KIT_PRESET_ITEMS.map((it) => [it.name, it.id]));
 const TRIM_PRESETS = {
-  ...Object.fromEntries(Object.entries(KIT_PRESETS).map(([name, id]) => [name, KIT_4_12[id].points])),
+  ...Object.fromEntries(KIT_PRESET_ITEMS.map((it) => [it.name, it.points])),
   "Custom": [[0, 0], [0, 6]],
 };
-// A preset from the kit brings its standard end folds and painted side along with the shape;
+// A preset from a kit brings its standard end folds and painted side along with the shape;
 // the shop staples set only the shape and leave the folds as they are.
-const presetFolds = (name) => { const it = KIT_4_12[KIT_PRESETS[name]]; return it ? { hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide } : null; };
+const presetFolds = (name) => { const it = KIT_BY_ID[KIT_PRESETS[name]]; return it ? { hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide } : null; };
+// The two boxes: what each is called, which ?view= opens it from the site, and its colours.
+const BOX_KINDS = {
+  res: { label: "Residential Standing Seam", view: "box", accent: "#A0602E", accentLight: "#B8703A", icon: Package,
+    blurb: "The standard trims for a 24 ga standing seam roof, drawn to your pitch — add them all at once" },
+  com: { label: "Commercial in a Box", view: "commercial", accent: "#4F5D6B", accentLight: "#61707F", icon: Building2,
+    blurb: "Coping, edge metal, counter flashing, box gutters and downspouts for a low-slope roof" },
+};
 
 const STATUS_FLOW = ["Pending", "In Production", "Ready for Pickup", "Completed"];
 const RIB_LABELS = { bead: "Bead Ribs", pencil: "Pencil Ribs", v: "V Ribs", striations: "Striations" };
@@ -857,7 +957,7 @@ function formatFeetInches(totalInches) {
 
 // Renders a trim profile as a plain, static SVG string (not the interactive drawing
 // tool) for print/export — clean outline with length labels at each segment.
-function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = "none") {
+function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = "none", paintSide = "left") {
   if (!points || points.length < 2) return "";
   const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
   const size = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 1);
@@ -874,7 +974,13 @@ function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = 
     const len = dist(points[i - 1], points[i]);
     const mx = (pathPts[i - 1][0] + pathPts[i][0]) / 2;
     const my = (pathPts[i - 1][1] + pathPts[i][1]) / 2;
-    labels += `<text x="${mx.toFixed(1)}" y="${(my - 8).toFixed(1)}" font-size="11" text-anchor="middle" font-family="monospace" fill="#333">${fmtIn(len)}"</text>`;
+    const folded = i > 1 && foldSide(points[i]);
+    let lx = mx, ly = my - 8;
+    if (folded || len < 1.5) { // a short leg, or a hem drawn as a leg over the leg it folds along: the label sits off to the side — a leg's on the painted side, a hem's on the unpainted side, where it folds
+      const [px, py] = folded ? sidePerp(unitVec(pathPts[i - 2], pathPts[i - 1]), folded) : sidePerp(unitVec(pathPts[i - 1], pathPts[i]), paintSide); // a fold's side is named off the leg it folds along
+      lx = mx + px * 16; ly = my + py * 16 + 4;
+    }
+    labels += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="11" text-anchor="middle" font-family="monospace" fill="#333" stroke="#fff" stroke-width="3" paint-order="stroke">${fmtIn(len)}"${folded ? " hem" : ""}</text>`;
   }
   const dotSvg = pathPts.map((p) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${colorHex || "#333"}" />`).join("");
   // End folds are drawn in inches inside a scaled group so the same geometry the canvas
@@ -895,11 +1001,11 @@ function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = 
 // print dialog — the person can "Save as PDF" from there. No PDF library needed or
 // available in this environment, so this is the reliable cross-browser path.
 function printPartAsPDF(item) {
-  const svg = generateProfileSvgString(item.points, item.colorHex, item.hemStart, item.hemEnd);
+  const svg = generateProfileSvgString(item.points, item.colorHex, item.hemStart, item.hemEnd, item.paintSide);
   const win = window.open("", "_blank");
   if (!win) { window.alert("Your browser blocked the print window — please allow popups for this site and try again."); return; }
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  win.document.write(`<!doctype html><html><head><title>${esc(item.name || "Trim Part")}</title>
+  win.document.write(`<!doctype html><html><head><title>${esc(item.name || item.partName || "Trim Part")}</title>
     <style>
       body{font-family:system-ui,-apple-system,sans-serif;padding:28px;color:#1C1C1E;max-width:720px;margin:0 auto;}
       h1{font-size:20px;margin:0 0 2px;}
@@ -911,7 +1017,7 @@ function printPartAsPDF(item) {
       .printbtn{margin-top:28px;padding:11px 22px;background:#D4AF37;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;}
       @media print { .printbtn{display:none;} }
     </style></head><body>
-    <h1>${esc(item.name || "Trim Part")}</h1>
+    <h1>${esc(item.name || item.partName || "Trim Part")}</h1>
     <div class="sub">Fortified Sheet Metal — Order Spec Sheet</div>
     <div class="row">
       <div>${svg}</div>
@@ -3525,8 +3631,17 @@ export default function ShopOrderApp() {
   const [editingId, setEditingId] = useState(null); // the part from the list that is back on the canvas to be changed
   const editSnapshot = useRef(null); // what the canvas and form held before a part was tapped — put back when the edit ends
   const canvasTopRef = useRef(null);
-  // Roof in a Box — the standard 24 ga standing seam trim set, drawn to pitch
+  // The boxes — Residential Standing Seam (the 24 ga trim set, drawn to pitch) and Commercial in a
+  // Box (coping, cleats, counter flashing, gutters and downspouts, drawn to their sizes)
   const [roofBoxOpen, setRoofBoxOpen] = useState(false);
+  const [roofBoxKind, setRoofBoxKind] = useState("res"); // which box is up — "res" or "com" (BOX_KINDS)
+  const [comWall, setComWall] = useState(12);            // Commercial in a Box: the parapet's width across the top
+  const [comGutter, setComGutter] = useState(6);         //   the box gutter's size
+  const [comDownspout, setComDownspout] = useState("4×4"); // the downspout's size
+  const [comFascia, setComFascia] = useState(5.5);        //   the edge metal's face height
+  const [comAtas, setComAtas] = useState(false);          //   the covers' drip to the ATAS spec (¾" kick, 1" hem)
+  const [comEs1, setComEs1] = useState(false);            //   the job calls for ES-1 tested edge metal
+  const [box3dReturn, setBox3dReturn] = useState(false); // the 3D tool was reached from Commercial in a Box — it offers the way back
   const [roofBoxPitch, setRoofBoxPitch] = useState(4);
   const [roofBoxSeam, setRoofBoxSeam] = useState(1.5);
   const [roofBoxLower, setRoofBoxLower] = useState(3);
@@ -3535,6 +3650,7 @@ export default function ShopOrderApp() {
   const [boxNote, setBoxNote] = useState(""); // one line the box shows after a round trip — "Added Ridge Cap ×4 — pick the next piece."
   const [boxStripAll, setBoxStripAll] = useState(false); // the "In the order now" strip shows eight parts until asked for all
   const [boxReturn, setBoxReturn] = useState(null); // the kit id of the box piece on the canvas, or "edit" for a part opened from the box's list — the box comes back when that work is done
+  const [boxReturnKind, setBoxReturnKind] = useState("res"); // …and which box that was, so it is the one that comes back
   const [tabLoaded, setTabLoaded] = useState(false);
   // Job Vault — each member's saved trim/panel configs (Supabase vault_items, owner-only)
   const [vaultItems, setVaultItems] = useState([]);
@@ -3548,16 +3664,18 @@ export default function ShopOrderApp() {
   //   ?view=color  the Color Lab button opens straight to Pick Your Finish
   //   ?view=trim   "Trim drawing" on roofcoil.com/members.html opens the drawing tool
   //   ?view=panel  "Panel orders" opens the panel calculator
+  //   ?view=box    "Open Residential Standing Seam" on sheet-metal-trim.html opens that box
+  //   ?view=commercial  "Open Commercial in a Box" opens the other one
   // members.html embeds this app in an iframe with one of these, then switches tools
   // with a same-origin postMessage ({type:"rc:view"}) so a half-drawn profile isn't
   // lost to a reload when the member flips tabs.
   const openTool = useCallback((view) => {
     if (view === "color") { setTab("order"); setOrderStep("color"); }
     else if (view === "trim" || view === "panel") { setTab("order"); setShapeType(view); setOrderStep("details"); }
-    else if (view === "box") { setTab("order"); setShapeType("trim"); setOrderStep("details"); setRoofBoxOpen(true); }
+    else if (view === "box" || view === "commercial") { setTab("order"); setShapeType("trim"); setOrderStep("details"); setRoofBoxKind(view === "commercial" ? "com" : "res"); setRoofBoxOpen(true); }
   }, []);
   const deepLinkView = new URLSearchParams(window.location.search).get("view");
-  const deepLinked = ["color", "trim", "panel", "box"].includes(deepLinkView);
+  const deepLinked = ["color", "trim", "panel", "box", "commercial"].includes(deepLinkView);
   useEffect(() => {
     if (deepLinked) openTool(deepLinkView);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4431,7 +4549,7 @@ export default function ShopOrderApp() {
     setHemStart("none"); setHemEnd("none"); setPaintSide("left");
     setGaugeId(GAUGE_OPTIONS[0].id); setPaintId(PAINT_OPTIONS[0].id); setBrand(BRANDS[0]); setColorName(COLORS_BY_BRAND[BRANDS[0]][0].name);
     setQuantity(4); setLengthPerPiece(10); setSheetWidth(48); setPartName("");
-    setEditingId(null); setBoxReturn(null); editSnapshot.current = null; setRoofBoxOpen(false);
+    setEditingId(null); setBoxReturn(null); editSnapshot.current = null; setRoofBoxOpen(false); setBox3dReturn(false);
     setCustomerName(""); setPhone(""); setNotes("");
   };
 
@@ -4472,7 +4590,7 @@ export default function ShopOrderApp() {
     if (fromBox) { // back to the box to pick the next piece — its row unticked, since it is in the order now
       setRoofBoxSel((sel) => ({ ...sel, [fromBox]: 0 }));
       setBoxNote(`Added ${item.name} ×${item.quantity} — pick the next piece.`);
-      setRoofBoxOpen(true);
+      setRoofBoxKind(boxReturnKind); setRoofBoxOpen(true);
     }
     setToast(`"${item.name}" added to the order — ${basket.length + 1} part${basket.length + 1 === 1 ? "" : "s"} so far.`);
     setTimeout(() => setToast(""), 3000);
@@ -4482,7 +4600,7 @@ export default function ShopOrderApp() {
     const gone = basket.find((i) => i.id === id);
     setBasket((b) => b.filter((i) => i.id !== id));
     // the last of a kit piece leaving the order ticks its box row back the way the box ships it
-    if (gone?.kit && !basket.some((i) => i.id !== id && i.kit === gone.kit)) setRoofBoxSel((sel) => (Object.keys(sel).length ? { ...sel, [gone.kit]: ROOF_KIT_DEFAULT_SEL[gone.kit] || 0 } : sel));
+    if (gone?.kit && !basket.some((i) => i.id !== id && i.kit === gone.kit)) setRoofBoxSel((sel) => (Object.keys(sel).length ? { ...sel, [gone.kit]: KIT_DEFAULT_SEL[gone.kit] || 0 } : sel));
     if (id === editingId) restoreCanvas();
   };
   // Tap a part in the list and it comes back onto the canvas and the form — legs, folds, painted
@@ -4490,9 +4608,9 @@ export default function ShopOrderApp() {
   // put back in its place. Whatever was on the canvas and the form is kept aside and comes back
   // when the edit ends, so tapping a part to look at it never costs a drawing in progress.
   const editBasketItem = (it, fromBox = false) => {
-    if (!editingId) editSnapshot.current = { points, hemStart, hemEnd, paintSide, partName, quantity, lengthPerPiece, sheetWidth, partPhoto, drawnPitch, preset, materialCategory, gaugeId, paintId, brand, colorName, boxReturn };
+    if (!editingId) editSnapshot.current = { points, hemStart, hemEnd, paintSide, partName, quantity, lengthPerPiece, sheetWidth, partPhoto, drawnPitch, preset, materialCategory, gaugeId, paintId, brand, colorName, boxReturn, boxReturnKind };
     setEditingId(it.id);
-    if (fromBox) { setRoofBoxOpen(false); setBoxReturn("edit"); }
+    if (fromBox) { setRoofBoxOpen(false); setBoxReturn("edit"); setBoxReturnKind(roofBoxKind); }
     setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
     setHemStart(it.hemStart || "none"); setHemEnd(it.hemEnd || "none"); setPaintSide(it.paintSide || "left");
     setPartName(it.name); setQuantity(it.quantity); setLengthPerPiece(it.lengthPerPiece); setSheetWidth(it.sheetWidth);
@@ -4509,9 +4627,9 @@ export default function ShopOrderApp() {
     const s = editSnapshot.current;
     editSnapshot.current = null;
     setEditingId(null);
-    if (boxReturn === "edit") setRoofBoxOpen(true); // the part was opened from the box's list — back to the box
+    if (boxReturn === "edit") { setRoofBoxKind(boxReturnKind); setRoofBoxOpen(true); } // the part was opened from a box's list — back to that box
     if (!s) { clearDrawing(); setPartPhoto(null); return; }
-    setBoxReturn(s.boxReturn || null);
+    setBoxReturn(s.boxReturn || null); setBoxReturnKind(s.boxReturnKind || "res");
     setPoints(s.points); setHemStart(s.hemStart); setHemEnd(s.hemEnd); setPaintSide(s.paintSide);
     setPartName(s.partName); setQuantity(s.quantity); setLengthPerPiece(s.lengthPerPiece); setSheetWidth(s.sheetWidth);
     setPartPhoto(s.partPhoto); setDrawnPitch(s.drawnPitch); setPreset(s.preset);
@@ -4529,10 +4647,13 @@ export default function ShopOrderApp() {
   };
   const cancelEdit = () => { restoreCanvas(); setToast("Left as it was."); setTimeout(() => setToast(""), 2000); };
 
-  /* ---------- Roof in a Box ---------- */
-  // Every piece at the roof's pitch, carrying the pitch it was bent to — except a piece the roofer
-  // gave its own pitch, which is bent from a kit built at that pitch instead.
-  const roofKit = (() => {
+  /* ---------- The boxes: Residential Standing Seam and Commercial in a Box ---------- */
+  const boxKind = BOX_KINDS[roofBoxKind];
+  const boxNoun = roofBoxKind === "com" ? "part" : "trim"; // what the box calls its rows — a gutter is not a trim
+  // The roof kit: every piece at the roof's pitch, carrying the pitch it was bent to — except a piece
+  // the roofer gave its own pitch, which is bent from a kit built at that pitch instead. The commercial
+  // kit is drawn to its wall, gutter and downspout sizes — nothing in it follows a pitch.
+  const roofKit = roofBoxKind === "com" ? buildCommercialKit({ wallWidth: comWall, gutterSize: comGutter, downspout: comDownspout, fascia: comFascia, atas: comAtas, es1: comEs1 }) : (() => {
     const base = buildRoofKit({ pitch: roofBoxPitch, seamHeight: roofBoxSeam, lowerPitch: roofBoxLower }).map((it) => ({ ...it, pitch: roofBoxPitch }));
     const kitsAt = {};
     return base.map((it) => {
@@ -4544,18 +4665,23 @@ export default function ShopOrderApp() {
       return { ...kitsAt[own].find((k) => k.id === it.id), pitch: own };
     });
   })();
-  // Opening the box (tile, button or ?view=box) starts it with the usual pieces ticked
-  // and puts the order on 24 gauge, which is what the kit is drawn for.
+  // Opening a box (tile, button or ?view=box / ?view=commercial) starts its rows ticked the way the
+  // kit ships them — rows the roofer already set keep their tick — and prices its parts as 24 gauge,
+  // which is what the kits are drawn for.
   const roofBoxPitchRef = useRef(null);
   useEffect(() => {
     if (!roofBoxOpen) { setBoxNote(""); setBoxStripAll(false); return; }
-    setRoofBoxSel((sel) => (Object.keys(sel).length ? sel : { ...ROOF_KIT_DEFAULT_SEL }));
+    setRoofBoxSel((sel) => {
+      let next = sel;
+      for (const it of roofBoxKind === "com" ? COM_KIT : buildRoofKit()) if (!it.tool3d && !(it.id in next)) { if (next === sel) next = { ...sel }; next[it.id] = it.on ? 1 : 0; }
+      return next;
+    });
     const onKey = (e) => { if (e.key === "Escape") setRoofBoxOpen(false); };
     window.addEventListener("keydown", onKey);
     const focusTimer = setTimeout(() => roofBoxPitchRef.current?.focus(), 0);
     return () => { window.removeEventListener("keydown", onKey); clearTimeout(focusTimer); };
-  }, [roofBoxOpen]);
-  const openRoofBox = () => { setShapeType("trim"); setOrderStep("details"); setRoofBoxOpen(true); };
+  }, [roofBoxOpen, roofBoxKind]);
+  const openRoofBox = (kind = roofBoxKind) => { setShapeType("trim"); setOrderStep("details"); setRoofBoxKind(kind); setRoofBoxOpen(true); };
   // The kit is drawn for 24 gauge, so its parts are priced and sent as 24 ga (copper keeps
   // its weight) without changing the gauge of whatever is on the canvas.
   const kitGaugeId = brand === "Copper" ? gaugeId : "24ga";
@@ -4571,9 +4697,9 @@ export default function ShopOrderApp() {
       price: computePrice({ type: "trim", points: it.points, quantity: qty, lengthPerPiece, gaugeId: kitGaugeId, paintId, brand, colorName }, priceList, coilWidthScale),
     };
   };
-  const roofBoxPicked = roofKit.filter((it) => (roofBoxSel[it.id] || 0) > 0).map((it) => roofBoxItem(it, Math.max(1, Math.round(+roofBoxSel[it.id] || 1))));
+  const roofBoxPicked = roofKit.filter((it) => !it.tool3d && (roofBoxSel[it.id] || 0) > 0).map((it) => roofBoxItem(it, Math.max(1, Math.round(+roofBoxSel[it.id] || 1))));
   // A box piece opened on the canvas and not yet added rides along with the box's Add.
-  const boxPending = boxReturn && boxReturn !== "edit" && points.length >= 2 ? { ...draftPart(), kit: boxReturn } : null;
+  const boxPending = boxReturn && boxReturn !== "edit" && boxReturnKind === roofBoxKind && points.length >= 2 ? { ...draftPart(), kit: boxReturn } : null;
   const addRoofBoxToOrder = () => {
     const added = boxPending ? [boxPending, ...roofBoxPicked] : roofBoxPicked;
     if (added.length === 0) { setToast("Tick at least one trim to add the box to the order."); setTimeout(() => setToast(""), 3000); return; }
@@ -4582,7 +4708,7 @@ export default function ShopOrderApp() {
     if (!editingId) { clearDrawing(); setPartPhoto(null); } // same as Add Part: the canvas draft must not ride along as an extra part — unless it is a part being edited, which orderParts already counts once
     setRoofBoxOpen(false);
     const pcs = added.reduce((sum, it) => sum + (+it.quantity || 0), 0);
-    setToast(`Roof in a Box — ${added.length} trim${added.length === 1 ? "" : "s"}, ${pcs} piece${pcs === 1 ? "" : "s"} added to the order${boxPending ? ` (the ${boxPending.name} from the canvas with them)` : ""}.`);
+    setToast(`${boxKind.label} — ${added.length} ${boxNoun}${added.length === 1 ? "" : "s"}, ${pcs} piece${pcs === 1 ? "" : "s"} added to the order${boxPending ? ` (the ${boxPending.name} from the canvas with them)` : ""}.`);
     setTimeout(() => setToast(""), 4000);
   };
   // One row straight into the order at its quantity (1 if it is unticked), the box staying open.
@@ -4598,12 +4724,21 @@ export default function ShopOrderApp() {
   const drawRoofBoxItem = (it) => {
     if (editingId) restoreCanvas(); // a piece from the box is a new part, not the edited one
     const replaced = boxPending && boxPending.kit !== it.id ? boxPending.name : null;
-    setBoxReturn(it.id);
+    setBoxReturn(it.id); setBoxReturnKind(roofBoxKind);
     setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
     setHemStart(it.hemStart); setHemEnd(it.hemEnd); setPaintSide(it.paintSide); setPartName(it.name); setDrawnPitch(it.pitch ?? roofBoxPitch);
     setQuantity(roofBoxSel[it.id] > 0 ? roofBoxSel[it.id] : 4);
     setViewResetKey((k) => k + 1); setRoofBoxOpen(false);
     setToast(`${it.name} is on the canvas — adjust any leg, then Add Part to Order.${replaced ? ` It took the place of the ${replaced} that was there.` : ""}`); setTimeout(() => setToast(""), 4000);
+  };
+  // A scupper or a collector box is built in the 3D tool, not drawn — its row in Commercial in a Box
+  // takes the roofer there with that part up, and the tool shows the way back. The trims in the
+  // list stay as they are; the 3D part is sent as its own part, the way the 3D tool always has.
+  const openBox3dPart = (it) => {
+    if (editingId) restoreCanvas(); // a part being changed goes back in its place first
+    setRoofBoxOpen(false); setBox3dReturn(true);
+    setPartType(it.tool3d); setShapeType("part3d"); setOrderStep("details");
+    setToast(`${it.name} — size it in the 3D tool and send it as its own part. The parts in your list stay; sending brings you back to Commercial in a Box for the rest.`); setTimeout(() => setToast(""), 5000);
   };
 
   // Screws only sell in lots of 100 — the qty spinner steps by the lot size and any
@@ -4774,7 +4909,9 @@ export default function ShopOrderApp() {
     setSubmitting(false);
     if (!saved) return; // insertOrders already said so — keep the form so they can retry
     setToast(`Order sent — estimate ${money(order.price)}. The shop will confirm final pricing.`);
-    resetForm();
+    if (box3dReturn) { // reached from Commercial in a Box: the trim order is still being built, so back to it — name, phone and notes kept
+      setBox3dReturn(false); setBoxNote(`${PART3D_LABELS[partType]} sent as its own order — pick the next piece.`); openRoofBox("com");
+    } else resetForm();
     setTimeout(() => setToast(""), 5000);
   };
 
@@ -4907,7 +5044,7 @@ export default function ShopOrderApp() {
     const p = item.payload || {};
     const kind = p.type || item.kind;
     if (editingId) restoreCanvas(); // a saved item is a new part, not the edited one
-    setBoxReturn(null); setRoofBoxOpen(false); // and not the box piece either
+    setBoxReturn(null); setRoofBoxOpen(false); setBox3dReturn(false); // and not the box piece either
     setTab("order");
     setShapeType(kind);
     setOrderStep("details");
@@ -5057,7 +5194,7 @@ export default function ShopOrderApp() {
           100% { transform: scale(1); }
         }
         .pop-in { animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
-        /* Roof in a Box rows: tick, picture, words, controls — on a phone the controls drop under the words */
+        /* Box rows (both kits): tick, picture, words, controls — on a phone the controls drop under the words */
         .box-row { display: grid; grid-template-columns: 22px 54px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
         .box-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
         @media (max-width: 560px) {
@@ -5381,13 +5518,14 @@ export default function ShopOrderApp() {
                 {[
                   { id: "panel", label: "Roof Panel", desc: "Formed standing-seam or snap-lock panels", icon: Square, accent: SAFETY },
                   { id: "trim", label: "Trim Profile", desc: "Custom-drawn flashing and trim pieces", icon: PenTool, accent: "#4F9A63" },
-                  { id: "box", label: "Roof in a Box", desc: "The standard trims for a 24 ga standing seam roof, drawn to your pitch — add them all at once", icon: Package, accent: "#A0602E" },
+                  { id: "box", kind: "res", label: BOX_KINDS.res.label, desc: BOX_KINDS.res.blurb, icon: BOX_KINDS.res.icon, accent: BOX_KINDS.res.accent },
+                  { id: "commercial", kind: "com", label: BOX_KINDS.com.label, desc: BOX_KINDS.com.blurb, icon: BOX_KINDS.com.icon, accent: BOX_KINDS.com.accent },
                   { id: "metal", label: "Unfabricated Metal", desc: "Raw coil or 4x10 flat sheet stock", icon: Layers, accent: "#3E7CB1" },
                   { id: "part3d", label: "3D Parts", desc: "Collector boxes, scuppers, chimney caps", icon: Box, accent: "#8A5FBF" },
                 ].map((t) => {
                   const Icon = t.icon;
                   return (
-                    <button key={t.id} onClick={() => { if (t.id === "box") { openRoofBox(); return; } if (t.id === "part3d") setAccessories([]); setShapeType(t.id); setOrderStep("details"); }} className="mac-btn"
+                    <button key={t.id} data-testid={`tile-${t.id}`} onClick={() => { if (t.kind) { openRoofBox(t.kind); return; } if (t.id === "part3d") { setAccessories([]); setBox3dReturn(false); } setShapeType(t.id); setOrderStep("details"); }} className="mac-btn"
                       style={{
                         display: "flex", alignItems: "center", gap: 14, padding: 16, borderRadius: 12, border: `1px solid ${t.accent}`,
                         background: `linear-gradient(180deg, ${t.accent}, ${t.accent}dd)`, color: "#fff", cursor: "pointer", textAlign: "left",
@@ -5624,6 +5762,15 @@ export default function ShopOrderApp() {
               </>
             ) : shapeType === "part3d" ? (
               <>
+                {box3dReturn && (
+                  <button type="button" onClick={() => { setBox3dReturn(false); openRoofBox("com"); }} data-testid="box-3d-back" title="Back to Commercial in a Box — your parts are still in the list"
+                    style={{
+                      padding: "5px 11px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer", marginBottom: 8,
+                      border: `1px solid ${BOX_KINDS.com.accent}`, background: `linear-gradient(180deg, ${BOX_KINDS.com.accentLight}, ${BOX_KINDS.com.accent})`, color: "#fff", display: "inline-flex", alignItems: "center", gap: 5,
+                    }}>
+                    <Building2 size={12} /> ← Back to {BOX_KINDS.com.label}
+                  </button>
+                )}
                 <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                   {[
                     { id: "collector", label: "Collector Box" },
@@ -6193,13 +6340,18 @@ export default function ShopOrderApp() {
             ) : (
               <>
                 <div ref={canvasTopRef} style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-                  <button type="button" onClick={() => setRoofBoxOpen(true)} title="The standard trims for a 24 ga standing seam roof, drawn to your pitch"
-                    style={{
-                      padding: "5px 11px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer",
-                      border: "1px solid #A0602E", background: "linear-gradient(180deg, #B8703A, #A0602E)", color: "#fff", display: "flex", alignItems: "center", gap: 5,
-                    }}>
-                    <Package size={12} /> {boxReturn ? "← Back to Roof in a Box" : "Roof in a Box"}
-                  </button>
+                  {Object.entries(BOX_KINDS).map(([kind, k]) => {
+                    const Icon = k.icon, back = boxReturn && boxReturnKind === kind; // the box a piece came from is the one to go back to
+                    return (
+                      <button key={kind} type="button" onClick={() => openRoofBox(kind)} title={k.blurb} data-testid={`box-open-${kind}`}
+                        style={{
+                          padding: "5px 11px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                          border: `1px solid ${k.accent}`, background: `linear-gradient(180deg, ${k.accentLight}, ${k.accent})`, color: "#fff", display: "flex", alignItems: "center", gap: 5,
+                        }}>
+                        <Icon size={12} /> {back ? `← Back to ${k.label}` : k.label}
+                      </button>
+                    );
+                  })}
                   {Object.keys(TRIM_PRESETS).map((p) => (
                     <button key={p} onClick={() => {
                       setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt])); setDrawnPitch(4);
@@ -6266,14 +6418,44 @@ export default function ShopOrderApp() {
                         style={{ width: "100%", maxWidth: 760, maxHeight: "94vh", overflowY: "auto", background: theme.card, color: theme.text, borderRadius: 14, boxShadow: "0 30px 80px rgba(0,0,0,0.55)", padding: "16px 18px 14px" }}>
                         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
                           <div>
-                            <div id="roof-box-title" className="disp" style={{ fontSize: 18, color: theme.text, display: "flex", alignItems: "center", gap: 8 }}><Package size={18} color="#A0602E" /> Roof in a Box</div>
+                            <div id="roof-box-title" className="disp" style={{ fontSize: 18, color: theme.text, display: "flex", alignItems: "center", gap: 8 }}><boxKind.icon size={18} color={boxKind.accent} /> {boxKind.label}</div>
                             <div style={{ fontSize: 12, color: theme.textSecondary, marginTop: 3, lineHeight: 1.45 }}>
-                              The standard trims for a 24 ga standing seam roof in one place. Set the pitch and seam height, tick what the job needs, and add them all to the order — or open any one on the canvas to tweak a leg.
+                              {roofBoxKind === "com"
+                                ? "The sheet metal for a low-slope roof in one place. Set the wall width, the fascia height and the gutter and downspout sizes, tick what the job needs, and add them all to the order — or open any one on the canvas to tweak a leg. Scuppers and collector boxes are built to size in the 3D tool; their rows take you there."
+                                : "The standard trims for a 24 ga standing seam roof in one place. Set the pitch and seam height, tick what the job needs, and add them all to the order — or open any one on the canvas to tweak a leg."}
                             </div>
                           </div>
                           <button type="button" onClick={() => setRoofBoxOpen(false)} aria-label="Close" style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 20, cursor: "pointer", lineHeight: 1 }}>✕</button>
                         </div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end", marginTop: 12 }}>
+                          {roofBoxKind === "com" ? (<>
+                          <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", flexDirection: "column", gap: 3 }}>Wall width (top of parapet)
+                            <select ref={roofBoxPitchRef} value={comWall} onChange={(e) => setComWall(+e.target.value)} className="mono" style={selStyle} data-testid="box-wall">
+                              {PARAPET_WIDTHS.map((w) => <option key={w} value={w}>{w}"</option>)}
+                            </select>
+                          </label>
+                          <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", flexDirection: "column", gap: 3 }}>Box gutter
+                            <select value={comGutter} onChange={(e) => setComGutter(+e.target.value)} className="mono" style={selStyle} data-testid="box-gutter">
+                              {GUTTER_SIZES.map((g) => <option key={g} value={g}>{g}"</option>)}
+                            </select>
+                          </label>
+                          <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", flexDirection: "column", gap: 3 }}>Fascia height (edge metal)
+                            <select value={comFascia} onChange={(e) => setComFascia(+e.target.value)} className="mono" style={selStyle} data-testid="box-fascia">
+                              {FASCIA_HEIGHTS.map((f) => <option key={f} value={f}>{inWord(f)}</option>)}
+                            </select>
+                          </label>
+                          <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", flexDirection: "column", gap: 3 }}>Downspout
+                            <select value={comDownspout} onChange={(e) => setComDownspout(e.target.value)} className="mono" style={selStyle} data-testid="box-downspout">
+                              {DOWNSPOUT_SIZES.map((d) => <option key={d} value={d}>{d}"</option>)}
+                            </select>
+                          </label>
+                          <label style={{ fontSize: 10.5, color: theme.text, display: "flex", alignItems: "center", gap: 5, paddingBottom: 7, cursor: "pointer" }} title={'The drip the ATAS spec calls for on the gravel stop, drip edge and snap-on fascia, in place of the kit\'s ½" kick and ½" hem'}>
+                            <input type="checkbox" checked={comAtas} onChange={(e) => setComAtas(e.target.checked)} data-testid="box-atas" style={{ width: 14, height: 14, cursor: "pointer" }} /> ATAS drip — ¾" kick, 1" hem
+                          </label>
+                          <label style={{ fontSize: 10.5, color: theme.text, display: "flex", alignItems: "center", gap: 5, paddingBottom: 7, cursor: "pointer" }} title="The job calls for ES-1 tested edge metal — the coping and edge pieces are marked ES-1 on the order">
+                            <input type="checkbox" checked={comEs1} onChange={(e) => setComEs1(e.target.checked)} data-testid="box-es1" style={{ width: 14, height: 14, cursor: "pointer" }} /> ES-1 edge metal
+                          </label>
+                          </>) : (<>
                           <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", flexDirection: "column", gap: 3 }}>Roof pitch
                             <select ref={roofBoxPitchRef} value={roofBoxPitch} className="mono" style={selStyle} data-testid="box-pitch"
                               onChange={(e) => { const pch = +e.target.value; setRoofBoxPitch(pch); setRoofBoxRowPitch({}); setRoofBoxLower((low) => (low < pch ? low : Math.max(ROOF_PITCHES[0], ...ROOF_PITCHES.filter((r) => r < pch)))); }}>
@@ -6291,10 +6473,16 @@ export default function ShopOrderApp() {
                               {roofBoxPitch <= ROOF_PITCHES[0] && <option value={roofBoxPitch}>— (roof is already {fmtPitch(roofBoxPitch)})</option>}
                             </select>
                           </label>
+                          </>)}
                           <div className="mono" style={{ fontSize: 10.5, color: theme.textSecondary, marginLeft: "auto", textAlign: "right", lineHeight: 1.5 }}>
                             {gaugeLabel} · {brand} · {colorName}<br />{lengthPerPiece} ft pieces · {sheetWidthNum}" sheets
                           </div>
                         </div>
+                        {roofBoxKind === "com" && comEs1 && (
+                          <div data-testid="box-es1-note" style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, background: "rgba(79,93,107,0.10)", border: "1px solid rgba(79,93,107,0.35)", fontSize: 11.5, color: theme.text, lineHeight: 1.45 }}>
+                            <b>ES-1.</b> Tested edge metal has to be made at a certified shop, to its listing. The coping and edge pieces are marked ES-1 on the order, and the shop will confirm the price.
+                          </div>
+                        )}
                         {boxNote && (
                           <div data-testid="box-note" style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: theme.text, display: "flex", alignItems: "center", gap: 6 }}><Check size={14} color={SAFETY} /> {boxNote}</div>
                         )}
@@ -6328,6 +6516,25 @@ export default function ShopOrderApp() {
                         )}
                         <div style={{ marginTop: 10 }}>
                           {roofKit.map((it) => {
+                            if (it.tool3d) return ( // built in the 3D tool — the row is the way there
+                              <div key={it.id} data-testid={`box-row-${it.id}`} className="box-row" style={{ padding: "8px 0", borderTop: `1px solid ${theme.border}` }}>
+                                <span aria-hidden="true" />
+                                <div style={{ background: INK, borderRadius: 6, padding: 3, display: "flex" }}>
+                                  <ShapeThumb order={{ type: "part3d", partType: it.tool3d, colorHex: colorObj.hex }} size={48} />
+                                </div>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{it.name} <span className="mono" style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 500 }}>{it.dims}</span></div>
+                                  <div style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 1.4 }}>{it.where}</div>
+                                  <div className="mono" style={{ fontSize: 10, color: theme.textSecondary, marginTop: 2 }}>{it.tool3d === "collector" ? "Width, depth, height and the outlet" : "Width, depth and height"} set in the 3D tool · sent as its own part · one per {it.per}</div>
+                                </div>
+                                <div className="box-controls">
+                                  <button type="button" onClick={() => openBox3dPart(it)} data-testid={`box-row-3d-${it.id}`} title={`Open the 3D tool with a ${it.name.toLowerCase()} up — the parts in your list stay`}
+                                    style={{ fontSize: 10.5, fontWeight: 700, padding: "4px 9px", borderRadius: 6, border: "none", background: "#8A5FBF", color: "#fff", cursor: "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}>
+                                    <Box size={12} /> Open in the 3D tool →
+                                  </button>
+                                </div>
+                              </div>
+                            );
                             const qty = roofBoxSel[it.id] || 0;
                             const on = qty > 0;
                             const inOrder = basket.filter((b) => b.kit === it.id && +b.quantity > 0);
@@ -6360,9 +6567,9 @@ export default function ShopOrderApp() {
                                           {ROOF_PITCHES.filter((r) => it.id !== "transition" || r > ROOF_PITCHES[0]).map((r) => <option key={r} value={r}>{fmtPitch(r)}</option>)}
                                         </select>
                                       </label>
-                                    ) : (
+                                    ) : roofBoxKind === "res" ? (
                                       <span style={{ fontSize: 10, color: theme.textSecondary }} title="This piece is the same at any roof pitch">any pitch</span>
-                                    )}
+                                    ) : null}
                                     <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", alignItems: "center", gap: 4 }}>Qty
                                       <input type="number" min={1} step={1} value={on ? qty : ""} disabled={!on} placeholder="—" aria-label={`${it.name} quantity`}
                                         onChange={(e) => setRoofBoxSel((sel) => ({ ...sel, [it.id]: Math.max(1, Math.round(+e.target.value) || 1) }))}
@@ -6370,11 +6577,11 @@ export default function ShopOrderApp() {
                                     </label>
                                   </div>
                                   <div style={{ display: "flex", gap: 6 }}>
-                                    <button type="button" onClick={() => addRoofBoxRow(it)} data-testid={`box-row-add-${it.id}`} title={boxPending && boxPending.kit === it.id ? "This piece is on the canvas — add it as drawn there" : "Add just this trim to the order at the quantity shown"}
+                                    <button type="button" onClick={() => addRoofBoxRow(it)} data-testid={`box-row-add-${it.id}`} title={boxPending && boxPending.kit === it.id ? "This piece is on the canvas — add it as drawn there" : `Add just this ${boxNoun} to the order at the quantity shown`}
                                       style={{ fontSize: 10.5, fontWeight: 700, padding: "4px 9px", borderRadius: 6, border: "none", background: SAFETY, color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>
                                       {boxPending && boxPending.kit === it.id ? "Add from canvas" : "Add to order"}
                                     </button>
-                                    <button type="button" onClick={() => drawRoofBoxItem(it)} title="Open this trim on the drawing canvas"
+                                    <button type="button" onClick={() => drawRoofBoxItem(it)} title={`Open this ${boxNoun} on the drawing canvas`}
                                       style={{ fontSize: 10.5, fontWeight: 600, padding: "4px 8px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, cursor: "pointer", whiteSpace: "nowrap" }}>
                                       Open on canvas
                                     </button>
@@ -6386,7 +6593,7 @@ export default function ShopOrderApp() {
                         </div>
                         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 12, paddingTop: 12, borderTop: `1px solid ${theme.border}` }}>
                           <div className="mono" style={{ fontSize: 11.5, color: theme.text, fontWeight: 600 }} data-testid="box-totals">
-                            {roofBoxPicked.length} trim{roofBoxPicked.length === 1 ? "" : "s"} · {totalPcs} pcs · {totalSheets} sheet{totalSheets === 1 ? "" : "s"} · est. {money(totalPrice)}
+                            {roofBoxPicked.length} {boxNoun}{roofBoxPicked.length === 1 ? "" : "s"} · {totalPcs} pcs · {totalSheets} sheet{totalSheets === 1 ? "" : "s"} · est. {money(totalPrice)}
                             {boxPending && <span data-testid="box-pending" style={{ display: "block", fontWeight: 500, color: theme.textSecondary }}>+ the {boxPending.name} ×{boxPending.quantity} on the canvas goes in with them</span>}
                           </div>
                           <div style={{ display: "flex", gap: 8 }}>
@@ -6394,7 +6601,7 @@ export default function ShopOrderApp() {
                               style={{ padding: "9px 14px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Close</button>
                             <button type="button" onClick={addRoofBoxToOrder} className="tap-bounce" data-testid="box-add"
                               style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: SAFETY, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-                              <Package size={14} /> Add {roofBoxPicked.length ? `${roofBoxPicked.length} trim${roofBoxPicked.length === 1 ? "" : "s"}` : "to order"}
+                              <Package size={14} /> Add {roofBoxPicked.length ? `${roofBoxPicked.length} ${boxNoun}${roofBoxPicked.length === 1 ? "" : "s"}` : "to order"}
                             </button>
                           </div>
                         </div>
