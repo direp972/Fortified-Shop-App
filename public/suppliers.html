@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Find a Sheet Metal Supplier, Fabricator or Contractor Near You | RoofCoil</title>
-<meta name="description" content="Search sheet metal suppliers, fabricators and turnkey contractors by what they can run — snap-lock, mechanical seam, coil, trim, gutters, on-site roll forming — plus color and distance from the job." />
+<meta name="description" content="Search sheet metal suppliers, fabricators and turnkey contractors by what they can run — snap-lock, mechanical seam, R-panel and other exposed fastener profiles, coil, trim, gutters, on-site roll forming — plus color and distance from the job." />
 <link rel="canonical" href="https://www.roofcoil.com/suppliers.html">
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="RoofCoil" />
@@ -125,9 +125,22 @@
         <option value="Batten seam">Batten seam</option>
         <option value="2.5″ trapezoidal">2.5″ trapezoidal</option>
         <option value="3″ trapezoidal structural">3″ trapezoidal structural</option>
-        <option value="Exposed fastener">Exposed fastener / screw-down</option>
+        <option value="Exposed fastener">Exposed fastener / screw-down — any profile</option>
         <option value="Flush wall &amp; soffit">Flush wall &amp; soffit</option>
         <option value="Board &amp; batten">Board &amp; batten</option>
+      </select>
+    </div>
+    <div class="fsel"><label>Exposed fastener panels</label>
+      <select id="s-efpanel">
+        <option value="">Any / not needed</option>
+        <option value="R-panel / PBR">R-panel / PBR</option>
+        <option value="7.2 panel (structural rib)">7.2 panel (structural rib)</option>
+        <option value="7/8″ corrugated">7/8″ corrugated</option>
+        <option value="1/2″ corrugated (low-profile)">1/2″ corrugated (low-profile)</option>
+        <option value="5V-crimp">5V-crimp</option>
+        <option value="Ag panel / tuff rib">Ag panel / tuff rib</option>
+        <option value="U-panel">U-panel</option>
+        <option value="M-panel / box-rib (wall)">M-panel / box-rib (wall)</option>
       </select>
     </div>
     <div class="fsel"><label>Roll-formed gutters</label>
@@ -230,7 +243,7 @@
 
 <footer><div class="f-bot" style="flex-direction:column;gap:10px;align-items:flex-start">
   <nav style="display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12.5px">
-    <a href="/standing-seam-panels.html" style="color:#CFE0EC;text-decoration:none">Standing seam panels</a>
+    <a href="/standing-seam-panels.html" style="color:#CFE0EC;text-decoration:none">Metal roof panels</a>
     <a href="/sheet-metal-trim.html" style="color:#CFE0EC;text-decoration:none">Sheet metal trim</a>
     <a href="/roll-forming.html" style="color:#CFE0EC;text-decoration:none">On-site roll forming</a>
     <a href="/coil-and-flats.html" style="color:#CFE0EC;text-decoration:none">Coil &amp; flat sheet</a>
@@ -314,10 +327,18 @@ function cardLocs(c){
   }
   c._locs=out;return out;
 }
+// The generic exposed fastener profiles a shop can list (the sign-up form
+// and staff editor carry the same eight). A shop that lists any of them is
+// an exposed fastener shop even if the umbrella chip was never tapped.
+const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated","1/2″ corrugated (low-profile)","5V-crimp","Ag panel / tuff rib","U-panel","M-panel / box-rib (wall)"];
+function hasAbility(have,a){
+  if(have.includes(a))return true;
+  return a==='Exposed fastener'&&EF_PANELS.some(p=>have.includes(p));
+}
 const cardMiles=(c,wants)=>{
   let m=Infinity;
   for(const l of cardLocs(c)){
-    if(wants&&wants.length&&l.abilities&&!wants.every(a=>l.abilities.includes(a)))continue;
+    if(wants&&wants.length&&l.abilities&&!wants.every(a=>hasAbility(l.abilities,a)))continue;
     const d=miles(state.me,l);if(d<m)m=d;
   }
   return m;
@@ -339,12 +360,12 @@ function requestGeo(){
 }
 
 function apply(){
-  const wants=[$('#s-panel').value,$('#s-gutter').value,$('#s-gutmat').value,$('#s-coil').value,$('#s-trim').value,$('#s-onsite').value,$('#s-turnkey').value].filter(Boolean);
+  const wants=[$('#s-panel').value,$('#s-efpanel').value,$('#s-gutter').value,$('#s-gutmat').value,$('#s-coil').value,$('#s-trim').value,$('#s-onsite').value,$('#s-turnkey').value].filter(Boolean);
   const color=$('#s-color').value, locq=$('#loc-q').value.toLowerCase().trim(), radius=+$('#s-radius').value||0;
   let shown=0;
   cards.forEach(c=>{
     const have=c.dataset.abilities.split('|');
-    let ok=wants.every(a=>have.includes(a));
+    let ok=wants.every(a=>hasAbility(have,a));
     if(ok&&color){const cols=c.dataset.colors?c.dataset.colors.split('|'):[];ok=cols.includes(color)}
     if(ok&&locq){ok=(c.dataset.city+' '+c.dataset.area).toLowerCase().includes(locq)}
     if(ok&&radius&&state.me){ok=cardMiles(c,wants)<=radius}
@@ -377,7 +398,7 @@ $('#fclear').onclick=()=>{
 // Deep links: /suppliers.html?ability=Trim%20%26%20flashing · &color=Matte%20Black · &loc=dallas
 const qp=new URLSearchParams(location.search);
 const ab=qp.get('ability');
-if(ab)for(const s of ['#s-panel','#s-gutter','#s-gutmat','#s-coil','#s-trim','#s-onsite','#s-turnkey']){
+if(ab)for(const s of ['#s-panel','#s-efpanel','#s-gutter','#s-gutmat','#s-coil','#s-trim','#s-onsite','#s-turnkey']){
   const o=[...$(s).options].find(o=>o.value.toLowerCase()===ab.toLowerCase());
   if(o){$(s).value=o.value;break}
 }
@@ -502,11 +523,18 @@ function buildCard(l){
   decorate(c);
   return c;
 }
+function shuffle(a){
+  for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}
+  return a;
+}
 (async()=>{
   try{
-    const r=await fetch(SUPA+"/rest/v1/directory_listings?select=name,badges,address,city,area_keywords,lat,lng,locations,abilities,colors,coil_desc,fab_desc,website,phone,photos,logo_url,logo_bg,licensed_states,featured,gmaps_url&status=eq.live&order=featured.desc,name.asc",{headers:{apikey:KEY}});
+    const r=await fetch(SUPA+"/rest/v1/directory_listings?select=name,badges,address,city,area_keywords,lat,lng,locations,abilities,colors,coil_desc,fab_desc,website,phone,photos,logo_url,logo_bg,licensed_states,featured,gmaps_url&status=eq.live&order=featured.desc",{headers:{apikey:KEY}});
     if(!r.ok)return;
-    const rows=await r.json();
+    const all=await r.json();
+    // Listings come up in a fresh random order on every visit so no shop is
+    // stuck at the bottom for its name — featured shops still lead the list.
+    const rows=shuffle(all.filter(l=>l&&l.featured)).concat(shuffle(all.filter(l=>!(l&&l.featured))));
     const have=new Set(cards.map(c=>c.dataset.name.toLowerCase()));
     let added=false;
     for(const l of rows){
