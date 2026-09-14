@@ -612,16 +612,17 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
 const ROOF_KIT_DEFAULT_SEL = Object.fromEntries(buildRoofKit().map((it) => [it.id, it.on ? 1 : 0]));
 
 /* ---------------------------------- Commercial in a Box ---------------------------------- */
-// The sheet metal for a low-slope commercial roof with parapet walls: coping over the walls —
-// face-fastened, or hooked on one or two continuous cleats — the cleat itself, the two counter
-// flashings the roof kit carries, a box gutter, and the downspout that drops from it or from a
-// collector box. Built like the roof kit — every entry a profile the canvas can open, drawn to
+// The sheet metal for a low-slope commercial roof: coping over the parapets — face-fastened, or
+// hooked on one or two continuous cleats — the cleat itself, the edge metal for the open edges
+// (gravel stop, drip edge, snap-on fascia and the hook strip they hang on, drawn to the fascia
+// height), the two counter flashings the roof kit carries, a box gutter, and the downspout that
+// drops from it or from a collector box. Built like the roof kit — every entry a profile the canvas can open, drawn to
 // the wall, gutter and downspout sizes — except the scupper and the collector box: those are
 // built to size in the 3D tool, and their rows only take the roofer there.
 const PARAPET_WIDTHS = [8, 10, 12, 14, 16, 18, 20, 24]; // across the top of the parapet, wall plus blocking, inches
 const GUTTER_SIZES = [5, 6, 7, 8];                        // box gutter: bottom and front, inches — "a 6-inch box" is 6 × 6
 const DOWNSPOUT_SIZES = ["3×3", "4×4", "6×6", "3×4", "4×5", "4×6", "5×6"]; // downspout, out from the wall × across it, inches — the square ones first, the usual brake-metal sizes
-const FASCIA_HEIGHTS = [4, 5, 5.5, 7, 8, 8.5, 9, 10]; // edge metal: the face down the fascia, inches — ATAS bends 4 / 5½ / 7 / 8½, Vortex 5 / 7 / 8 / 8½ / 9, shops go to 10
+const FASCIA_HEIGHTS = [4, 5, 5.5, 6, 7, 8, 8.5, 9, 10]; // edge metal: the face down the fascia, inches — ATAS bends 4 / 5½ / 7 / 8½, Vortex 5 / 7 / 8 / 8½ / 9, 6 for the ticket that says six, shops go to 10
 const inWord = (v) => (Number.isInteger(v) ? `${v}"` : `${Math.floor(v)}½"`); // 12.5 -> 12½" (fracIn is not initialised yet at load)
 function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4", fascia = 5.5 } = {}) {
   const KICK = 0.5 / Math.SQRT2; // a ½" leg kicked out at 45° — the drip on a face-fastened face, the lip on a cleat
@@ -632,7 +633,7 @@ function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4"
   const [D, W] = downspout.split("×").map(Number); // downspout: D out from the wall, W across it
   const F = fascia;              // edge metal: the face down the fascia — a gravel stop, a drip edge or a snap-on fascia, and the hook strip under them
   const CANT = 0.75, TOP = 0.75; // gravel stop: the cant stands ¾" above the deck (ATAS, Ohio 07 71 00), ¾" back from the edge of the nailer — the step out to the face is a shop default, no source sizes it
-  const GS_FLANGE = 4, DE_FLANGE = 3, SNAP_TOP = 2.375; // the legs on the roof: gravel stop 4" (ATAS, Ohio), drip edge 3" (DMI, K&M), snap-on 2⅜" (Vortex One-Edge)
+  const GS_FLANGE = 4, DE_FLANGE = 3, SNAP_TOP = 2.375; // the legs on the roof: gravel stop 4" (ATAS, Ohio), drip edge 3" (DMI, K&M), snap-on 2⅜" (Vortex One-Edge) — the ½" kick and ½" open hem are the kit's; ATAS and Ohio spec ¾" and 1", stretched on the canvas for a spec job
   const counters = buildRoofKit().filter((it) => it.id === "counter" || it.id === "counter2");
   // A coping cleat drops an inch less than the face it holds, so its kick lands on the hook's free edge; the hook
   // strip under the edge metal drops the whole face, so its kick nests inside the cover's kicked hem. Drawn plumb
@@ -664,16 +665,16 @@ function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4"
     // the kick), so the open hem folds right: back under the kick toward the nailer, the pocket the strip's kick
     // nests in. The strip is the coping cleat's shape as tall as the face, so its kick root meets the cover's.
     { id: "gravelstop", name: "Gravel Stop Fascia", dims: `4" roof flange · ¾" cant · ${inWord(F)} face · ½" 45° kick`, per: "roof edge", on: false,
-      where: "The edge of a low-slope roof with no parapet and no gutter — the 4\" flange on the deck is stripped into the membrane, the cant stands up ¾\" to hold the gravel and the water back from the edge, steps ¾\" out over the edge of the nailer, and the face drops over it to a ½\" kick with an open hem that hooks the Hook Strip: nothing screwed through the face, the cleated edge IBC 1504.5 (ES-1) asks for. One Hook Strip per length, set ¾\" proud of the nailer, up inside the cant.",
+      where: "The edge of a low-slope roof with no parapet and no gutter — the 4\" flange on the deck is stripped into the membrane, the cant stands up ¾\" to hold the gravel and the water back from the edge, steps ¾\" out to the edge of the nailer, and the face drops over it to a ½\" kick with an open hem that hooks the Hook Strip: no fastener through the face, the cleated edge the ES-1 systems are built on. Where the spec or the inspector calls for a tested ES-1 edge, that system is bought, not bent. One Hook Strip per length, set ¾\" proud of the nailer, up inside the cant.",
       points: [kitPt(TOP + GS_FLANGE, 0), kitPt(TOP, 0), kitPt(TOP, -CANT), kitPt(0, -CANT), kitPt(0, F - CANT), kitPt(-KICK, F - CANT + KICK)], hemStart: "none", hemEnd: "open-right", paintSide: "left" },
     { id: "dripedge", name: "Drip Edge — Membrane Roof", dims: `3" roof flange · ${inWord(F)} face · ½" 45° kick`, per: "roof edge", on: false,
-      where: "The same edge where the roof drains over it, into a gutter or clear of the wall, so no cant — a 3\" flange flat on the deck, stripped into the membrane (or heat-welded to it, bent from TPO- or PVC-clad steel), the face down the nailer to a ½\" kick with an open hem that hooks the Hook Strip set flush with the nailer top. Not the nail-on D-style of a shingle roof: nothing hooks this trim but the strip. One Hook Strip per length.",
+      where: "The same edge where the roof drains over it, into a gutter or clear of the wall, so no cant — a 3\" flange flat on the deck, stripped into the membrane, the face down the nailer to a ½\" kick with an open hem that hooks the Hook Strip set flush with the nailer top. Not the Eave or the D-Style Drip Edge of the standing seam box: no panel hooks this one, it hangs on the Hook Strip and nothing else. One Hook Strip per length.",
       points: [kitPt(DE_FLANGE, 0), kitPt(0, 0), kitPt(0, F), kitPt(-KICK, F + KICK)], hemStart: "none", hemEnd: "open-right", paintSide: "left" },
     { id: "snapfascia", name: "Snap-On Fascia", dims: `2⅜" top return · ${inWord(F)} face · ½" 45° kick`, per: "roof edge", on: false,
-      where: "The two-piece edge on a single-ply roof, put on last — the membrane is terminated over the nailer and the Hook Strip screwed flush with its top; the cover's 2⅜\" return lies on the nailer over the termination, the face drops over the strip, and the ½\" kick with its open hem snaps under the strip's lip. Nothing stripped in, no fastener showing, and it comes off without touching the roof. One Hook Strip per length. For a canted nailer, open it on the canvas and tilt the return to the bevel.",
+      where: "The two-piece edge on a single-ply roof, put on last — the membrane is terminated over the nailer and the Hook Strip screwed flush with its top; the cover's 2⅜\" return lies on the nailer over the termination, the face drops over the strip, and the ½\" kick with its open hem snaps under the strip's lip. Nothing stripped in, no fastener showing, and it comes off without touching the roof. One Hook Strip per length. For a canted nailer, open it on the canvas and tilt the return to the bevel. When the spec names an anchor-bar system, the bar comes from that maker and only the cover is bent.",
       points: [kitPt(SNAP_TOP, 0), kitPt(0, 0), kitPt(0, F), kitPt(-KICK, F + KICK)], hemStart: "none", hemEnd: "open-right", paintSide: "left" },
-    { id: "hookstrip", name: "Hook Strip / Edge Cleat", dims: `${inWord(F)} × ½" 45° kick`, per: "roof edge, under the edge metal", on: false,
-      where: "Continuous cleat the Gravel Stop, the Drip Edge and the Snap-On Fascia hook — a strip as tall as the face it holds, screwed flat to the face of the nailer 12\" o.c., the bottom ½\" kicked out 45° so the cover's kicked hem snaps over it. Top edge where the top of the face lands: flush with the nailer under the Drip Edge and the Snap-On Fascia, ¾\" above it under the Gravel Stop, inside the cant. One length per length of edge metal. 22 ga bare or paint-grip — FM 1-49 wants the cleat a gauge heavier than a 24 ga cover.",
+    { id: "hookstrip", name: "Hook Strip / Continuous Cleat", dims: `${inWord(F)} × ½" 45° kick`, per: "roof edge, under the edge metal", on: false,
+      where: "Continuous cleat the Gravel Stop, the Drip Edge and the Snap-On Fascia hook — a strip as tall as the face it holds, screwed flat to the face of the nailer 12\" o.c., the bottom ½\" kicked out 45° so the cover's kicked hem snaps over it. Top edge where the top of the face lands: flush with the nailer under the Drip Edge and the Snap-On Fascia, ¾\" above it under the Gravel Stop, inside the cant. One length per length of edge metal. Usually 24 ga bare or paint-grip; 22 ga where the spec calls for it — FM 1-49 wants the cleat a gauge heavier than the cover.",
       points: cleat(F), hemStart: "none", hemEnd: "none", paintSide: "left" },
     { id: "boxgutter", name: `Box Gutter — ${G}"`, dims: `${G}" × ${G}" · ${G + 1}" back · 1" hemmed return`, per: "gutter run", on: true,
       where: "Along the low edge of the roof — bottom and front the gutter's size, the back an inch taller against the fascia so an overflow spills over the front and never behind it, a 1\" return across the top of the front, hemmed under, for stiffness and for the hangers to clip. Both edges hemmed. Drops to a downspout through an outlet cut in the bottom, or into a collector box.",
