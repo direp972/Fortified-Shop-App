@@ -44,7 +44,7 @@ header.nav{position:sticky;top:0;z-index:50;background:rgba(11,30,44,.9);backdro
 .nav-links a:hover{color:#fff;background:rgba(255,255,255,.08)}
 .nav-links a.on{color:var(--ink-deep);background:var(--gold)}
 @media(max-width:900px){.nav-links{display:none}}
-.locpill{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:#CFE0EC;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:8px 14px;cursor:pointer;transition:background .15s,color .15s}
+.locpill{display:inline-flex;align-items:center;gap:8px;white-space:nowrap;flex:none;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:#CFE0EC;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:8px 14px;cursor:pointer;transition:background .15s,color .15s}
 .locpill:hover{background:rgba(255,255,255,.13);color:#fff}
 .locpill .dot{width:7px;height:7px;border-radius:50%;background:var(--steel);flex:none}
 .locpill.found .dot{background:var(--patina);box-shadow:0 0 8px rgba(78,140,116,.9)}
