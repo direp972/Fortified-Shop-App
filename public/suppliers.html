@@ -125,7 +125,7 @@
         <option value="Batten seam">Batten seam</option>
         <option value="2.5″ trapezoidal">2.5″ trapezoidal</option>
         <option value="3″ trapezoidal structural">3″ trapezoidal structural</option>
-        <option value="Exposed fastener">Exposed fastener / screw-down</option>
+        <option value="Exposed fastener">Exposed fastener / screw-down — any profile</option>
         <option value="Flush wall &amp; soffit">Flush wall &amp; soffit</option>
         <option value="Board &amp; batten">Board &amp; batten</option>
       </select>
@@ -134,13 +134,13 @@
       <select id="s-efpanel">
         <option value="">Any / not needed</option>
         <option value="R-panel / PBR">R-panel / PBR</option>
-        <option value="7.2 panel (structural rib)">7.2 panel — structural rib</option>
+        <option value="7.2 panel (structural rib)">7.2 panel (structural rib)</option>
         <option value="7/8″ corrugated">7/8″ corrugated</option>
+        <option value="1/2″ corrugated (low-profile)">1/2″ corrugated (low-profile)</option>
         <option value="5V-crimp">5V-crimp</option>
-        <option value="M-panel / box-rib wall">M-panel / box-rib wall</option>
-        <option value="1/2″ corrugated (low-profile)">1/2″ corrugated — low-profile</option>
-        <option value="U-panel">U-panel</option>
         <option value="Ag panel / tuff rib">Ag panel / tuff rib</option>
+        <option value="U-panel">U-panel</option>
+        <option value="M-panel / box-rib (wall)">M-panel / box-rib (wall)</option>
       </select>
     </div>
     <div class="fsel"><label>Roll-formed gutters</label>
@@ -330,7 +330,7 @@ function cardLocs(c){
 // The generic exposed fastener profiles a shop can list (the sign-up form
 // and staff editor carry the same eight). A shop that lists any of them is
 // an exposed fastener shop even if the umbrella chip was never tapped.
-const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated","5V-crimp","M-panel / box-rib wall","1/2″ corrugated (low-profile)","U-panel","Ag panel / tuff rib"];
+const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated","1/2″ corrugated (low-profile)","5V-crimp","Ag panel / tuff rib","U-panel","M-panel / box-rib (wall)"];
 function hasAbility(have,a){
   if(have.includes(a))return true;
   return a==='Exposed fastener'&&EF_PANELS.some(p=>have.includes(p));

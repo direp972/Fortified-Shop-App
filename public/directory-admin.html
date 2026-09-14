@@ -122,7 +122,7 @@
 const SUPA="https://znueitseoqijhkkvdomc.supabase.co";
 const KEY="sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
 const ABILITIES=["Coil & flat sheet","Painted coil — PVDF / Kynar","Painted coil — SMP","Bare — Galvalume · G90 · bonderized","Copper","1″ mechanical lock","1.5″ snap-lock","1.75″ snap-lock","1.5″ mechanical lock (single)","1.5″ mechanical lock (double)","2″ mechanical lock","1″ nail strip","1.5″ nail strip","T-panel (138T)","T-panel (238T)","Batten seam","2.5″ trapezoidal","3″ trapezoidal structural","Exposed fastener","Flush wall & soffit","Board & batten","Trim & flashing","3D parts — boxes · scuppers · caps","On-site roll forming","On-site gutter roll forming","Turnkey — supply · fabrication · labor"];
-const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated","5V-crimp","M-panel / box-rib wall","1/2″ corrugated (low-profile)","U-panel","Ag panel / tuff rib"];
+const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated","1/2″ corrugated (low-profile)","5V-crimp","Ag panel / tuff rib","U-panel","M-panel / box-rib (wall)"];
 const GUTTER_PROFILES=["5″ K-style gutter","6″ K-style gutter","7″ K-style gutter","5″ half-round gutter","6″ half-round gutter","6″ box gutter","7″ box gutter","8″ box gutter","6″ euro box gutter","Fascia gutter","Straight-face / square gutter"];
 const GUTTER_MATERIALS=["Gutter — .027 aluminum","Gutter — .032 aluminum","Gutter — 26 ga painted steel","Gutter — 24 ga painted steel","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
 const ALL_CANON=[...ABILITIES,...EF_PANELS,...GUTTER_PROFILES,...GUTTER_MATERIALS];
@@ -344,16 +344,18 @@ function extractAbilities(t){
   if(has(/238t/i))out.push("T-panel (238T)");
   if(has(/batten seam|cap seam|snap[- ]?on (cap|batten)/i))out.push("Batten seam");
   if(has(/trapezoidal/i))out.push("2.5″ trapezoidal");
-  if(has(/exposed fastener|r[- ]?panel|\bpbr\b|ag[- ]?panel|corrugated|tuff[- ]?rib|screw[- ]?down|\b7\.2\b|\b5[- ]?v\b|\bu[- ]?panel|\bm[- ]?panel/i))out.push("Exposed fastener");
-  // trade names → the generic profile chips (McElroy, PAC-CLAD, Drexel, Berridge, Quality Metals naming)
+  if(has(/exposed fastener|\br[- ]?panel|\bpbr\b|\bag[- ]?panel|corrugated|tuff[- ]?rib|screw[- ]?down/i))out.push("Exposed fastener");
+  // trade names → the generic profile chips (McElroy, PAC-CLAD, Drexel, Berridge, Quality Metals naming);
+  // any lit profile also lights the umbrella, the same rule the save path enforces
   if(has(/\br[- ]?panel|\bpbr\b|\br[- ]?36\b|multi[- ]?rib/i))out.push("R-panel / PBR");
-  if(has(/7\.2|mega[- ]?rib|deep[- ]?deck/i))out.push("7.2 panel (structural rib)");
-  if(has(/7\/8["″ ]?\s?corrugated|multi[- ]?cor\b|s[- ]?deck/i))out.push("7/8″ corrugated");
+  if(has(/(?<![\d.$])7\.2(?![\d.])|mega[- ]?rib|deep[- ]?deck/i))out.push("7.2 panel (structural rib)");
+  if(has(/7\/8["″ ]?\s?corrugated|multi[- ]?cor\b|(?<![\w'’])s[- ]?deck\b/i))out.push("7/8″ corrugated");
   if(has(/\b5[- ]?v\b|5v[- ]?crimp|double[- ]?rib/i))out.push("5V-crimp");
-  if(has(/\bm[- ]?(36|42|panel)\b|box[- ]?rib|multi[- ]?v\b/i))out.push("M-panel / box-rib wall");
+  if(has(/\bm[- ]?(36|42|panel)\b|box[- ]?rib|multi[- ]?v\b/i))out.push("M-panel / box-rib (wall)");
   if(has(/1\/2["″ ]?\s?corrugated|\bm[- ]?cor\b|low[- ]?profile corrugated/i))out.push("1/2″ corrugated (low-profile)");
   if(has(/\bu[- ]?panel|\bpbu\b/i))out.push("U-panel");
-  if(has(/ag[- ]?panel|tuff[- ]?rib|max[- ]?rib/i))out.push("Ag panel / tuff rib");
+  if(has(/\bag[- ]?panel|tuff[- ]?rib|max[- ]?rib/i))out.push("Ag panel / tuff rib");
+  if(EF_PANELS.some(p=>out.includes(p))&&!out.includes("Exposed fastener"))out.push("Exposed fastener");
   if(has(/flush wall|soffit/i))out.push("Flush wall & soffit");
   if(has(/board (and|&) batten/i))out.push("Board & batten");
   if(has(/\btrim\b|flashing/i))out.push("Trim & flashing");
