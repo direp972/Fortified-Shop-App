@@ -621,17 +621,22 @@ const ROOF_KIT_DEFAULT_SEL = Object.fromEntries(buildRoofKit().map((it) => [it.i
 const PARAPET_WIDTHS = [8, 10, 12, 14, 16, 18, 20, 24]; // across the top of the parapet, wall plus blocking, inches
 const GUTTER_SIZES = [5, 6, 7, 8];                        // box gutter: bottom and front, inches — "a 6-inch box" is 6 × 6
 const DOWNSPOUT_SIZES = ["3×3", "4×4", "6×6", "3×4", "4×5", "4×6", "5×6"]; // downspout, out from the wall × across it, inches — the square ones first, the usual brake-metal sizes
+const FASCIA_HEIGHTS = [4, 5, 5.5, 7, 8, 8.5, 9, 10]; // edge metal: the face down the fascia, inches — ATAS bends 4 / 5½ / 7 / 8½, Vortex 5 / 7 / 8 / 8½ / 9, shops go to 10
 const inWord = (v) => (Number.isInteger(v) ? `${v}"` : `${Math.floor(v)}½"`); // 12.5 -> 12½" (fracIn is not initialised yet at load)
-function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4" } = {}) {
+function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4", fascia = 5.5 } = {}) {
   const KICK = 0.5 / Math.SQRT2; // a ½" leg kicked out at 45° — the drip on a face-fastened face, the lip on a cleat
   const OUT = 4, IN = 3;         // coping faces: the street side hangs an inch lower than the roof side
   const TF = wallWidth + 0.5;    // face-fastened cap: the wall plus ¼" of play a side
   const TC = wallWidth + 1;      // cleated caps: ½" a side, to clear the cleat's lip and the hook hem returned inside the face
   const G = gutterSize;          // box gutter: bottom and front this size, the back an inch taller
   const [D, W] = downspout.split("×").map(Number); // downspout: D out from the wall, W across it
+  const F = fascia;              // edge metal: the face down the fascia — a gravel stop, a drip edge or a snap-on fascia, and the hook strip under them
+  const CANT = 0.75, TOP = 0.75; // gravel stop: the cant stands ¾" above the deck (ATAS, Ohio 07 71 00), ¾" back from the edge of the nailer — the step out to the face is a shop default, no source sizes it
+  const GS_FLANGE = 4, DE_FLANGE = 3, SNAP_TOP = 2.375; // the legs on the roof: gravel stop 4" (ATAS, Ohio), drip edge 3" (DMI, K&M), snap-on 2⅜" (Vortex One-Edge)
   const counters = buildRoofKit().filter((it) => it.id === "counter" || it.id === "counter2");
-  // A cleat drops an inch less than the face it holds, so its kick lands on the hook's free edge. Drawn plumb
-  // with the wall on its right, the way the caps' outside face is drawn — the kick turns out, away from the wall.
+  // A coping cleat drops an inch less than the face it holds, so its kick lands on the hook's free edge; the hook
+  // strip under the edge metal drops the whole face, so its kick nests inside the cover's kicked hem. Drawn plumb
+  // with the wall or the nailer on its right, the way the caps' outside face is drawn — the kick turns out, away from it.
   const cleat = (drop) => [kitPt(0, 0), kitPt(0, drop), kitPt(-KICK, drop + KICK)];
   return [
     { id: "coping0", name: "Coping Cap — Face-Fastened", dims: `${inWord(TF)} top · 4" outside face · 3" roof-side face · ½" 45° kicks · ${wallWidth}" wall`, per: "parapet", on: false,
@@ -652,6 +657,24 @@ function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4"
     ...counters.map((it) => (it.id === "counter"
       ? { ...it, per: "parapet, curb and wall base flashing in masonry", where: "Covers the top of the base flashing at parapets, curbs and walls — 1\" leg set into a saw-cut reglet or a raked mortar joint, 4\" face down the wall, kicked out and hemmed at the bottom." }
       : { ...it, per: "parapet, curb and wall base flashing on stucco, EIFS, block or panel", where: "Same job on a wall nothing can be cut into — stucco, EIFS, block or panel — the top edge kicked out 45° to hold a bead of sealant, screwed through the face." })),
+    // Edge metal for the open edges — a roof has parapets or open edges, so these start unticked and the box keeps
+    // opening on the one-cleat coping. Drawn the way the caps' outside face is: the face plumb at x = 0, the nailer
+    // and the roof to its right with the roof leg flat on the nailer top at y = 0, the kick turning out. Paint is
+    // on the left of travel (the top of the roof leg, the roof side of the cant, the outside of the face, the top of
+    // the kick), so the open hem folds right: back under the kick toward the nailer, the pocket the strip's kick
+    // nests in. The strip is the coping cleat's shape as tall as the face, so its kick root meets the cover's.
+    { id: "gravelstop", name: "Gravel Stop Fascia", dims: `4" roof flange · ¾" cant · ${inWord(F)} face · ½" 45° kick`, per: "roof edge", on: false,
+      where: "The edge of a low-slope roof with no parapet and no gutter — the 4\" flange on the deck is stripped into the membrane, the cant stands up ¾\" to hold the gravel and the water back from the edge, steps ¾\" out over the edge of the nailer, and the face drops over it to a ½\" kick with an open hem that hooks the Hook Strip: nothing screwed through the face, the cleated edge IBC 1504.5 (ES-1) asks for. One Hook Strip per length, set ¾\" proud of the nailer, up inside the cant.",
+      points: [kitPt(TOP + GS_FLANGE, 0), kitPt(TOP, 0), kitPt(TOP, -CANT), kitPt(0, -CANT), kitPt(0, F - CANT), kitPt(-KICK, F - CANT + KICK)], hemStart: "none", hemEnd: "open-right", paintSide: "left" },
+    { id: "dripedge", name: "Drip Edge — Membrane Roof", dims: `3" roof flange · ${inWord(F)} face · ½" 45° kick`, per: "roof edge", on: false,
+      where: "The same edge where the roof drains over it, into a gutter or clear of the wall, so no cant — a 3\" flange flat on the deck, stripped into the membrane (or heat-welded to it, bent from TPO- or PVC-clad steel), the face down the nailer to a ½\" kick with an open hem that hooks the Hook Strip set flush with the nailer top. Not the nail-on D-style of a shingle roof: nothing hooks this trim but the strip. One Hook Strip per length.",
+      points: [kitPt(DE_FLANGE, 0), kitPt(0, 0), kitPt(0, F), kitPt(-KICK, F + KICK)], hemStart: "none", hemEnd: "open-right", paintSide: "left" },
+    { id: "snapfascia", name: "Snap-On Fascia", dims: `2⅜" top return · ${inWord(F)} face · ½" 45° kick`, per: "roof edge", on: false,
+      where: "The two-piece edge on a single-ply roof, put on last — the membrane is terminated over the nailer and the Hook Strip screwed flush with its top; the cover's 2⅜\" return lies on the nailer over the termination, the face drops over the strip, and the ½\" kick with its open hem snaps under the strip's lip. Nothing stripped in, no fastener showing, and it comes off without touching the roof. One Hook Strip per length. For a canted nailer, open it on the canvas and tilt the return to the bevel.",
+      points: [kitPt(SNAP_TOP, 0), kitPt(0, 0), kitPt(0, F), kitPt(-KICK, F + KICK)], hemStart: "none", hemEnd: "open-right", paintSide: "left" },
+    { id: "hookstrip", name: "Hook Strip / Edge Cleat", dims: `${inWord(F)} × ½" 45° kick`, per: "roof edge, under the edge metal", on: false,
+      where: "Continuous cleat the Gravel Stop, the Drip Edge and the Snap-On Fascia hook — a strip as tall as the face it holds, screwed flat to the face of the nailer 12\" o.c., the bottom ½\" kicked out 45° so the cover's kicked hem snaps over it. Top edge where the top of the face lands: flush with the nailer under the Drip Edge and the Snap-On Fascia, ¾\" above it under the Gravel Stop, inside the cant. One length per length of edge metal. 22 ga bare or paint-grip — FM 1-49 wants the cleat a gauge heavier than a 24 ga cover.",
+      points: cleat(F), hemStart: "none", hemEnd: "none", paintSide: "left" },
     { id: "boxgutter", name: `Box Gutter — ${G}"`, dims: `${G}" × ${G}" · ${G + 1}" back · 1" hemmed return`, per: "gutter run", on: true,
       where: "Along the low edge of the roof — bottom and front the gutter's size, the back an inch taller against the fascia so an overflow spills over the front and never behind it, a 1\" return across the top of the front, hemmed under, for stiffness and for the hangers to clip. Both edges hemmed. Drops to a downspout through an outlet cut in the bottom, or into a collector box.",
       points: [kitPt(G - 1, -G), kitPt(G, -G), kitPt(G, 0), kitPt(0, 0), kitPt(0, -(G + 1))], hemStart: "closed-left", hemEnd: "closed-left", paintSide: "right" },
@@ -688,7 +711,7 @@ const BOX_KINDS = {
   res: { label: "Residential Standing Seam", view: "box", accent: "#A0602E", accentLight: "#B8703A", icon: Package,
     blurb: "The standard trims for a 24 ga standing seam roof, drawn to your pitch — add them all at once" },
   com: { label: "Commercial in a Box", view: "commercial", accent: "#4F5D6B", accentLight: "#61707F", icon: Building2,
-    blurb: "Coping caps with or without cleats, counter flashing, box gutters and downspouts for a parapet roof" },
+    blurb: "Coping, edge metal, counter flashing, box gutters and downspouts for a low-slope roof" },
 };
 
 const STATUS_FLOW = ["Pending", "In Production", "Ready for Pickup", "Completed"];
@@ -3474,6 +3497,7 @@ export default function ShopOrderApp() {
   const [comWall, setComWall] = useState(12);            // Commercial in a Box: the parapet's width across the top
   const [comGutter, setComGutter] = useState(6);         //   the box gutter's size
   const [comDownspout, setComDownspout] = useState("4×4"); // the downspout's size
+  const [comFascia, setComFascia] = useState(5.5);        //   the edge metal's face height
   const [box3dReturn, setBox3dReturn] = useState(false); // the 3D tool was reached from Commercial in a Box — it offers the way back
   const [roofBoxPitch, setRoofBoxPitch] = useState(4);
   const [roofBoxSeam, setRoofBoxSeam] = useState(1.5);
@@ -4486,7 +4510,7 @@ export default function ShopOrderApp() {
   // The roof kit: every piece at the roof's pitch, carrying the pitch it was bent to — except a piece
   // the roofer gave its own pitch, which is bent from a kit built at that pitch instead. The commercial
   // kit is drawn to its wall, gutter and downspout sizes — nothing in it follows a pitch.
-  const roofKit = roofBoxKind === "com" ? buildCommercialKit({ wallWidth: comWall, gutterSize: comGutter, downspout: comDownspout }) : (() => {
+  const roofKit = roofBoxKind === "com" ? buildCommercialKit({ wallWidth: comWall, gutterSize: comGutter, downspout: comDownspout, fascia: comFascia }) : (() => {
     const base = buildRoofKit({ pitch: roofBoxPitch, seamHeight: roofBoxSeam, lowerPitch: roofBoxLower }).map((it) => ({ ...it, pitch: roofBoxPitch }));
     const kitsAt = {};
     return base.map((it) => {
@@ -6221,7 +6245,7 @@ export default function ShopOrderApp() {
                             <div id="roof-box-title" className="disp" style={{ fontSize: 18, color: theme.text, display: "flex", alignItems: "center", gap: 8 }}><boxKind.icon size={18} color={boxKind.accent} /> {boxKind.label}</div>
                             <div style={{ fontSize: 12, color: theme.textSecondary, marginTop: 3, lineHeight: 1.45 }}>
                               {roofBoxKind === "com"
-                                ? "The sheet metal for a parapet roof in one place. Set the wall width and the gutter and downspout sizes, tick what the job needs, and add them all to the order — or open any one on the canvas to tweak a leg. Scuppers and collector boxes are built to size in the 3D tool; their rows take you there."
+                                ? "The sheet metal for a low-slope roof in one place. Set the wall width, the fascia height and the gutter and downspout sizes, tick what the job needs, and add them all to the order — or open any one on the canvas to tweak a leg. Scuppers and collector boxes are built to size in the 3D tool; their rows take you there."
                                 : "The standard trims for a 24 ga standing seam roof in one place. Set the pitch and seam height, tick what the job needs, and add them all to the order — or open any one on the canvas to tweak a leg."}
                             </div>
                           </div>
@@ -6237,6 +6261,11 @@ export default function ShopOrderApp() {
                           <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", flexDirection: "column", gap: 3 }}>Box gutter
                             <select value={comGutter} onChange={(e) => setComGutter(+e.target.value)} className="mono" style={selStyle} data-testid="box-gutter">
                               {GUTTER_SIZES.map((g) => <option key={g} value={g}>{g}"</option>)}
+                            </select>
+                          </label>
+                          <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", flexDirection: "column", gap: 3 }}>Fascia height (edge metal)
+                            <select value={comFascia} onChange={(e) => setComFascia(+e.target.value)} className="mono" style={selStyle} data-testid="box-fascia">
+                              {FASCIA_HEIGHTS.map((f) => <option key={f} value={f}>{inWord(f)}</option>)}
                             </select>
                           </label>
                           <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", flexDirection: "column", gap: 3 }}>Downspout
