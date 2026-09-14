@@ -620,9 +620,9 @@ const ROOF_KIT_DEFAULT_SEL = Object.fromEntries(buildRoofKit().map((it) => [it.i
 // built to size in the 3D tool, and their rows only take the roofer there.
 const PARAPET_WIDTHS = [8, 10, 12, 14, 16, 18, 20, 24]; // across the top of the parapet, wall plus blocking, inches
 const GUTTER_SIZES = [5, 6, 7, 8];                        // box gutter: bottom and front, inches — "a 6-inch box" is 6 × 6
-const DOWNSPOUT_SIZES = ["3×4", "4×5", "4×6", "5×6"];     // rectangular downspout: out from the wall × across it, inches
+const DOWNSPOUT_SIZES = ["3×3", "4×4", "6×6", "3×4", "4×5", "4×6", "5×6"]; // downspout, out from the wall × across it, inches — the square ones first, the usual brake-metal sizes
 const inWord = (v) => (Number.isInteger(v) ? `${v}"` : `${Math.floor(v)}½"`); // 12.5 -> 12½" (fracIn is not initialised yet at load)
-function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "3×4" } = {}) {
+function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4" } = {}) {
   const KICK = 0.5 / Math.SQRT2; // a ½" leg kicked out at 45° — the drip on a face-fastened face, the lip on a cleat
   const OUT = 4, IN = 3;         // coping faces: the street side hangs an inch lower than the roof side
   const TF = wallWidth + 0.5;    // face-fastened cap: the wall plus ¼" of play a side
@@ -3473,7 +3473,7 @@ export default function ShopOrderApp() {
   const [roofBoxKind, setRoofBoxKind] = useState("res"); // which box is up — "res" or "com" (BOX_KINDS)
   const [comWall, setComWall] = useState(12);            // Commercial in a Box: the parapet's width across the top
   const [comGutter, setComGutter] = useState(6);         //   the box gutter's size
-  const [comDownspout, setComDownspout] = useState("3×4"); // the downspout's size
+  const [comDownspout, setComDownspout] = useState("4×4"); // the downspout's size
   const [box3dReturn, setBox3dReturn] = useState(false); // the 3D tool was reached from Commercial in a Box — it offers the way back
   const [roofBoxPitch, setRoofBoxPitch] = useState(4);
   const [roofBoxSeam, setRoofBoxSeam] = useState(1.5);
