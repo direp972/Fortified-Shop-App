@@ -1,0 +1,8 @@
+{
+  "redirects": [
+    { "source": "/standing-seam-panels.html", "destination": "/panels", "permanent": true }
+  ],
+  "rewrites": [
+    { "source": "/panels", "destination": "/standing-seam-panels.html" }
+  ]
+}
