@@ -103,7 +103,13 @@ const SUPA="https://znueitseoqijhkkvdomc.supabase.co";
 const KEY="sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
 // Same taxonomy the directory admin uses — keep the two lists in sync by hand.
 const ABILITIES=["Coil & flat sheet","Painted coil — PVDF / Kynar","Painted coil — SMP","Bare — Galvalume · G90 · bonderized","Copper","1″ mechanical lock","1.5″ snap-lock","1.75″ snap-lock","1.5″ mechanical lock (single)","1.5″ mechanical lock (double)","2″ mechanical lock","1″ nail strip","1.5″ nail strip","T-panel (138T)","T-panel (238T)","Batten seam","2.5″ trapezoidal","3″ trapezoidal structural","Exposed fastener","Flush wall & soffit","Board & batten","Trim & flashing","3D parts — boxes · scuppers · caps","On-site roll forming","On-site gutter roll forming","Turnkey — supply · fabrication · labor"];
-const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated","1/2″ corrugated (low-profile)","5V-crimp","Ag panel / tuff rib","U-panel","M-panel / box-rib (wall)"];
+const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated","1/2″ corrugated (low-profile)","5V-crimp","Ag panel / tuff rib","U-panel / PBU","M-panel / box-rib (wall)"];
+// "U-panel" was renamed "U-panel / PBU" after shops were already listed, so the old
+// spelling still sits in their Supabase rows. It reads as the new canonical everywhere
+// and the next save migrates the row.
+const RENAMED_ABILITIES={"u-panel":"U-panel / PBU","u panel":"U-panel / PBU","pbu-panel":"U-panel / PBU","pbu panel":"U-panel / PBU"};
+const canonAbility=a=>RENAMED_ABILITIES[String(a==null?"":a).trim().toLowerCase()]||a;
+const canonAbilities=list=>(Array.isArray(list)?list:[]).map(canonAbility);
 const GUTTER_PROFILES=["5″ K-style gutter","6″ K-style gutter","7″ K-style gutter","5″ half-round gutter","6″ half-round gutter","6″ box gutter","7″ box gutter","8″ box gutter","6″ euro box gutter","Fascia gutter","Straight-face / square gutter"];
 const GUTTER_MATERIALS=["Gutter — .027 aluminum","Gutter — .032 aluminum","Gutter — 26 ga painted steel","Gutter — 24 ga painted steel","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
 const ALL_CANON=[...ABILITIES,...EF_PANELS,...GUTTER_PROFILES,...GUTTER_MATERIALS];
@@ -193,8 +199,9 @@ function fillForm(l){
   $('#f-website').value=l.website||'';
   $('#f-gmaps').value=l.gmaps_url||'';
   $('#f-lic').value=l.licensed_states||'';
-  setChips('#f-abilities',l.abilities||[]);setChips('#f-efpanels',l.abilities||[]);setChips('#f-gutters',l.abilities||[]);setChips('#f-gutmats',l.abilities||[]);
-  $('#f-moreabilities').value=notCanon(l.abilities,ALL_CANON).join(', ');
+  const abil=canonAbilities(l.abilities);
+  setChips('#f-abilities',abil);setChips('#f-efpanels',abil);setChips('#f-gutters',abil);setChips('#f-gutmats',abil);
+  $('#f-moreabilities').value=notCanon(abil,ALL_CANON).join(', ');
   setChips('#f-colors',l.colors||[]);
   $('#f-morecolors').value=notCanon(l.colors,STOCK_COLORS).join(', ');
   $('#f-coildesc').value=l.coil_desc||'';
@@ -210,7 +217,7 @@ function fillForm(l){
 function collect(chipSel,extraSel,canon){
   const out=[...$$(chipSel+' .seg.sel')].map(b=>b.dataset.v);
   $(extraSel).value.split(',').map(s=>s.replace(/\|/g,' ').replace(/\s+/g,' ').trim()).filter(Boolean).forEach(c=>{
-    const hit=canon.find(s=>s.toLowerCase()===c.toLowerCase())||c;
+    const hit=canon.find(s=>s.toLowerCase()===c.toLowerCase())||canonAbility(c);
     if(!out.some(x=>x.toLowerCase()===hit.toLowerCase()))out.push(hit);
   });
   return out;

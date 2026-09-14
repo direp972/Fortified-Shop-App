@@ -141,7 +141,7 @@
         <option value="1/2″ corrugated (low-profile)">1/2″ corrugated (low-profile)</option>
         <option value="5V-crimp">5V-crimp</option>
         <option value="Ag panel / tuff rib">Ag panel / tuff rib</option>
-        <option value="U-panel">U-panel</option>
+        <option value="U-panel / PBU">U-panel / PBU</option>
         <option value="M-panel / box-rib (wall)">M-panel / box-rib (wall)</option>
       </select>
     </div>
@@ -322,7 +322,7 @@ function cardLocs(c){
   try{raw=JSON.parse(c.dataset.locs||'[]')}catch(e){}
   const out=(Array.isArray(raw)?raw:[]).map(l=>({
     lat:parseFloat(l&&l.lat),lng:parseFloat(l&&l.lng),
-    abilities:(l&&Array.isArray(l.abilities)&&l.abilities.length)?l.abilities:null,
+    abilities:(l&&Array.isArray(l.abilities)&&l.abilities.length)?canonAbilities(l.abilities):null,
   })).filter(l=>isFinite(l.lat)&&isFinite(l.lng));
   if(!out.length){
     const la=parseFloat(c.dataset.lat),ln=parseFloat(c.dataset.lng);
@@ -333,8 +333,17 @@ function cardLocs(c){
 // The generic exposed fastener profiles a shop can list (the sign-up form
 // and staff editor carry the same eight). A shop that lists any of them is
 // an exposed fastener shop even if the umbrella chip was never tapped.
-const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated","1/2″ corrugated (low-profile)","5V-crimp","Ag panel / tuff rib","U-panel","M-panel / box-rib (wall)"];
+const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated","1/2″ corrugated (low-profile)","5V-crimp","Ag panel / tuff rib","U-panel / PBU","M-panel / box-rib (wall)"];
+// "U-panel" was renamed "U-panel / PBU" after shops were already listed, so the old
+// spelling still sits in their Supabase rows. It reads as the new canonical everywhere
+// and the next save migrates the row.
+const RENAMED_ABILITIES={"u-panel":"U-panel / PBU","u panel":"U-panel / PBU","pbu-panel":"U-panel / PBU","pbu panel":"U-panel / PBU"};
+const canonAbility=a=>RENAMED_ABILITIES[String(a==null?"":a).trim().toLowerCase()]||a;
+const canonAbilities=list=>(Array.isArray(list)?list:[]).map(canonAbility);
 function hasAbility(have,a){
+  // also normalized here, not just at buildCard: a statically prerendered card carries
+  // whatever data-abilities the last build baked in, which can predate the rename
+  have=canonAbilities(have);
   if(have.includes(a))return true;
   return a==='Exposed fastener'&&EF_PANELS.some(p=>have.includes(p));
 }
@@ -400,7 +409,7 @@ $('#fclear').onclick=()=>{
 
 // Deep links: /suppliers.html?ability=Trim%20%26%20flashing · &color=Matte%20Black · &loc=dallas
 const qp=new URLSearchParams(location.search);
-const ab=qp.get('ability');
+const ab=qp.get('ability')?canonAbility(qp.get('ability')):null;
 if(ab)for(const s of ['#s-panel','#s-efpanel','#s-gutter','#s-gutmat','#s-coil','#s-trim','#s-onsite','#s-turnkey']){
   const o=[...$(s).options].find(o=>o.value.toLowerCase()===ab.toLowerCase());
   if(o){$(s).value=o.value;break}
@@ -423,7 +432,7 @@ function buildCard(l){
   if(l.lat!=null)c.dataset.lat=l.lat;
   if(l.lng!=null)c.dataset.lng=l.lng;
   if(locs.length)c.dataset.locs=JSON.stringify(locs);
-  c.dataset.abilities=(l.abilities||[]).join('|');
+  c.dataset.abilities=canonAbilities(l.abilities).join('|');
   c.dataset.colors=(l.colors||[]).join('|');
   const head=document.createElement('div');head.className='co-head';
   if(l.logo_url){

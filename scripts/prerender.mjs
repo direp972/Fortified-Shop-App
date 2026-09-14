@@ -29,7 +29,11 @@ const KEY = process.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_R7JBgFijjjXcYJ
 /* ── taxonomy (kept in lock-step with get-listed / suppliers / directory-admin) ── */
 const COIL = ["Coil & flat sheet", "Painted coil — PVDF / Kynar", "Painted coil — SMP", "Bare — Galvalume · G90 · bonderized", "Copper"];
 const STANDING_SEAM = ["1″ mechanical lock", "1.5″ snap-lock", "1.75″ snap-lock", "1.5″ mechanical lock (single)", "1.5″ mechanical lock (double)", "2″ mechanical lock", "1″ nail strip", "1.5″ nail strip", "T-panel (138T)", "T-panel (238T)", "Batten seam", "2.5″ trapezoidal", "3″ trapezoidal structural", "Flush wall & soffit", "Board & batten"];
-const EF_PANELS = ["R-panel / PBR", "7.2 panel (structural rib)", "7/8″ corrugated", "1/2″ corrugated (low-profile)", "5V-crimp", "Ag panel / tuff rib", "U-panel", "M-panel / box-rib (wall)"];
+const EF_PANELS = ["R-panel / PBR", "7.2 panel (structural rib)", "7/8″ corrugated", "1/2″ corrugated (low-profile)", "5V-crimp", "Ag panel / tuff rib", "U-panel / PBU", "M-panel / box-rib (wall)"];
+// "U-panel" was renamed "U-panel / PBU" after shops were listed — rows still carrying
+// the old spelling render and group under the new canonical.
+const RENAMED_ABILITIES = { "u-panel": "U-panel / PBU", "u panel": "U-panel / PBU", "pbu-panel": "U-panel / PBU", "pbu panel": "U-panel / PBU" };
+const canonAbility = (a) => RENAMED_ABILITIES[String(a ?? "").trim().toLowerCase()] || a;
 const EXPOSED = ["Exposed fastener", ...EF_PANELS];
 const TRIM = ["Trim & flashing", "3D parts — boxes · scuppers · caps"];
 const GUTTER_PROFILES = ["5″ K-style gutter", "6″ K-style gutter", "7″ K-style gutter", "5″ half-round gutter", "6″ half-round gutter", "6″ box gutter", "7″ box gutter", "8″ box gutter", "6″ euro box gutter", "Fascia gutter", "Straight-face / square gutter"];
@@ -108,7 +112,7 @@ function normalize(rows) {
       used.set(slug, 1);
       const locs = (Array.isArray(l.locations) ? l.locations : [])
         .filter((x) => x && (x.city || x.address))
-        .map((x) => ({ address: clean(x.address), city: clean(x.city), lat: isFinite2(x.lat) ? x.lat : null, lng: isFinite2(x.lng) ? x.lng : null, abilities: Array.isArray(x.abilities) && x.abilities.length ? x.abilities.map(clean) : null }));
+        .map((x) => ({ address: clean(x.address), city: clean(x.city), lat: isFinite2(x.lat) ? x.lat : null, lng: isFinite2(x.lng) ? x.lng : null, abilities: Array.isArray(x.abilities) && x.abilities.length ? x.abilities.map((a) => canonAbility(clean(a))) : null }));
       if (!locs.length && (l.city || l.address)) locs.push({ address: clean(l.address), city: clean(l.city), lat: isFinite2(l.lat) ? l.lat : null, lng: isFinite2(l.lng) ? l.lng : null, abilities: null });
       const website = safeUrl(l.website);
       const photos = (Array.isArray(l.photos) ? l.photos : []).map(safeUrl).filter(Boolean).slice(0, 6);
@@ -120,7 +124,7 @@ function normalize(rows) {
         area: clean(l.area_keywords),
         lat: isFinite2(l.lat) ? l.lat : null, lng: isFinite2(l.lng) ? l.lng : null,
         locs,
-        abilities: (Array.isArray(l.abilities) ? l.abilities : []).map(clean).filter(Boolean),
+        abilities: (Array.isArray(l.abilities) ? l.abilities : []).map((a) => canonAbility(clean(a))).filter(Boolean),
         colors: (Array.isArray(l.colors) ? l.colors : []).map(clean).filter(Boolean),
         coil: clean(l.coil_desc), fab: clean(l.fab_desc),
         website, host: website ? hostOf(website) : "",

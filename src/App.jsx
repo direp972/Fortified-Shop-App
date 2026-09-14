@@ -955,6 +955,16 @@ function formatFeetInches(totalInches) {
   return inch === 0 ? `${ft}'` : `${ft}' ${inch}"`;
 }
 
+// A private-label applicant sells under its own name on somebody else's coil. Staff need
+// to see whose it is, and whether the shop cleared us to name that source publicly.
+function privateLabelSummary(details) {
+  const pl = details && details.private_label;
+  if (!pl || !pl.label) return "";
+  const src = [...(pl.sources || []), pl.extra_sources].filter(Boolean).join(", ");
+  if (!src) return `Private label: ${pl.label}`;
+  return `Private label: ${pl.label} on ${src}${pl.show_source ? "" : " — source is staff-only"}`;
+}
+
 // Renders a trim profile as a plain, static SVG string (not the interactive drawing
 // tool) for print/export — clean outline with length labels at each segment.
 function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = "none", paintSide = "left") {
@@ -7125,6 +7135,9 @@ export default function ShopOrderApp() {
                         {(a.panel_types || []).join(" · ")}
                         {(a.gauges || []).length > 0 && <span style={{ color: theme.textSecondary }}> — {(a.gauges || []).join(", ")}</span>}
                       </div>
+                      {privateLabelSummary(a.details) && (
+                        <div style={{ fontSize: 10, color: SAFETY, fontWeight: 700, marginTop: 3 }}>{privateLabelSummary(a.details)}</div>
+                      )}
                       {(a.plants || a.colorchart_url || a.notes) && (
                         <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 3 }}>
                           {a.plants && <span>Plants: {a.plants.split("\n").join("; ")} </span>}
