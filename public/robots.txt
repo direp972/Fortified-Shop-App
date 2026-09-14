@@ -1,0 +1,39 @@
+# RoofCoil — the search engine for sheet metal in North America
+# Public pages, articles and every supplier page are open to crawl.
+# Account-only pages carry no public content.
+
+User-agent: *
+Allow: /
+Disallow: /directory-admin.html
+Disallow: /manage-listing.html
+Disallow: /confirm.html
+Disallow: /api/
+
+# AI assistants and their crawlers are welcome — see /llms.txt for a site map
+# written for them.
+User-agent: GPTBot
+Allow: /
+User-agent: OAI-SearchBot
+Allow: /
+User-agent: ChatGPT-User
+Allow: /
+User-agent: ClaudeBot
+Allow: /
+User-agent: Claude-User
+Allow: /
+User-agent: Claude-SearchBot
+Allow: /
+User-agent: anthropic-ai
+Allow: /
+User-agent: PerplexityBot
+Allow: /
+User-agent: Perplexity-User
+Allow: /
+User-agent: Google-Extended
+Allow: /
+User-agent: Applebot-Extended
+Allow: /
+User-agent: CCBot
+Allow: /
+
+Sitemap: https://www.roofcoil.com/sitemap.xml
