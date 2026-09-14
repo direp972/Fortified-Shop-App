@@ -89,6 +89,7 @@
       <div class="fld"><label>Google Maps link — their Business Profile; verifies the shop, pins the primary location, and gives contractors a Directions link</label><input id="e-gmaps" placeholder="https://maps.app.goo.gl/…"></div>
       <div class="row" style="display:flex;gap:8px;margin:-4px 0 12px;flex-wrap:wrap"><button class="mini gold" id="e-pin">Pull pin from Maps link</button><span class="okline" id="pin-note" style="margin:0;align-self:center"></span></div>
       <div class="fld"><label>Abilities — the search facets *</label><div class="chipgrid" id="e-abilities"></div></div>
+      <div class="fld"><label>Exposed fastener panels they roll — generic shape names (an applicant's trade name maps onto one of these)</label><div class="chipgrid" id="e-efpanels"></div></div>
       <div class="fld"><label>Gutter profiles they roll</label><div class="chipgrid" id="e-gutters"></div></div>
       <div class="fld"><label>Gutter materials</label><div class="chipgrid" id="e-gutmats"></div></div>
       <div class="fld"><label>Custom profiles — applicant write-ins land here for approval; whatever you leave in this box goes on the live listing (comma separated)</label><input id="e-moreabilities"></div>
@@ -121,9 +122,10 @@
 const SUPA="https://znueitseoqijhkkvdomc.supabase.co";
 const KEY="sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
 const ABILITIES=["Coil & flat sheet","Painted coil — PVDF / Kynar","Painted coil — SMP","Bare — Galvalume · G90 · bonderized","Copper","1″ mechanical lock","1.5″ snap-lock","1.75″ snap-lock","1.5″ mechanical lock (single)","1.5″ mechanical lock (double)","2″ mechanical lock","1″ nail strip","1.5″ nail strip","T-panel (138T)","T-panel (238T)","Batten seam","2.5″ trapezoidal","3″ trapezoidal structural","Exposed fastener","Flush wall & soffit","Board & batten","Trim & flashing","3D parts — boxes · scuppers · caps","On-site roll forming","On-site gutter roll forming","Turnkey — supply · fabrication · labor"];
+const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated","1/2″ corrugated (low-profile)","5V-crimp","Ag panel / tuff rib","U-panel","M-panel / box-rib (wall)"];
 const GUTTER_PROFILES=["5″ K-style gutter","6″ K-style gutter","7″ K-style gutter","5″ half-round gutter","6″ half-round gutter","6″ box gutter","7″ box gutter","8″ box gutter","6″ euro box gutter","Fascia gutter","Straight-face / square gutter"];
 const GUTTER_MATERIALS=["Gutter — .027 aluminum","Gutter — .032 aluminum","Gutter — 26 ga painted steel","Gutter — 24 ga painted steel","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
-const ALL_CANON=[...ABILITIES,...GUTTER_PROFILES,...GUTTER_MATERIALS];
+const ALL_CANON=[...ABILITIES,...EF_PANELS,...GUTTER_PROFILES,...GUTTER_MATERIALS];
 const STOCK_COLORS=["Regal White","Almond","Ash Gray","Slate Gray","Burnished Slate","Charcoal","Medium Bronze","Dark Bronze","Matte Black","Evergreen","Copper Metallic","Galvalume","Texas Silver","Bare Copper","Bonderized"];
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
 let token=null, editingId=null, apps=[], listings=[], me=null, ownerEmails={};
@@ -164,6 +166,13 @@ const segChip=(t,label)=>{const b=document.createElement('button');b.type='butto
 // gutter chips show clean labels; dataset.v keeps the full canonical string
 const gutLabel=(t)=>{const d=t.replace(/ gutter$/,'').replace(/^Gutter — /,'');return d.charAt(0).toUpperCase()+d.slice(1)};
 ABILITIES.forEach(a=>$('#e-abilities').appendChild(segChip(a)));
+EF_PANELS.forEach(a=>$('#e-efpanels').appendChild(segChip(a)));
+// a specific screw-down profile implies the "Exposed fastener" umbrella facet
+$$('#e-efpanels .seg').forEach(b=>b.addEventListener('click',()=>{
+  if(!b.classList.contains('sel'))return;
+  const u=[...$$('#e-abilities .seg')].find(x=>x.dataset.v==='Exposed fastener');
+  if(u)u.classList.add('sel');
+}));
 GUTTER_PROFILES.forEach(a=>$('#e-gutters').appendChild(segChip(a,gutLabel(a))));
 GUTTER_MATERIALS.forEach(a=>$('#e-gutmats').appendChild(segChip(a,gutLabel(a))));
 STOCK_COLORS.forEach(c=>$('#e-colors').appendChild(segChip(c)));
@@ -285,6 +294,7 @@ function prefillFromApp(a){
   $('#e-featured').classList.remove('sel');$('#e-logobg').value='';
   const abil=d.abilities||a.panel_types||[];
   setChips('#e-abilities',abil);
+  setChips('#e-efpanels',abil);
   setChips('#e-gutters',abil);
   setChips('#e-gutmats',abil);
   $('#e-moreabilities').value=[...(d.extra_profiles||[]),...(d.extra_gutters||[])].join(', ');
@@ -334,7 +344,18 @@ function extractAbilities(t){
   if(has(/238t/i))out.push("T-panel (238T)");
   if(has(/batten seam|cap seam|snap[- ]?on (cap|batten)/i))out.push("Batten seam");
   if(has(/trapezoidal/i))out.push("2.5″ trapezoidal");
-  if(has(/exposed fastener|r[- ]?panel|\bpbr\b|ag[- ]?panel|corrugated|tuff[- ]?rib|screw[- ]?down/i))out.push("Exposed fastener");
+  if(has(/exposed fastener|\br[- ]?panel|\bpbr\b|\bag[- ]?panel|corrugated|tuff[- ]?rib|screw[- ]?down/i))out.push("Exposed fastener");
+  // trade names → the generic profile chips (McElroy, PAC-CLAD, Drexel, Berridge, Quality Metals naming);
+  // any lit profile also lights the umbrella, the same rule the save path enforces
+  if(has(/\br[- ]?panel|\bpbr\b|\br[- ]?36\b|multi[- ]?rib/i))out.push("R-panel / PBR");
+  if(has(/(?<![\d.$])7\.2(?![\d.])|mega[- ]?rib|deep[- ]?deck/i))out.push("7.2 panel (structural rib)");
+  if(has(/7\/8["″ ]?\s?corrugated|multi[- ]?cor\b|(?<![\w'’])s[- ]?deck\b/i))out.push("7/8″ corrugated");
+  if(has(/\b5[- ]?v\b|5v[- ]?crimp|double[- ]?rib/i))out.push("5V-crimp");
+  if(has(/\bm[- ]?(36|42|panel)\b|box[- ]?rib|multi[- ]?v\b/i))out.push("M-panel / box-rib (wall)");
+  if(has(/1\/2["″ ]?\s?corrugated|\bm[- ]?cor\b|low[- ]?profile corrugated/i))out.push("1/2″ corrugated (low-profile)");
+  if(has(/\bu[- ]?panel|\bpbu\b/i))out.push("U-panel");
+  if(has(/\bag[- ]?panel|tuff[- ]?rib|max[- ]?rib/i))out.push("Ag panel / tuff rib");
+  if(EF_PANELS.some(p=>out.includes(p))&&!out.includes("Exposed fastener"))out.push("Exposed fastener");
   if(has(/flush wall|soffit/i))out.push("Flush wall & soffit");
   if(has(/board (and|&) batten/i))out.push("Board & batten");
   if(has(/\btrim\b|flashing/i))out.push("Trim & flashing");
@@ -374,7 +395,7 @@ $('#e-scrape').onclick=async()=>{
     const found=extractAbilities(j.text+' '+j.title+' '+j.description);
     let toggled=0;
     found.forEach(v=>{
-      const b=[...$$('#e-abilities .seg, #e-gutters .seg, #e-gutmats .seg')].find(x=>x.dataset.v===v);
+      const b=[...$$('#e-abilities .seg, #e-efpanels .seg, #e-gutters .seg, #e-gutmats .seg')].find(x=>x.dataset.v===v);
       if(b&&!b.classList.contains('sel')){b.classList.add('sel');toggled++}
     });
     syncOpenAdmSubsets();
@@ -395,7 +416,7 @@ $('#e-scrape').onclick=async()=>{
    lat/lng columns on save. A subset left empty means the location inherits
    everything the company runs.                                            */
 const elocs=$('#e-locs');
-const editorAbilities=()=>[...$$('#e-abilities .seg.sel, #e-gutters .seg.sel, #e-gutmats .seg.sel')].map(b=>b.dataset.v);
+const editorAbilities=()=>[...$$('#e-abilities .seg.sel, #e-efpanels .seg.sel, #e-gutters .seg.sel, #e-gutmats .seg.sel')].map(b=>b.dataset.v);
 async function nomGeocode(q){
   const r=await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q='+encodeURIComponent(q),{headers:{'Accept':'application/json'}});
   const j=await r.json();
@@ -462,7 +483,7 @@ function syncAdmLocRows(){const rows=[...elocs.children];rows.forEach(r=>{r.quer
 // company chips tapped after a subset panel is open (by hand or by the
 // scraper) flow into every open panel
 function syncOpenAdmSubsets(){[...elocs.children].forEach(row=>{if(row.querySelector('.al-sub').classList.contains('sel'))admLocChips(row)})}
-['#e-abilities','#e-gutters','#e-gutmats'].forEach(s=>$(s).addEventListener('click',syncOpenAdmSubsets));
+['#e-abilities','#e-efpanels','#e-gutters','#e-gutmats'].forEach(s=>$(s).addEventListener('click',syncOpenAdmSubsets));
 function setAdmLocs(list){
   elocs.textContent='';
   ((list&&list.length)?list:[{}]).forEach(addAdmLoc);
@@ -533,7 +554,7 @@ $('#e-save').onclick=async()=>{
   const note=$('#save-note');note.classList.remove('errline');note.textContent='';
   const name=$('#e-name').value.trim();
   if(!name){note.textContent='Company name is required.';note.classList.add('errline');return}
-  const abilities=[...$$('#e-abilities .seg.sel, #e-gutters .seg.sel, #e-gutmats .seg.sel')].map(b=>b.dataset.v);
+  const abilities=[...$$('#e-abilities .seg.sel, #e-efpanels .seg.sel, #e-gutters .seg.sel, #e-gutmats .seg.sel')].map(b=>b.dataset.v);
   // approved custom profiles: whatever staff leave in the box joins the listing;
   // anything matching a standard chip is canonicalized instead of duplicated
   $('#e-moreabilities').value.split(',').map(s=>s.replace(/\|/g,' ').replace(/\s+/g,' ').trim()).filter(Boolean).forEach(c=>{
@@ -541,6 +562,8 @@ $('#e-save').onclick=async()=>{
     if(!abilities.some(x=>x.toLowerCase()===canon.toLowerCase()))abilities.push(canon);
   });
   if(!abilities.length){note.textContent='Pick at least one ability or nothing can find this listing.';note.classList.add('errline');return}
+  // a listed screw-down profile always carries the "Exposed fastener" facet with it
+  if(EF_PANELS.some(v=>abilities.includes(v))&&!abilities.includes('Exposed fastener'))abilities.push('Exposed fastener');
   const locations=readAdmLocs();
   if(!locations.length||!locations[0].city){note.textContent='Add at least one location with City, State.';note.classList.add('errline');return}
   // a location subset may only narrow the company's abilities, never add to them
@@ -666,6 +689,7 @@ function openListing(l){
   $('#e-area').value=l.area_keywords||'';
   $('#e-gmaps').value=l.gmaps_url||'';
   setChips('#e-abilities',l.abilities||[]);
+  setChips('#e-efpanels',l.abilities||[]);
   setChips('#e-gutters',l.abilities||[]);
   setChips('#e-gutmats',l.abilities||[]);
   // subsets render from the company chips, so set locations after them
@@ -763,6 +787,7 @@ async function applyEdit(e){
       });
       v=out;
       if(k==='abilities'&&!v.length){alert('Their proposed abilities list is empty — nothing could find the listing. Dismiss or edit by hand.');return}
+      if(k==='abilities'&&EF_PANELS.some(x=>v.includes(x))&&!v.includes('Exposed fastener'))v.push('Exposed fastener');
     }
     else v=String(v).trim();
     patch[k]=v;

@@ -727,7 +727,21 @@ const BOX_KINDS = {
 const STATUS_FLOW = ["Pending", "In Production", "Ready for Pickup", "Completed"];
 const RIB_LABELS = { bead: "Bead Ribs", pencil: "Pencil Ribs", v: "V Ribs", striations: "Striations" };
 const PART3D_LABELS = { collector: "Collector Box", scupper: "Scupper", chimney: "Chimney Cap" };
-const CAP_STYLE_LABELS = { pyramid: "Pyramid", stevenson: "Stevenson Top", texas: "Texas Top", chateau: "Chateau Cap" };
+// Roof styles for the chimney cap (shroud). Every style sits on the same base: a skirt
+// with a flat top flange and four corner posts, the way the shop builds them.
+const CAP_STYLES = [
+  { id: "hip", label: "Hip & Ridge", hint: "Four slopes meeting at a ridge — the standard cap" },
+  { id: "pyramid", label: "Pyramid", hint: "Four slopes meeting at a point" },
+  { id: "gable", label: "Gable", hint: "Two slopes with closed gable ends" },
+  { id: "stevenson", label: "Stevenson (Low Hip)", hint: "A shallow hip roof" },
+  { id: "texas", label: "Texas Top (Turtle)", hint: "A near-flat crowned lid" },
+  { id: "flat", label: "Flat Top", hint: "A flat pan with a turned-down edge" },
+  { id: "mission", label: "Mission Arch", hint: "A barrel-arched roof" },
+  { id: "twotier", label: "Two-Tier", hint: "A hip roof with a smaller hip stacked on top" },
+  { id: "chateau", label: "Chateau", hint: "A flared, bell-shaped roof" },
+];
+const CAP_STYLE_LABELS = Object.fromEntries(CAP_STYLES.map((s) => [s.id, s.label]));
+const CAP_RIB_STYLES = ["hip", "pyramid", "gable", "stevenson", "texas", "twotier"]; // roofs that can carry standing seam ribs
 
 const ACCESSORY_TYPES = ["Screws", "Butyl Tape", "Pipe Boots", "Sealant", "Clips"];
 const DRY_IN_TYPES = ["Underlayment", "Cap Nails", "High Temp Ice & Water"];
@@ -1178,8 +1192,11 @@ function computePrice(order, priceList, coilWidthScale) {
     const W = order.partW || 0, D = order.partD || 0, H = order.partH || 0, CH = order.partCapH || 0;
     let sqin;
     if (order.partType === "chimney") {
-      const slant = Math.sqrt((Math.max(W, D) / 2) ** 2 + CH ** 2);
-      sqin = 2 * (W + D) * H + 2 * (W + D) * slant + W * D * 1.25; // walls + hip cap + base skirt allowance
+      const oh = order.partOverhang ?? 2, postH = order.partPostH ?? 6;
+      const EW = W + 2 * oh, ED = D + 2 * oh;
+      const slant = Math.sqrt((Math.max(EW, ED) / 2) ** 2 + CH ** 2);
+      // skirt walls + top flange + four posts + the roof out to its eave + drip and seams
+      sqin = 2 * (W + D) * H + W * D * 0.5 + 4 * postH * 6 + 2 * (EW + ED) * slant * 1.1;
     } else {
       sqin = 2 * (W + D) * H + W * D; // walls + bottom
     }
@@ -2772,7 +2789,162 @@ function makeTaperedBoxGeometry(topW, topD, botW, botD, height) {
   return geo;
 }
 
-function Part3DPreview({ partType, w, d, h, capH, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle }) {
+// A roof from flat polygons (each a fan of triangles), so every style can be one mesh.
+function makePolyGeometry(polys) {
+  const pos = [];
+  for (const poly of polys) for (let i = 1; i + 1 < poly.length; i++) pos.push(...poly[0], ...poly[i], ...poly[i + 1]);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pos), 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// ---- Chimney cap (shroud), built the way the shop makes them: a base skirt with a flat
+// top flange, four square corner posts, and a roof that overhangs the base by `oh`, with
+// standing seam ribs and hip/ridge caps when `ribs` is on. Sizes in inches, y up, the
+// skirt's bottom at y = 0; the caller centres the whole group afterwards. ----
+function buildChimneyCap(group, { W, D, H, postH, CH, oh, style, ribs }, mat, addEdges) {
+  const add = (geo, x = 0, y = 0, z = 0, parent = group) => {
+    const m = new THREE.Mesh(geo, mat.clone());
+    m.position.set(x, y, z);
+    addEdges(geo, m);
+    parent.add(m);
+    return m;
+  };
+  const T = 0.12;                                              // sheet thickness as drawn
+  const FL = Math.max(1, Math.min(W, D) * 0.14);               // flange width
+  const P = Math.max(1, Math.min(4, Math.min(W, D) * 0.09));   // post size
+  // 1. skirt
+  add(makeSideWallsGeometry(W, D, H));
+  // 2. top flange: a flat frame round the opening
+  add(new THREE.BoxGeometry(W, T, FL), 0, H, -(D / 2 - FL / 2));
+  add(new THREE.BoxGeometry(W, T, FL), 0, H, (D / 2 - FL / 2));
+  add(new THREE.BoxGeometry(FL, T, D - 2 * FL), -(W / 2 - FL / 2), H, 0);
+  add(new THREE.BoxGeometry(FL, T, D - 2 * FL), (W / 2 - FL / 2), H, 0);
+  // 3. posts on the flange corners
+  const px = W / 2 - FL / 2, pz = D / 2 - FL / 2;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(new THREE.BoxGeometry(P, postH, P), sx * px, H + postH / 2, sz * pz);
+  // 4. roof, built with its long axis along X and turned if the cap is deeper than wide
+  const y0 = H + postH;
+  const EW = W + 2 * oh, ED = D + 2 * oh;
+  const long = Math.max(EW, ED), short = Math.min(EW, ED);
+  const roof = new THREE.Group();
+  roof.position.y = y0;
+  if (ED > EW) roof.rotation.y = Math.PI / 2;
+  group.add(roof);
+  const a = long / 2, b = short / 2;
+  const ribW = 0.35, ribH = 0.55;
+  // A standing seam: a slim box laid from `from` to `to`, lifted off the face along `n`.
+  const seam = (from, to, n, w = ribW) => {
+    const dir = new THREE.Vector3().subVectors(to, from), len = dir.length();
+    if (len < 0.5) return;
+    const geo = new THREE.BoxGeometry(w, ribH, len);
+    const m = new THREE.Mesh(geo, mat.clone());
+    m.position.copy(from).add(to).multiplyScalar(0.5).addScaledVector(n, ribH / 2);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.normalize());
+    roof.add(m);
+  };
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  // Ribs down one sloped face: the eave runs along local X at z = +p (half-width hw), the
+  // face rises `rise` over plan depth `p` to a ridge of half-length `rh` (0 for a point).
+  const faceRibs = (hw, p, rh, rise, rotY, spacing) => {
+    const g = new THREE.Group();
+    g.rotation.y = rotY;
+    roof.add(g);
+    const n = V(0, p, rise).normalize();
+    const k = Math.max(1, Math.floor((2 * hw - 1) / spacing));
+    for (let i = 0; i < k; i++) {
+      const x = -((k - 1) / 2) * spacing + i * spacing;
+      const t = hw > rh ? Math.min(1, (hw - Math.abs(x)) / (hw - rh)) : 1;
+      if (t <= 0.08) continue;
+      const from = V(x, 0, p), to = V(x, t * rise, p - t * p);
+      const geo = new THREE.BoxGeometry(ribW, ribH, from.distanceTo(to));
+      const m = new THREE.Mesh(geo, mat.clone());
+      m.position.copy(from).add(to).multiplyScalar(0.5).addScaledVector(n, ribH / 2);
+      m.quaternion.setFromUnitVectors(V(0, 0, 1), new THREE.Vector3().subVectors(to, from).normalize());
+      g.add(m);
+    }
+  };
+  const drip = (w, d, y) => { const m = add(makeSideWallsGeometry(w, d, 0.6), 0, y - 0.6, 0, roof); return m; };
+  const hipRoof = (rise, ridgeHalf, withRibs, gable = false) => {
+    const rh = gable ? a : ridgeHalf;
+    const c0 = [-a, 0, -b], c1 = [a, 0, -b], c2 = [a, 0, b], c3 = [-a, 0, b];
+    const r0 = [-rh, rise, 0], r1 = [rh, rise, 0];
+    const polys = [[c3, c2, r1, r0], [c1, c0, r0, r1]];
+    if (gable) { polys.push([c0, c3, r0], [c2, c1, r1]); }           // closed vertical gable ends
+    else { polys.push([c0, c3, r0], [c2, c1, r1]); }                 // hip ends (triangles up to the ridge ends)
+    add(makePolyGeometry(polys), 0, 0, 0, roof);
+    drip(long, short, 0);
+    if (!withRibs) return;
+    const spacing = Math.max(4, Math.min(9, long / 4));
+    faceRibs(a, b, rh, rise, 0, spacing);
+    faceRibs(a, b, rh, rise, Math.PI, spacing);
+    if (!gable) {
+      faceRibs(b, a - rh, 0, rise, Math.PI / 2, spacing);
+      faceRibs(b, a - rh, 0, rise, -Math.PI / 2, spacing);
+      // hip caps from each corner up to the ridge end, then the ridge cap
+      seam(V(-a, 0, -b), V(-rh, rise, 0), V(-1, 1, -1).normalize(), 0.5);
+      seam(V(a, 0, -b), V(rh, rise, 0), V(1, 1, -1).normalize(), 0.5);
+      seam(V(a, 0, b), V(rh, rise, 0), V(1, 1, 1).normalize(), 0.5);
+      seam(V(-a, 0, b), V(-rh, rise, 0), V(-1, 1, 1).normalize(), 0.5);
+    }
+    if (rh > 0.5) seam(V(-rh, rise, 0), V(rh, rise, 0), V(0, 1, 0), 0.6);
+  };
+  const ridgeHalf = (long - short) / 2;
+  if (style === "pyramid") hipRoof(CH, 0, ribs);
+  else if (style === "gable") hipRoof(CH, a, ribs, true);
+  else if (style === "stevenson") hipRoof(Math.max(0.75, CH * 0.5), ridgeHalf, ribs);
+  else if (style === "texas") hipRoof(Math.max(0.6, CH * 0.22), ridgeHalf, ribs);
+  else if (style === "flat") { add(new THREE.BoxGeometry(long, T, short), 0, T / 2, 0, roof); drip(long, short, 0); }
+  else if (style === "mission") {
+    // a barrel arch along the long axis, rising CH over the short span, with closed ends
+    const geo = new THREE.CylinderGeometry(b, b, long, 28, 1, true, 0, Math.PI);
+    geo.rotateZ(Math.PI / 2);           // axis along X; the +X half of the tube becomes the +Y half — an arch standing up
+    geo.scale(1, CH / b, 1);
+    add(geo, 0, 0, 0, roof);
+    for (const sx of [-1, 1]) {
+      const end = new THREE.CircleGeometry(b, 28, 0, Math.PI);
+      end.rotateY(sx * Math.PI / 2);
+      end.scale(1, CH / b, 1);
+      add(end, sx * a, 0, 0, roof);
+    }
+    drip(long, short, 0);
+  } else if (style === "twotier") {
+    hipRoof(CH * 0.6, ridgeHalf, ribs);
+    const s = 0.55, ph = Math.max(2, postH * 0.5), ry = CH * 0.6 * 0.55;
+    const upper = new THREE.Group();
+    upper.position.y = ry + ph;
+    roof.add(upper);
+    const q = Math.max(0.8, P * 0.7);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(new THREE.BoxGeometry(q, ph, q), sx * a * s * 0.85, ry + ph / 2, sz * b * s * 0.85, roof);
+    const a2 = a * s, b2 = b * s, rh2 = Math.max(0, a2 - b2);
+    const c0 = [-a2, 0, -b2], c1 = [a2, 0, -b2], c2 = [a2, 0, b2], c3 = [-a2, 0, b2], r0 = [-rh2, CH * 0.5, 0], r1 = [rh2, CH * 0.5, 0];
+    add(makePolyGeometry([[c3, c2, r1, r0], [c1, c0, r0, r1], [c0, c3, r0], [c2, c1, r1]]), 0, 0, 0, upper);
+    add(makeSideWallsGeometry(2 * a2, 2 * b2, 0.5), 0, -0.5, 0, upper);
+    if (ribs) {
+      seam(V(-a2, ry + ph, -b2), V(-rh2, ry + ph + CH * 0.5, 0), V(-1, 1, -1).normalize(), 0.45);
+      seam(V(a2, ry + ph, -b2), V(rh2, ry + ph + CH * 0.5, 0), V(1, 1, -1).normalize(), 0.45);
+      seam(V(a2, ry + ph, b2), V(rh2, ry + ph + CH * 0.5, 0), V(1, 1, 1).normalize(), 0.45);
+      seam(V(-a2, ry + ph, b2), V(-rh2, ry + ph + CH * 0.5, 0), V(-1, 1, 1).normalize(), 0.45);
+    }
+  } else if (style === "chateau") {
+    // a flared, concave bell that follows the rectangular eave: rings that pull in fast
+    // near the eave and slowly near the top, joined by quads, with a small flat cap
+    const rings = [[1, 0], [0.62, 0.35], [0.42, 0.65], [0.3, 0.88], [0.26, 1]].map(([s, t]) => ({ a: a * s, b: b * s, y: CH * t }));
+    const polys = [];
+    for (let i = 0; i + 1 < rings.length; i++) {
+      const r0 = rings[i], r1 = rings[i + 1];
+      const q = (x0, z0, x1, z1) => polys.push([[x0 * r0.a, r0.y, z0 * r0.b], [x1 * r0.a, r0.y, z1 * r0.b], [x1 * r1.a, r1.y, z1 * r1.b], [x0 * r1.a, r1.y, z0 * r1.b]]);
+      q(-1, 1, 1, 1); q(1, 1, 1, -1); q(1, -1, -1, -1); q(-1, -1, -1, 1);
+    }
+    const top = rings[rings.length - 1];
+    polys.push([[-top.a, top.y, -top.b], [top.a, top.y, -top.b], [top.a, top.y, top.b], [-top.a, top.y, top.b]]);
+    add(makePolyGeometry(polys), 0, 0, 0, roof);
+    drip(long, short, 0);
+  } else hipRoof(CH, ridgeHalf, ribs); // "hip" and anything unknown
+}
+
+function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle }) {
   const mountRef = useRef(null);
   const stateRef = useRef({});
   const rotateRef = useRef(null);
@@ -2952,60 +3124,10 @@ function Part3DPreview({ partType, w, d, h, capH, colorHex, outletShape, flangeW
         [top, bottom, left, right].forEach((m) => group.add(m));
       });
     } else {
-      // Chimney cap only — no mesh screen box/frame, just the roof piece that sits over the opening.
-      const CH = Math.max(1, +capH || 6);
-      const skirt = new THREE.BoxGeometry(W * 1.25, 0.12, D * 1.25);
-      const skirtMesh = new THREE.Mesh(skirt, mat.clone());
-      skirtMesh.position.y = 0;
-      group.add(skirtMesh);
-
-      if (capStyle === "texas") {
-        // Texas Top: a near-flat lid sitting right at the opening.
-        const lidGeo = new THREE.BoxGeometry(W * 1.15, CH * 0.25, D * 1.15);
-        const lidMesh = new THREE.Mesh(lidGeo, mat.clone());
-        lidMesh.position.y = 0.15 + (CH * 0.25) / 2;
-        addEdges(lidGeo, lidMesh);
-        group.add(lidMesh);
-      } else if (capStyle === "stevenson") {
-        // Stevenson Top: a shallow, low-pitched hip roof.
-        const shallowCH = CH * 0.55;
-        const capGeo = new THREE.ConeGeometry(Math.sqrt(W * W + D * D) / 2 * 1.15, shallowCH, 4);
-        capGeo.rotateY(Math.PI / 4);
-        const capMesh = new THREE.Mesh(capGeo, mat.clone());
-        capMesh.position.y = shallowCH / 2;
-        addEdges(capGeo, capMesh);
-        group.add(capMesh);
-      } else if (capStyle === "chateau") {
-        // Chateau Cap: a flared, concave bell profile — built as stacked frustums that widen faster near the bottom.
-        const rTop = Math.sqrt(W * W + D * D) / 2 * 0.55;
-        const rMid = Math.sqrt(W * W + D * D) / 2 * 0.75;
-        const rBot = Math.sqrt(W * W + D * D) / 2 * 1.35;
-        const seg1H = CH * 0.4, seg2H = CH * 0.6;
-        const seg1Geo = new THREE.CylinderGeometry(rTop, rMid, seg1H, 4, 1, true);
-        seg1Geo.rotateY(Math.PI / 4);
-        const seg1Mesh = new THREE.Mesh(seg1Geo, mat.clone());
-        seg1Mesh.position.y = CH - seg1H / 2;
-        addEdges(seg1Geo, seg1Mesh);
-        group.add(seg1Mesh);
-        const seg2Geo = new THREE.CylinderGeometry(rMid, rBot, seg2H, 4, 1, true);
-        seg2Geo.rotateY(Math.PI / 4);
-        const seg2Mesh = new THREE.Mesh(seg2Geo, mat.clone());
-        seg2Mesh.position.y = CH - seg1H - seg2H / 2;
-        addEdges(seg2Geo, seg2Mesh);
-        group.add(seg2Mesh);
-        const capTopGeo = new THREE.BoxGeometry(rTop * 1.2, 0.12, rTop * 1.2);
-        const capTopMesh = new THREE.Mesh(capTopGeo, mat.clone());
-        capTopMesh.position.y = CH;
-        group.add(capTopMesh);
-      } else {
-        // Pyramid (default): straight hip roof cap.
-        const capGeo = new THREE.ConeGeometry(Math.sqrt(W * W + D * D) / 2 * 1.05, CH, 4);
-        capGeo.rotateY(Math.PI / 4);
-        const capMesh = new THREE.Mesh(capGeo, mat.clone());
-        capMesh.position.y = CH / 2;
-        addEdges(capGeo, capMesh);
-        group.add(capMesh);
-      }
+      buildChimneyCap(group, {
+        W, D, H: Math.max(0.5, H), postH: Math.max(0.5, +postH || 6), CH: Math.max(0.5, +capH || 6),
+        oh: Math.max(0, +overhang ?? 2), style: capStyle || "hip", ribs: ribs !== false,
+      }, mat, addEdges);
     }
 
     // frame the camera on the whole group — use the bounding diagonal (not just one axis)
@@ -3016,7 +3138,7 @@ function Part3DPreview({ partType, w, d, h, capH, colorHex, outletShape, flangeW
     group.position.sub(center); // recenter the model at world origin — camera can now always look at (0,0,0), which stays correct through any rotation
     const radius = Math.max(0.5, size.length() / 2);
     const fovRad = (camera.fov * Math.PI) / 180;
-    const marginFactor = 1.65; // >1 leaves breathing room so the part never touches the frame edge
+    const marginFactor = 1.25; // >1 leaves breathing room so the part never touches the frame edge
     const baseDist = (radius * marginFactor) / Math.tan(fovRad / 2);
     const dirVec = new THREE.Vector3(0.6, 0.5, 0.8).normalize();
     let zoomLevel = viewStateRef.current.zoomLevel;
@@ -3087,7 +3209,7 @@ function Part3DPreview({ partType, w, d, h, capH, colorHex, outletShape, flangeW
       renderer.dispose();
       if (mount) mount.innerHTML = "";
     };
-  }, [partType, w, d, h, capH, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle]);
+  }, [partType, w, d, h, capH, postH, overhang, ribs, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle]);
 
   const STEP = 0.35;
   const spinIntervalRef = useRef(null);
@@ -3427,7 +3549,10 @@ export default function ShopOrderApp() {
   const [partD, setPartD] = useState(8);
   const [partH, setPartH] = useState(10);
   const [partCapH, setPartCapH] = useState(6);
-  const [capStyle, setCapStyle] = useState("pyramid"); // "pyramid" | "stevenson" | "texas" | "chateau"
+  const [partPostH, setPartPostH] = useState(6);      // chimney cap: open height between the flange and the roof
+  const [partOverhang, setPartOverhang] = useState(2); // chimney cap: how far the roof eave reaches past the skirt
+  const [capRibs, setCapRibs] = useState(true);        // chimney cap: standing seam ribs on the roof, or smooth
+  const [capStyle, setCapStyle] = useState("hip"); // see CAP_STYLES
   const [partView, setPartView] = useState("3d"); // "3d" | "flat"
   const [outletShape, setOutletShape] = useState("box"); // "round" | "box"
   const [flangeW, setFlangeW] = useState(4);
@@ -4400,7 +4525,7 @@ export default function ShopOrderApp() {
     : shapeType === "metal"
     ? { type: "metal", flatWidth, flatLength, coilWidth: metalCoilWidth, coilLength: metalCoilLength, quantity, gaugeId, paintId, brand, colorName }
     : shapeType === "part3d"
-    ? { type: "part3d", partType, partW, partD, partH, partCapH, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, quantity, gaugeId, paintId, brand, colorName }
+    ? { type: "part3d", partType, partW, partD, partH, partCapH, partPostH, partOverhang, capRibs, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, quantity, gaugeId, paintId, brand, colorName }
     : { type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, brand, colorName };
   const estimate = computePrice(draft, priceList, coilWidthScale);
   const girth = profileGirth(points, hemStart, hemEnd); // legs plus the end folds — the width the shear cuts
@@ -4746,6 +4871,9 @@ export default function ShopOrderApp() {
       partD: isPart3d ? partD : undefined,
       partH: isPart3d ? partH : undefined,
       partCapH: isPart3d && partType === "chimney" ? partCapH : undefined,
+      partPostH: isPart3d && partType === "chimney" ? partPostH : undefined,
+      partOverhang: isPart3d && partType === "chimney" ? partOverhang : undefined,
+      capRibs: isPart3d && partType === "chimney" ? capRibs : undefined,
       capStyle: isPart3d && partType === "chimney" ? capStyle : undefined,
       outletShape: isPart3d && partType === "collector" ? outletShape : undefined,
       flangeW: isPart3d && partType === "collector" && outletShape === "box" ? flangeW : undefined,
@@ -4850,6 +4978,9 @@ export default function ShopOrderApp() {
       partD: isPart3d ? partD : undefined,
       partH: isPart3d ? partH : undefined,
       partCapH: isPart3d && partType === "chimney" ? partCapH : undefined,
+      partPostH: isPart3d && partType === "chimney" ? partPostH : undefined,
+      partOverhang: isPart3d && partType === "chimney" ? partOverhang : undefined,
+      capRibs: isPart3d && partType === "chimney" ? capRibs : undefined,
       capStyle: isPart3d && partType === "chimney" ? capStyle : undefined,
       outletShape: isPart3d && partType === "collector" ? outletShape : undefined,
       flangeW: isPart3d && partType === "collector" && outletShape === "box" ? flangeW : undefined,
@@ -4960,6 +5091,9 @@ export default function ShopOrderApp() {
       if (p.partD != null) setPartD(p.partD);
       if (p.partH != null) setPartH(p.partH);
       if (p.partCapH != null) setPartCapH(p.partCapH);
+      if (p.partPostH != null) setPartPostH(p.partPostH);
+      if (p.partOverhang != null) setPartOverhang(p.partOverhang);
+      if (p.capRibs != null) setCapRibs(!!p.capRibs);
       if (p.capStyle) setCapStyle(p.capStyle);
       if (p.outletShape) setOutletShape(p.outletShape);
       if (p.flangeW != null) setFlangeW(p.flangeW);
@@ -5677,36 +5811,60 @@ export default function ShopOrderApp() {
                   </label>
                 </div>
 
-                {partType === "chimney" && (
-                  <>
-                    <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 8 }}>
-                      Cap Style
-                      <div style={{ display: "flex", gap: 5, marginTop: 4, flexWrap: "wrap" }}>
-                        {[
-                          { id: "pyramid", label: "Pyramid" },
-                          { id: "stevenson", label: "Stevenson Top" },
-                          { id: "texas", label: "Texas Top" },
-                          { id: "chateau", label: "Chateau Cap" },
-                        ].map((s) => (
-                          <button key={s.id} type="button" onClick={() => setCapStyle(s.id)}
-                            style={{
-                              flex: "1 1 45%", padding: "7px 4px", borderRadius: 6, fontSize: 10.5, fontWeight: 600, cursor: "pointer",
-                              border: `1px solid ${capStyle === s.id ? INK : theme.border}`, background: capStyle === s.id ? INK : theme.inputBg, color: capStyle === s.id ? "#fff" : theme.text,
-                            }}>
-                            {s.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <label style={{ display: "block", width: "100%", fontSize: 11, color: theme.textSecondary, marginTop: 8 }}>
-                      Cap Height (in)
-                      <input type="number" min={0.1} step="0.1" value={partCapH}
-                        onChange={(e) => setPartCapH(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
-                        onBlur={(e) => { if (e.target.value === "") setPartCapH(6); }}
-                        className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
+                {partType === "chimney" && (() => {
+                  const numStyle = { width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.inputBg, color: theme.text, boxSizing: "border-box" };
+                  const num = (label, value, set, fallback, testid) => (
+                    <label style={{ flex: 1, minWidth: 0, fontSize: 11, color: theme.textSecondary }}>
+                      {label}
+                      <input type="number" min={0} step="0.25" value={value} data-testid={testid}
+                        onChange={(e) => set(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
+                        onBlur={(e) => { if (e.target.value === "") set(fallback); }}
+                        className="mono" style={numStyle} />
                     </label>
-                  </>
-                )}
+                  );
+                  const canRib = CAP_RIB_STYLES.includes(capStyle);
+                  return (
+                    <>
+                      <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>
+                        Width × Depth are the base skirt's outside size; Height is the skirt. The roof overhangs the skirt and sits on four corner posts.
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                        {num("Open height — posts (in)", partPostH, setPartPostH, 6, "cap-post-h")}
+                        {num("Roof rise (in)", partCapH, setPartCapH, 6, "cap-rise")}
+                        {num("Roof overhang (in)", partOverhang, setPartOverhang, 2, "cap-overhang")}
+                      </div>
+                      <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 8 }}>
+                        Roof Style
+                        <div style={{ display: "flex", gap: 5, marginTop: 4, flexWrap: "wrap" }}>
+                          {CAP_STYLES.map((s) => (
+                            <button key={s.id} type="button" onClick={() => setCapStyle(s.id)} title={s.hint} data-testid={`cap-style-${s.id}`}
+                              style={{
+                                flex: "1 1 30%", padding: "7px 4px", borderRadius: 6, fontSize: 10.5, fontWeight: 600, cursor: "pointer",
+                                border: `1px solid ${capStyle === s.id ? INK : theme.border}`, background: capStyle === s.id ? INK : theme.inputBg, color: capStyle === s.id ? "#fff" : theme.text,
+                              }}>
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 8, opacity: canRib ? 1 : 0.5 }}>
+                        Standing Seam Ribs
+                        <div style={{ display: "flex", gap: 5, marginTop: 4 }}>
+                          {[[true, "Ribs on"], [false, "Smooth"]].map(([on, label]) => (
+                            <button key={label} type="button" onClick={() => setCapRibs(on)} disabled={!canRib} data-testid={on ? "cap-ribs-on" : "cap-ribs-off"}
+                              style={{
+                                flex: 1, padding: "7px 4px", borderRadius: 6, fontSize: 10.5, fontWeight: 600, cursor: canRib ? "pointer" : "default",
+                                border: `1px solid ${capRibs === on ? INK : theme.border}`, background: capRibs === on ? INK : theme.inputBg, color: capRibs === on ? "#fff" : theme.text,
+                              }}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        {!canRib && <div style={{ fontSize: 10, marginTop: 3 }}>This roof style is made smooth.</div>}
+                      </div>
+                    </>
+                  );
+                })()}
 
                 {partType === "collector" && (
                   <>
@@ -5868,7 +6026,7 @@ export default function ShopOrderApp() {
 
                 <div style={{ marginTop: 8 }}>
                   {partView === "3d" ? (
-                    <Part3DPreview partType={partType} w={partW} d={partD} h={partH} capH={partCapH} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} flangeLength={flangeLength} outletRoundTapered={outletRoundTapered} capStyle={capStyle} />
+                    <Part3DPreview partType={partType} w={partW} d={partD} h={partH} capH={partCapH} postH={partPostH} overhang={partOverhang} ribs={capRibs} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} flangeLength={flangeLength} outletRoundTapered={outletRoundTapered} capStyle={capStyle} />
                   ) : (
                     <FlatPatternSVG partType={partType} w={partW} d={partD} h={partH} capH={partCapH} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} />
                   )}
@@ -7705,7 +7863,7 @@ export default function ShopOrderApp() {
                                     {o.type === "metal"
                                       ? `Flat ${o.flatWidth}" × ${(o.flatLength / 12).toFixed(1)}' + Coil ${o.coilWidth}" × ${(o.coilLength / 12).toFixed(0)}'`
                                       : o.type === "part3d"
-                                      ? `${PART3D_LABELS[o.partType] || o.partType}${o.capStyle ? ` (${CAP_STYLE_LABELS[o.capStyle] || o.capStyle})` : ""} — ${o.partW}"W × ${o.partD}"D × ${o.partH}"H${o.partType === "chimney" ? ` (cap ${o.partCapH}")` : ""}`
+                                      ? `${PART3D_LABELS[o.partType] || o.partType}${o.capStyle ? ` (${CAP_STYLE_LABELS[o.capStyle] || o.capStyle})` : ""} — ${o.partW}"W × ${o.partD}"D × ${o.partH}"H${o.partType === "chimney" ? ` (posts ${o.partPostH ?? 6}", roof rise ${o.partCapH}", overhang ${o.partOverhang ?? 2}", ${o.capRibs === false ? "smooth" : "standing seam ribs"})` : ""}`
                                       : `Trim profile — ${o.lengthPerPiece} ft/pc`} · Qty {o.quantity}
                                   </>
                                 )}
