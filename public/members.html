@@ -116,9 +116,14 @@
 <div class="view" id="v-apps">
   <div class="wrap" style="padding-block:16px;display:flex;flex-wrap:wrap;gap:12px;align-items:center">
     <span class="mono" style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--steel)">Shop apps</span>
-    <div class="segs">
-      <button type="button" class="seg sel" id="tab-draw">Trim drawing</button>
-      <button type="button" class="seg" id="tab-papp">Panel orders</button>
+    <div class="segs" id="tool-tabs">
+      <button type="button" class="seg sel" data-tool="draw">Trim drawing</button>
+      <button type="button" class="seg" data-tool="papp">Panel orders</button>
+      <button type="button" class="seg" data-tool="p3d">3D parts</button>
+      <button type="button" class="seg" data-tool="res">Residential kit</button>
+      <button type="button" class="seg" data-tool="com">Commercial kit</button>
+      <button type="button" class="seg" data-tool="metal">Coil &amp; flats</button>
+      <button type="button" class="seg" data-tool="color">Color lab</button>
     </div>
     <a id="app-full" class="mono" href="/app" target="_blank" rel="noopener" style="margin-left:auto;font-size:11px;color:var(--copper);text-decoration:none">Open full screen ↗</a>
   </div>
@@ -203,11 +208,13 @@ const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
 const hexOf=n=>{const c=COLORS.concat(FORT_EXTRA).find(c=>c[0]===n);return c?c[1]:"#26262A"};
 function hav(a,b,c,d){const R=3959,r=x=>x*Math.PI/180,dl=r(c-a),dg=r(d-b);const s=Math.sin(dl/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dg/2)**2;return Math.round(2*R*Math.asin(Math.sqrt(s)))}
 // Served same-origin via a rewrite so the app shares this site's sign-in session.
-// Each tool has its own deep link so the app opens straight to it (?view=trim /
-// ?view=panel — handled in App.jsx). Once the frame is up, switching tabs posts the
-// new view into it instead of reloading, so a half-drawn profile survives a tab change.
-const APPS={draw:"/app?view=trim",papp:"/app?view=panel"};
-const APP_VIEW={draw:"trim",papp:"panel"};
+// Each tool has its own deep link so the app opens straight to it (handled by openTool
+// in App.jsx). Once the frame is up, switching tabs posts the new view into it instead
+// of reloading, so a half-drawn profile survives a tab change.
+// Keys are the ?app= values other pages link to — draw and papp are load-bearing
+// (home.html links them, and rcState remembers one as lastTool), so don't rename them.
+const APP_VIEW={draw:"trim",papp:"panel",p3d:"part3d",res:"box",com:"commercial",metal:"metal",color:"color"};
+const APPS=Object.fromEntries(Object.entries(APP_VIEW).map(([k,v])=>[k,"/app?view="+v]));
 let appReady=false,appView=null,bootView=null;
 window.addEventListener("message",e=>{
   if(e.origin!==location.origin||!e.data)return;
@@ -221,10 +228,11 @@ window.addEventListener("message",e=>{
 function sendView(v){const f=$("#app-frame");appView=v;
   if(appReady&&f.contentWindow)f.contentWindow.postMessage({type:"rc:view",view:v},location.origin)}
 function loadApp(k){const f=$("#app-frame");const v=APP_VIEW[k];
+  if(!v)return;
   if(!f.dataset.k){appReady=false;appView=bootView=v;f.src=APPS[k]}
   else if(f.dataset.k!==k)sendView(v);
   f.dataset.k=k;$("#app-full").href=APPS[k];
-  $("#tab-draw").classList.toggle("sel",k==="draw");$("#tab-papp").classList.toggle("sel",k==="papp")}
+  $$("#tool-tabs .seg").forEach(b=>b.classList.toggle("sel",b.dataset.tool===k))}
 function buildLab(){
   $("#lab-chips").innerHTML=COLORS.map(c=>`<button style="background:${c[1]}" data-c="${c[0]}" aria-label="${c[0]}" title="${c[0]}"></button>`).join("");
   $$("#lab-chips button").forEach(b=>b.onclick=()=>{
@@ -289,20 +297,20 @@ function fitFrame(){const f=$("#app-frame");if(!document.body.classList.contains
   const vh=(window.visualViewport&&window.visualViewport.height)||window.innerHeight;
   f.style.height=Math.max(320,Math.round(vh-f.getBoundingClientRect().top))+"px"}
 window.addEventListener("resize",fitFrame);if(window.visualViewport)window.visualViewport.addEventListener("resize",fitFrame);
-function nav(v){$$(".view").forEach(x=>x.classList.remove("on"));$("#v-"+v).classList.add("on");
+function nav(v,tool){$$(".view").forEach(x=>x.classList.remove("on"));$("#v-"+v).classList.add("on");
   $$(".nav-links a").forEach(a=>a.classList.toggle("on",a.dataset.nav===v));
   document.body.classList.toggle("in-apps",v==="apps");
-  if(v==="apps"&&!$("#app-frame").dataset.k)loadApp("draw");
+  if(v==="apps"&&(tool||!$("#app-frame").dataset.k))loadApp(tool||"draw");
   window.scrollTo({top:0,behavior:"instant"});if(v==="apps")fitFrame()}
 document.addEventListener("click",e=>{const n=e.target.closest("[data-nav]");if(n){e.preventDefault();
-  if(n.dataset.nav==="apps"&&n.dataset.app){nav("apps");loadApp(n.dataset.app)}
+  if(n.dataset.nav==="apps"&&n.dataset.app){nav("apps",n.dataset.app)}
   else nav(n.dataset.nav)}});
-$("#tab-draw").onclick=()=>loadApp("draw");$("#tab-papp").onclick=()=>loadApp("papp");
+$$("#tool-tabs .seg").forEach(b=>b.onclick=()=>{loadApp(b.dataset.tool);if(window.rcState)rcState.merge({lastTool:b.dataset.tool})});
 $("#st-col").textContent=COLORS.length+"+";
 buildLab();buildBrands();
 // ?app=papp / ?app=draw deep links (home-page "Try our..." buttons) open that tool directly
 const appParam=new URLSearchParams(location.search).get("app");
-if(appParam==="draw"||appParam==="papp"){nav("apps");loadApp(appParam)}
+if(APP_VIEW[appParam])nav("apps",appParam);
 </script>
 <script>
 // Per-account memory: restore the color and tool this member was last looking at,
@@ -315,15 +323,13 @@ document.addEventListener("rc:state",e=>{
   }
   if(st.lastTool&&!new URLSearchParams(location.search).get("app")){
     // don't yank them into the app automatically — just preload the tab they used last
-    if(st.lastTool==="draw"||st.lastTool==="papp"){const f=document.getElementById("app-frame");if(!f.dataset.k)loadApp(st.lastTool)}
+    if(APP_VIEW[st.lastTool]){const f=document.getElementById("app-frame");if(!f.dataset.k)loadApp(st.lastTool)}
   }
 });
 document.getElementById("lab-chips").addEventListener("click",e=>{
   const b=e.target.closest("button[data-c]");
   if(b&&window.rcState)rcState.merge({lastColor:b.dataset.c});
 });
-document.getElementById("tab-draw").addEventListener("click",()=>window.rcState&&rcState.merge({lastTool:"draw"}));
-document.getElementById("tab-papp").addEventListener("click",()=>window.rcState&&rcState.merge({lastTool:"papp"}));
 </script>
 </body>
 </html>
