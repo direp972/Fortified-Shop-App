@@ -1192,11 +1192,11 @@ function computePrice(order, priceList, coilWidthScale) {
     const W = order.partW || 0, D = order.partD || 0, H = order.partH || 0, CH = order.partCapH || 0;
     let sqin;
     if (order.partType === "chimney") {
-      const oh = order.partOverhang ?? 2, postH = order.partPostH ?? 6;
+      const oh = order.partOverhang ?? 2, postH = order.partPostH ?? 6, shelf = order.partShelf ?? 3, leg = order.partLeg ?? 3;
       const EW = W + 2 * oh, ED = D + 2 * oh;
       const slant = Math.sqrt((Math.max(EW, ED) / 2) ** 2 + CH ** 2);
-      // skirt walls + top flange + four posts + the roof out to its eave + drip and seams
-      sqin = 2 * (W + D) * H + W * D * 0.5 + 4 * postH * 6 + 2 * (EW + ED) * slant * 1.1;
+      // the base (shelf + down leg + hem, all the way round) + four posts + the roof out to its eave + drip and seams
+      sqin = 2 * (W + D) * (shelf + leg + 0.5) + 4 * postH * 6 + 2 * (EW + ED) * slant * 1.1;
     } else {
       sqin = 2 * (W + D) * H + W * D; // walls + bottom
     }
@@ -2803,7 +2803,7 @@ function makePolyGeometry(polys) {
 // top flange, four square corner posts, and a roof that overhangs the base by `oh`, with
 // standing seam ribs and hip/ridge caps when `ribs` is on. Sizes in inches, y up, the
 // skirt's bottom at y = 0; the caller centres the whole group afterwards. ----
-function buildChimneyCap(group, { W, D, H, postH, CH, oh, style, ribs }, mat, addEdges) {
+function buildChimneyCap(group, { W, D, shelf, leg, postH, CH, oh, style, ribs }, mat, addEdges) {
   const add = (geo, x = 0, y = 0, z = 0, parent = group) => {
     const m = new THREE.Mesh(geo, mat.clone());
     m.position.set(x, y, z);
@@ -2812,20 +2812,25 @@ function buildChimneyCap(group, { W, D, H, postH, CH, oh, style, ribs }, mat, ad
     return m;
   };
   const T = 0.12;                                              // sheet thickness as drawn
-  const FL = Math.max(1, Math.min(W, D) * 0.14);               // flange width
+  const FL = Math.min(shelf, Math.min(W, D) / 2 - 0.1);        // the shelf can't be wider than half the base
   const P = Math.max(1, Math.min(4, Math.min(W, D) * 0.09));   // post size
-  // 1. skirt
-  add(makeSideWallsGeometry(W, D, H));
-  // 2. top flange: a flat frame round the opening
-  add(new THREE.BoxGeometry(W, T, FL), 0, H, -(D / 2 - FL / 2));
-  add(new THREE.BoxGeometry(W, T, FL), 0, H, (D / 2 - FL / 2));
-  add(new THREE.BoxGeometry(FL, T, D - 2 * FL), -(W / 2 - FL / 2), H, 0);
-  add(new THREE.BoxGeometry(FL, T, D - 2 * FL), (W / 2 - FL / 2), H, 0);
-  // 3. posts on the flange corners
-  const px = W / 2 - FL / 2, pz = D / 2 - FL / 2;
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(new THREE.BoxGeometry(P, postH, P), sx * px, H + postH / 2, sz * pz);
-  // 4. roof, built with its long axis along X and turned if the cap is deeper than wide
-  const y0 = H + postH;
+  // 1. the base: a flat shelf round the opening with a down leg on its outside edge and a
+  //    small hem turned in at the bottom of the leg (see the close-up photo on PR #34)
+  add(makeSideWallsGeometry(W, D, leg));                                   // down leg
+  const HEM = Math.min(0.5, leg / 2);
+  add(new THREE.BoxGeometry(W, T, HEM), 0, T / 2, -(D / 2 - HEM / 2));      // hem, four sides
+  add(new THREE.BoxGeometry(W, T, HEM), 0, T / 2, (D / 2 - HEM / 2));
+  add(new THREE.BoxGeometry(HEM, T, D - 2 * HEM), -(W / 2 - HEM / 2), T / 2, 0);
+  add(new THREE.BoxGeometry(HEM, T, D - 2 * HEM), (W / 2 - HEM / 2), T / 2, 0);
+  add(new THREE.BoxGeometry(W, T, FL), 0, leg, -(D / 2 - FL / 2));          // shelf, four sides
+  add(new THREE.BoxGeometry(W, T, FL), 0, leg, (D / 2 - FL / 2));
+  add(new THREE.BoxGeometry(FL, T, D - 2 * FL), -(W / 2 - FL / 2), leg, 0);
+  add(new THREE.BoxGeometry(FL, T, D - 2 * FL), (W / 2 - FL / 2), leg, 0);
+  // 2. posts standing on the shelf, just in from the outside corners
+  const px = W / 2 - P / 2 - 0.3, pz = D / 2 - P / 2 - 0.3;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(new THREE.BoxGeometry(P, postH, P), sx * px, leg + postH / 2, sz * pz);
+  // 3. roof, built with its long axis along X and turned if the cap is deeper than wide
+  const y0 = leg + postH;
   const EW = W + 2 * oh, ED = D + 2 * oh;
   const long = Math.max(EW, ED), short = Math.min(EW, ED);
   const roof = new THREE.Group();
@@ -2944,7 +2949,7 @@ function buildChimneyCap(group, { W, D, H, postH, CH, oh, style, ribs }, mat, ad
   } else hipRoof(CH, ridgeHalf, ribs); // "hip" and anything unknown
 }
 
-function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle }) {
+function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, shelf, leg, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle }) {
   const mountRef = useRef(null);
   const stateRef = useRef({});
   const rotateRef = useRef(null);
@@ -3125,7 +3130,7 @@ function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, colorHe
       });
     } else {
       buildChimneyCap(group, {
-        W, D, H: Math.max(0.5, H), postH: Math.max(0.5, +postH || 6), CH: Math.max(0.5, +capH || 6),
+        W, D, shelf: Math.max(0.5, +shelf || 3), leg: Math.max(0.5, +leg || 3), postH: Math.max(0.5, +postH || 6), CH: Math.max(0.5, +capH || 6),
         oh: Math.max(0, +overhang ?? 2), style: capStyle || "hip", ribs: ribs !== false,
       }, mat, addEdges);
     }
@@ -3209,7 +3214,7 @@ function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, colorHe
       renderer.dispose();
       if (mount) mount.innerHTML = "";
     };
-  }, [partType, w, d, h, capH, postH, overhang, ribs, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle]);
+  }, [partType, w, d, h, capH, postH, overhang, ribs, shelf, leg, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle]);
 
   const STEP = 0.35;
   const spinIntervalRef = useRef(null);
@@ -3550,7 +3555,9 @@ export default function ShopOrderApp() {
   const [partH, setPartH] = useState(10);
   const [partCapH, setPartCapH] = useState(6);
   const [partPostH, setPartPostH] = useState(6);      // chimney cap: open height between the flange and the roof
-  const [partOverhang, setPartOverhang] = useState(2); // chimney cap: how far the roof eave reaches past the skirt
+  const [partOverhang, setPartOverhang] = useState(2); // chimney cap: how far the roof eave reaches past the base
+  const [partShelf, setPartShelf] = useState(3);       // chimney cap: the flat shelf round the opening
+  const [partLeg, setPartLeg] = useState(3);           // chimney cap: the down leg on the shelf's outside edge
   const [capRibs, setCapRibs] = useState(true);        // chimney cap: standing seam ribs on the roof, or smooth
   const [capStyle, setCapStyle] = useState("hip"); // see CAP_STYLES
   const [partView, setPartView] = useState("3d"); // "3d" | "flat"
@@ -4525,7 +4532,7 @@ export default function ShopOrderApp() {
     : shapeType === "metal"
     ? { type: "metal", flatWidth, flatLength, coilWidth: metalCoilWidth, coilLength: metalCoilLength, quantity, gaugeId, paintId, brand, colorName }
     : shapeType === "part3d"
-    ? { type: "part3d", partType, partW, partD, partH, partCapH, partPostH, partOverhang, capRibs, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, quantity, gaugeId, paintId, brand, colorName }
+    ? { type: "part3d", partType, partW, partD, partH, partCapH, partPostH, partOverhang, partShelf, partLeg, capRibs, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, quantity, gaugeId, paintId, brand, colorName }
     : { type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, brand, colorName };
   const estimate = computePrice(draft, priceList, coilWidthScale);
   const girth = profileGirth(points, hemStart, hemEnd); // legs plus the end folds — the width the shear cuts
@@ -4873,6 +4880,8 @@ export default function ShopOrderApp() {
       partCapH: isPart3d && partType === "chimney" ? partCapH : undefined,
       partPostH: isPart3d && partType === "chimney" ? partPostH : undefined,
       partOverhang: isPart3d && partType === "chimney" ? partOverhang : undefined,
+      partShelf: isPart3d && partType === "chimney" ? partShelf : undefined,
+      partLeg: isPart3d && partType === "chimney" ? partLeg : undefined,
       capRibs: isPart3d && partType === "chimney" ? capRibs : undefined,
       capStyle: isPart3d && partType === "chimney" ? capStyle : undefined,
       outletShape: isPart3d && partType === "collector" ? outletShape : undefined,
@@ -4980,6 +4989,8 @@ export default function ShopOrderApp() {
       partCapH: isPart3d && partType === "chimney" ? partCapH : undefined,
       partPostH: isPart3d && partType === "chimney" ? partPostH : undefined,
       partOverhang: isPart3d && partType === "chimney" ? partOverhang : undefined,
+      partShelf: isPart3d && partType === "chimney" ? partShelf : undefined,
+      partLeg: isPart3d && partType === "chimney" ? partLeg : undefined,
       capRibs: isPart3d && partType === "chimney" ? capRibs : undefined,
       capStyle: isPart3d && partType === "chimney" ? capStyle : undefined,
       outletShape: isPart3d && partType === "collector" ? outletShape : undefined,
@@ -5093,6 +5104,8 @@ export default function ShopOrderApp() {
       if (p.partCapH != null) setPartCapH(p.partCapH);
       if (p.partPostH != null) setPartPostH(p.partPostH);
       if (p.partOverhang != null) setPartOverhang(p.partOverhang);
+      if (p.partShelf != null) setPartShelf(p.partShelf);
+      if (p.partLeg != null) setPartLeg(p.partLeg);
       if (p.capRibs != null) setCapRibs(!!p.capRibs);
       if (p.capStyle) setCapStyle(p.capStyle);
       if (p.outletShape) setOutletShape(p.outletShape);
@@ -5802,13 +5815,13 @@ export default function ShopOrderApp() {
                       onBlur={(e) => { if (e.target.value === "") setPartD(8); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
                   </label>
-                  <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                  {partType !== "chimney" && <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Height (in){partType === "collector" && <span style={{ color: theme.textSecondary, fontWeight: 400 }}> (max 150)</span>}
                     <input type="number" min={0.1} max={partType === "collector" ? 150 : undefined} step="0.1" value={partH}
                       onChange={(e) => setPartH(e.target.value === "" ? "" : Math.max(0, partType === "collector" ? Math.min(150, +e.target.value) : +e.target.value))}
                       onBlur={(e) => { if (e.target.value === "") setPartH(10); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
-                  </label>
+                  </label>}
                 </div>
 
                 {partType === "chimney" && (() => {
@@ -5826,7 +5839,11 @@ export default function ShopOrderApp() {
                   return (
                     <>
                       <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>
-                        Width × Depth are the base skirt's outside size; Height is the skirt. The roof overhangs the skirt and sits on four corner posts.
+                        Width × Depth are the base's outside size. The base is a flat shelf round the opening with a down leg on its outside edge; the posts stand on the shelf and the roof overhangs it.
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                        {num("Shelf (in)", partShelf, setPartShelf, 3, "cap-shelf")}
+                        {num("Down leg (in)", partLeg, setPartLeg, 3, "cap-leg")}
                       </div>
                       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                         {num("Open height — posts (in)", partPostH, setPartPostH, 6, "cap-post-h")}
@@ -6026,7 +6043,7 @@ export default function ShopOrderApp() {
 
                 <div style={{ marginTop: 8 }}>
                   {partView === "3d" ? (
-                    <Part3DPreview partType={partType} w={partW} d={partD} h={partH} capH={partCapH} postH={partPostH} overhang={partOverhang} ribs={capRibs} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} flangeLength={flangeLength} outletRoundTapered={outletRoundTapered} capStyle={capStyle} />
+                    <Part3DPreview partType={partType} w={partW} d={partD} h={partH} capH={partCapH} postH={partPostH} overhang={partOverhang} ribs={capRibs} shelf={partShelf} leg={partLeg} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} flangeLength={flangeLength} outletRoundTapered={outletRoundTapered} capStyle={capStyle} />
                   ) : (
                     <FlatPatternSVG partType={partType} w={partW} d={partD} h={partH} capH={partCapH} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} />
                   )}
@@ -7863,7 +7880,7 @@ export default function ShopOrderApp() {
                                     {o.type === "metal"
                                       ? `Flat ${o.flatWidth}" × ${(o.flatLength / 12).toFixed(1)}' + Coil ${o.coilWidth}" × ${(o.coilLength / 12).toFixed(0)}'`
                                       : o.type === "part3d"
-                                      ? `${PART3D_LABELS[o.partType] || o.partType}${o.capStyle ? ` (${CAP_STYLE_LABELS[o.capStyle] || o.capStyle})` : ""} — ${o.partW}"W × ${o.partD}"D × ${o.partH}"H${o.partType === "chimney" ? ` (posts ${o.partPostH ?? 6}", roof rise ${o.partCapH}", overhang ${o.partOverhang ?? 2}", ${o.capRibs === false ? "smooth" : "standing seam ribs"})` : ""}`
+                                      ? `${PART3D_LABELS[o.partType] || o.partType}${o.capStyle ? ` (${CAP_STYLE_LABELS[o.capStyle] || o.capStyle})` : ""} — ${o.partW}"W × ${o.partD}"D${o.partType === "chimney" ? ` · ${o.partShelf ?? 3}" shelf, ${o.partLeg ?? 3}" leg, ${o.partPostH ?? 6}" posts, ${o.partCapH}" rise, ${o.partOverhang ?? 2}" overhang, ${o.capRibs === false ? "smooth" : "standing seam ribs"}` : ` × ${o.partH}"H`}`
                                       : `Trim profile — ${o.lengthPerPiece} ft/pc`} · Qty {o.quantity}
                                   </>
                                 )}
