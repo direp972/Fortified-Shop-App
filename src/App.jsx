@@ -3695,16 +3695,21 @@ export default function ShopOrderApp() {
   //   ?view=panel  "Panel orders" opens the panel calculator
   //   ?view=box    "Open Residential Standing Seam" on sheet-metal-trim.html opens that box
   //   ?view=commercial  "Open Commercial in a Box" opens the other one
+  //   ?view=metal  raw coil and flat sheet;  ?view=part3d  collector boxes, scuppers, caps
+  //   ?view=type   the "What do you need?" chooser, for a member who hasn't decided yet
   // members.html embeds this app in an iframe with one of these, then switches tools
   // with a same-origin postMessage ({type:"rc:view"}) so a half-drawn profile isn't
   // lost to a reload when the member flips tabs.
   const openTool = useCallback((view) => {
     if (view === "color") { setTab("order"); setOrderStep("color"); }
-    else if (view === "trim" || view === "panel") { setTab("order"); setShapeType(view); setOrderStep("details"); }
+    else if (view === "trim" || view === "panel" || view === "metal") { setTab("order"); setShapeType(view); setOrderStep("details"); }
+    // same reset the 3D Parts tile does, so a deep link starts as clean as a tap does
+    else if (view === "part3d") { setTab("order"); setAccessories([]); setBox3dReturn(false); setShapeType("part3d"); setOrderStep("details"); }
     else if (view === "box" || view === "commercial") { setTab("order"); setShapeType("trim"); setOrderStep("details"); setRoofBoxKind(view === "commercial" ? "com" : "res"); setRoofBoxOpen(true); }
+    else if (view === "type") { setTab("order"); setOrderStep("type"); }
   }, []);
   const deepLinkView = new URLSearchParams(window.location.search).get("view");
-  const deepLinked = ["color", "trim", "panel", "box", "commercial"].includes(deepLinkView);
+  const deepLinked = ["color", "trim", "panel", "metal", "part3d", "box", "commercial", "type"].includes(deepLinkView);
   useEffect(() => {
     if (deepLinked) openTool(deepLinkView);
     // eslint-disable-next-line react-hooks/exhaustive-deps
