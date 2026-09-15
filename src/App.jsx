@@ -4903,9 +4903,20 @@ export default function ShopOrderApp() {
   // A scupper or a collector box is built in the 3D tool, not drawn — its row in Commercial in a Box
   // takes the roofer there with that part up, and the tool shows the way back. The trims in the
   // list stay as they are; the 3D part is sent as its own part, the way the 3D tool always has.
+  // Each 3D part starts at its own size. A scupper carrying the collector box's 12 x 8 x 10
+  // is a plausible-looking part nobody would ever order. Only ever called from a deliberate
+  // part switch — never an effect, because loadFromVault sets partType and then the
+  // dimensions, and an effect would fire after it and stomp a saved part.
+  const seedPartDims = (next, prev) => {
+    if (next === prev) return;
+    if (next === "scupper") { setPartW(12); setPartD(8); setPartH(4); }
+    else if (prev === "scupper") { setPartW(12); setPartD(8); setPartH(10); }
+  };
+
   const openBox3dPart = (it) => {
     if (editingId) restoreCanvas(); // a part being changed goes back in its place first
     setRoofBoxOpen(false); setBox3dReturn(true);
+    seedPartDims(it.tool3d, partType);
     setPartType(it.tool3d); setShapeType("part3d"); setOrderStep("details");
     setToast(`${it.name} — size it in the 3D tool and send it as its own part. The parts in your list stay; sending brings you back to Commercial in a Box for the rest.`); setTimeout(() => setToast(""), 5000);
   };
@@ -5971,11 +5982,7 @@ export default function ShopOrderApp() {
                     { id: "scupper", label: "Scupper" },
                     { id: "chimney", label: "Chimney Cap" },
                   ].map((t) => (
-                    <button key={t.id} type="button" onClick={() => {
-                      if (t.id !== partType && t.id === "scupper") { setPartW(12); setPartD(8); setPartH(4); }
-                      if (t.id !== partType && partType === "scupper") { setPartW(12); setPartD(8); setPartH(10); }
-                      setPartType(t.id);
-                    }}
+                    <button key={t.id} type="button" onClick={() => { seedPartDims(t.id, partType); setPartType(t.id); }}
                       style={{
                         padding: "6px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
                         border: `1px solid ${partType === t.id ? INK : theme.border}`, background: partType === t.id ? INK : theme.inputBg, color: partType === t.id ? "#fff" : theme.text,
