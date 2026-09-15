@@ -70,6 +70,7 @@
 
   <div class="step"><h3><span class="sn">2</span>What you run</h3>
     <div class="fld"><label>Abilities — tap everything you offer</label><div class="chipgrid" id="f-abilities"></div></div>
+    <div class="fld"><label>Exposed fastener panels — tap each shape you run, whatever name it goes by</label><div class="chipgrid" id="f-efpanels"></div></div>
     <div class="fld"><label>Gutter profiles</label><div class="chipgrid" id="f-gutters"></div></div>
     <div class="fld"><label>Gutter materials</label><div class="chipgrid" id="f-gutmats"></div></div>
     <div class="fld"><label>Anything you run that isn't a button above (comma separated)</label><input id="f-moreabilities"></div>
@@ -102,9 +103,10 @@ const SUPA="https://znueitseoqijhkkvdomc.supabase.co";
 const KEY="sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
 // Same taxonomy the directory admin uses — keep the two lists in sync by hand.
 const ABILITIES=["Coil & flat sheet","Painted coil — PVDF / Kynar","Painted coil — SMP","Bare — Galvalume · G90 · bonderized","Copper","1″ mechanical lock","1.5″ snap-lock","1.75″ snap-lock","1.5″ mechanical lock (single)","1.5″ mechanical lock (double)","2″ mechanical lock","1″ nail strip","1.5″ nail strip","T-panel (138T)","T-panel (238T)","Batten seam","2.5″ trapezoidal","3″ trapezoidal structural","Exposed fastener","Flush wall & soffit","Board & batten","Trim & flashing","3D parts — boxes · scuppers · caps","On-site roll forming","On-site gutter roll forming","Turnkey — supply · fabrication · labor"];
+const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated","1/2″ corrugated (low-profile)","5V-crimp","Ag panel / tuff rib","U-panel","M-panel / box-rib (wall)"];
 const GUTTER_PROFILES=["5″ K-style gutter","6″ K-style gutter","7″ K-style gutter","5″ half-round gutter","6″ half-round gutter","6″ box gutter","7″ box gutter","8″ box gutter","6″ euro box gutter","Fascia gutter","Straight-face / square gutter"];
 const GUTTER_MATERIALS=["Gutter — .027 aluminum","Gutter — .032 aluminum","Gutter — 26 ga painted steel","Gutter — 24 ga painted steel","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
-const ALL_CANON=[...ABILITIES,...GUTTER_PROFILES,...GUTTER_MATERIALS];
+const ALL_CANON=[...ABILITIES,...EF_PANELS,...GUTTER_PROFILES,...GUTTER_MATERIALS];
 const STOCK_COLORS=["Regal White","Almond","Ash Gray","Slate Gray","Burnished Slate","Charcoal","Medium Bronze","Dark Bronze","Matte Black","Evergreen","Copper Metallic","Galvalume","Texas Silver","Bare Copper","Bonderized"];
 const FIELD_LABELS={name:"Company name",phone:"Phone",website:"Website",gmaps_url:"Maps link",licensed_states:"Licensed states",coil_desc:"Coil sentence",fab_desc:"Fabrication sentence",colors:"Colors",abilities:"Abilities"};
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
@@ -132,6 +134,13 @@ function mapsUrl(raw){
 const segChip=(t,label)=>{const b=document.createElement('button');b.type='button';b.className='seg';b.dataset.v=t;b.textContent=label||t;b.onclick=()=>b.classList.toggle('sel');return b};
 const gutLabel=(t)=>{const d=t.replace(/ gutter$/,'').replace(/^Gutter — /,'');return d.charAt(0).toUpperCase()+d.slice(1)};
 ABILITIES.forEach(a=>$('#f-abilities').appendChild(segChip(a)));
+EF_PANELS.forEach(a=>$('#f-efpanels').appendChild(segChip(a)));
+// a specific screw-down profile implies the "Exposed fastener" umbrella ability
+$$('#f-efpanels .seg').forEach(b=>b.addEventListener('click',()=>{
+  if(!b.classList.contains('sel'))return;
+  const u=[...$$('#f-abilities .seg')].find(x=>x.dataset.v==='Exposed fastener');
+  if(u)u.classList.add('sel');
+}));
 GUTTER_PROFILES.forEach(a=>$('#f-gutters').appendChild(segChip(a,gutLabel(a))));
 GUTTER_MATERIALS.forEach(a=>$('#f-gutmats').appendChild(segChip(a,gutLabel(a))));
 STOCK_COLORS.forEach(c=>$('#f-colors').appendChild(segChip(c)));
@@ -184,7 +193,7 @@ function fillForm(l){
   $('#f-website').value=l.website||'';
   $('#f-gmaps').value=l.gmaps_url||'';
   $('#f-lic').value=l.licensed_states||'';
-  setChips('#f-abilities',l.abilities||[]);setChips('#f-gutters',l.abilities||[]);setChips('#f-gutmats',l.abilities||[]);
+  setChips('#f-abilities',l.abilities||[]);setChips('#f-efpanels',l.abilities||[]);setChips('#f-gutters',l.abilities||[]);setChips('#f-gutmats',l.abilities||[]);
   $('#f-moreabilities').value=notCanon(l.abilities,ALL_CANON).join(', ');
   setChips('#f-colors',l.colors||[]);
   $('#f-morecolors').value=notCanon(l.colors,STOCK_COLORS).join(', ');
@@ -235,9 +244,12 @@ function buildProposed(){
   const lic=$('#f-lic').value.trim();
   if(lic!==(listing.licensed_states||''))p.licensed_states=lic;
   const abilities=[...collect('#f-abilities','#f-moreabilities',ALL_CANON),
+    ...[...$$('#f-efpanels .seg.sel')].map(b=>b.dataset.v),
     ...[...$$('#f-gutters .seg.sel')].map(b=>b.dataset.v),
     ...[...$$('#f-gutmats .seg.sel')].map(b=>b.dataset.v)].filter((v,i,arr)=>arr.findIndex(x=>x.toLowerCase()===v.toLowerCase())===i);
   if(!abilities.length)return{err:'Keep at least one ability tapped — the directory search runs on them.'};
+  // a listed screw-down profile always carries the "Exposed fastener" facet with it
+  if(EF_PANELS.some(v=>abilities.includes(v))&&!abilities.includes('Exposed fastener'))abilities.push('Exposed fastener');
   if(!sameSet(abilities,listing.abilities))p.abilities=abilities;
   const colors=collect('#f-colors','#f-morecolors',STOCK_COLORS);
   if(!sameSet(colors,listing.colors))p.colors=colors;

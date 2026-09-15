@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase, Package } from "lucide-react";
+import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase, Package, Pencil, Building2 } from "lucide-react";
 import * as THREE from "three";
 import { storage } from "./lib/storage";
 import { supabase } from "./lib/supabaseClient";
@@ -522,7 +522,7 @@ const COLORS_BY_BRAND = {
 };
 
 
-/* ---------------------------------- Roof in a Box ---------------------------------- */
+/* ------------------------- Residential Standing Seam (the roof kit) ------------------------- */
 // The standard trim set for a 24 ga standing seam roof, drawn to the roof's pitch and the
 // panel's seam height. Every entry is a real profile the drawing tool can open and edit:
 // points in inches, y grows downward, drawn with the leg that sits on the panel (or the
@@ -533,6 +533,7 @@ const SEAM_HEIGHTS = [1, 1.5, 1.75, 2];
 const pitchAngle = (rise) => Math.atan(rise / 12); // radians
 const r3 = (v) => Math.round(v * 1000) / 1000;
 const kitPt = (x, y) => [r3(x), r3(y)];
+const kitFold = (x, y, side) => [r3(x), r3(y), `fold-${side}`]; // a hem drawn as a leg: folds 180° back along the previous leg, to that side of its travel — tag written out because the kit is built at load, before withFold exists
 const fmtPitch = (rise) => `${rise}:12`;
 
 function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
@@ -558,22 +559,25 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
   const KICK = 0.5 / Math.SQRT2; // a ½" leg kicked out at 45° — the drip on every fascia trim
 
   return [
-    { id: "eave", name: "Eave / Drip Edge", dims: '3" × 2" · ½" 45° kick', per: "eave", on: true,
-      where: "Bottom edge of the roof — deck flange under the panels, face down the fascia, a 45° kick throws the water clear and the hem hooks the panel's hemmed edge.",
-      points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 2), kitPt(3 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
+    { id: "eave", name: "Eave / Drip Edge", dims: '3" × 2" · ½" 45° kick', per: "eave", on: false,
+      where: "Bottom edge of the roof — deck flange under the panels, face down the fascia, kicked out 45° at the bottom to throw the water clear, and hemmed. The panels hook an Offset Cleat over the flange; tick it in place of the D-Style Drip Edge below when the job runs a cleat.",
+      points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 2), kitPt(3 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "left" },
+    { id: "dstyle", name: "D-Style Drip Edge", dims: '3¾" × 2" · 1¼" lip hemmed flat · ½" 45° kick', per: "eave", on: true,
+      where: "The eave the box starts with — for panels that hook the trim itself (the T-style): 2½\" on the deck, then a 1¼\" lip past the fascia, hemmed flat back under, that the panel's hemmed edge hooks and squeezes shut on: no cleat. Face down the fascia, kicked at the bottom with a closed hem.",
+      points: [kitPt(0, 0), kitPt(3.75, 0), kitFold(2.5, 0, "left"), kitPt(2.5, 2), kitPt(2.5 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
     { id: "apron", name: "Gutter Apron", dims: '4½" × 2" · 15° kick', per: "eave with gutters", on: false,
       where: "Eave trim for gutter runs — a longer deck flange and a face kicked out over the gutter's back.",
-      points: [kitPt(0, 0), kitPt(4.5, 0), kitPt(4.5 + 2 * Math.sin(apronKick), 2 * Math.cos(apronKick))], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
+      points: [kitPt(0, 0), kitPt(4.5, 0), kitPt(4.5 + 2 * Math.sin(apronKick), 2 * Math.cos(apronKick))], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
     { id: "rake", name: "Rake / Gable Trim", dims: '3" × 5½" · ½" 45° kick', per: "rake edge", on: true,
       where: "Gable ends — the top leg covers the panel's turned-up edge and the rake cleat, the face drops over the fascia, kicked and hemmed at the bottom.",
-      points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 5.5), kitPt(3 + KICK, 5.5 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
+      points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 5.5), kitPt(3 + KICK, 5.5 + KICK)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
     { id: "higheave", name: "High-Side Eave", dims: '5" × 5½" · ½" 45° kick', per: "high eave (single-slope roofs)", on: false,
       where: "Top edge of a shed or single-slope roof — sits over the Z-closure and drops down the high fascia, kicked and hemmed.",
-      points: [kitPt(0, 0), kitPt(5, 0), kitPt(5, 5.5), kitPt(5 + KICK, 5.5 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
-    { id: "ridge", name: "Ridge Cap", dims: `${capLeg}" legs · bent to ${fmtPitch(pitch)}`, per: "ridge", on: true,
+      points: [kitPt(0, 0), kitPt(5, 0), kitPt(5, 5.5), kitPt(5 + KICK, 5.5 + KICK)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
+    { id: "ridge", name: "Ridge Cap", dims: `${capLeg}" legs · bent to ${fmtPitch(pitch)}`, per: "ridge", on: true, pitched: true,
       where: "Peak of the roof over the Z-closures, both legs hemmed for the drip. Bent to the roof pitch.",
       points: cap(ridgeHalf), hemStart: "open-left", hemEnd: "open-left", paintSide: "right" },
-    { id: "hip", name: "Hip Cap", dims: `${capLeg}" legs · hip angle for ${fmtPitch(pitch)}`, per: "hip", on: false,
+    { id: "hip", name: "Hip Cap", dims: `${capLeg}" legs · hip angle for ${fmtPitch(pitch)}`, per: "hip", on: false, pitched: true,
       where: "Same cap over a hip — the two slopes meet along the diagonal, so the fold is flatter than the ridge.",
       points: cap(hipHalf), hemStart: "open-left", hemEnd: "open-left", paintSide: "right" },
     { id: "valley", name: "W-Valley — Hemmed (uncleated)", dims: `${W}" wings · 1" diverter · hemmed edges`, per: "valley", on: true,
@@ -583,21 +587,21 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
       where: "Same pan with flat wings — an offset cleat runs along each edge and the panels hem over the cleat. Tick the Offset Cleat below, two lengths per valley.",
       points: valleyPan, hemStart: "none", hemEnd: "none", paintSide: "right" },
     { id: "sidewall", name: "Sidewall Flashing", dims: '4" × 4" · ⅜" kickout', per: "sidewall", on: true,
-      where: "Where the roof runs along a wall — roof leg over the panel, wall leg behind the siding or counter flashing, hemmed top.",
-      points: [kitPt(-0.375, 0.25), kitPt(0, 0), kitPt(4, 0), kitPt(4, -4)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
-    { id: "endwall", name: "Headwall Flashing", dims: `5" × 4" · wall leg plumb for ${fmtPitch(pitch)}`, per: "headwall", on: true,
+      where: "Where the roof runs along a wall — roof leg over the panel, wall leg behind the siding or counter flashing.",
+      points: [kitPt(-0.375, 0.25), kitPt(0, 0), kitPt(4, 0), kitPt(4, -4)], hemStart: "none", hemEnd: "none", paintSide: "right" },
+    { id: "endwall", name: "Headwall Flashing", dims: `5" × 4" · wall leg plumb for ${fmtPitch(pitch)}`, per: "headwall", on: true, pitched: true,
       where: "Where the roof runs up into a wall (an endwall) — sits over the Z-closure, wall leg plumb at your pitch behind the siding or counter flashing.",
-      points: [kitPt(-0.375, 0.25), kitPt(0, 0), kitPt(5, 0), kitPt(5 + 4 * wallTilt.x, 4 * wallTilt.y)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
-    { id: "counter", name: "Counter Flashing — Reglet", dims: '1" reglet · 4" face · ½" 45° kick', per: "sidewall and headwall against masonry", on: true,
+      points: [kitPt(-0.375, 0.25), kitPt(0, 0), kitPt(5, 0), kitPt(5 + 4 * wallTilt.x, 4 * wallTilt.y)], hemStart: "none", hemEnd: "none", paintSide: "right" },
+    { id: "counter", name: "Counter Flashing — Saw-Cut Reglet", dims: '1" leg in a saw cut · 4" face · ½" 45° kick', per: "sidewall and headwall against masonry", on: true,
       where: "Covers the top of the sidewall and headwall flashing — 1\" leg set into a saw-cut or mortar joint, 4\" face down the wall, kicked out and hemmed at the bottom.",
-      points: [kitPt(1, -0.25), kitPt(0, 0), kitPt(0, 4), kitPt(-KICK, 4 + KICK)], hemStart: "none", hemEnd: "open-right", paintSide: "left" },
+      points: [kitPt(1, -0.25), kitPt(0, 0), kitPt(0, 4), kitPt(-KICK, 4 + KICK)], hemStart: "none", hemEnd: "closed-right", paintSide: "left" },
     { id: "counter2", name: "Counter Flashing — Surface Mount", dims: '½" sealant kick · 4" face · ½" 45° kick', per: "sidewall and headwall on siding, stucco or block", on: false,
       where: "Same job where nothing can be cut into the wall — the top edge kicks out 45° to hold a bead of sealant, screwed through the face.",
-      points: [kitPt(-KICK, -KICK), kitPt(0, 0), kitPt(0, 4), kitPt(-KICK, 4 + KICK)], hemStart: "none", hemEnd: "open-right", paintSide: "left" },
+      points: [kitPt(-KICK, -KICK), kitPt(0, 0), kitPt(0, 4), kitPt(-KICK, 4 + KICK)], hemStart: "none", hemEnd: "closed-right", paintSide: "left" },
     { id: "zclosure", name: "Z-Closure", dims: `1" × ${H}" × 1"`, per: "ridge and hip (two per length, one on each slope), plus headwalls and pitch breaks", on: true,
       where: "Fills the seam height between panels under the ridge and hip caps, at headwalls and pitch breaks; sealed to the pan. Eaves are usually hemmed over a cleat instead.",
       points: [kitPt(0, 0), kitPt(1, 0), kitPt(1, -H), kitPt(2, -H)], hemStart: "none", hemEnd: "none", paintSide: "right" },
-    { id: "transition", name: "Pitch Transition", dims: `4" × ${riser}" × 4" · ${fmtPitch(pitch)} to ${fmtPitch(Math.min(lowerPitch, pitch))}`, per: "pitch break", on: false,
+    { id: "transition", name: "Pitch Transition", dims: `4" × ${riser}" × 4" · ${fmtPitch(pitch)} to ${fmtPitch(Math.min(lowerPitch, pitch))}`, per: "pitch break", on: false, pitched: true,
       where: "Where a steep roof breaks to a flatter one — upper leg under the upper panels, steps up over the lower Z-closure, lower leg follows the flatter pitch.",
       points: [kitPt(0, 0), kitPt(4, 0), kitPt(4, -riser), kitPt(4 + 4 * Math.cos(dTrans), -riser - 4 * Math.sin(dTrans))], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
     { id: "cleat", name: "Offset Cleat", dims: '1" × ⅜" × 1½"', per: "eave and rake under the trim, and both edges of a cleated valley", on: false,
@@ -606,25 +610,138 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
   ];
 }
 const ROOF_KIT_DEFAULT_SEL = Object.fromEntries(buildRoofKit().map((it) => [it.id, it.on ? 1 : 0]));
-// Quick presets on the trim canvas: the kit's own profiles at a 4:12 roof (Roof in a Box
-// redraws the pitch-driven ones to any pitch), plus the shop staples that aren't roof trims.
+
+/* ---------------------------------- Commercial in a Box ---------------------------------- */
+// The sheet metal for a low-slope commercial roof: coping over the parapets — face-fastened, or
+// hooked on one or two continuous cleats — the cleat itself, the edge metal for the open edges
+// (gravel stop, drip edge, snap-on fascia and the hook strip they hang on, drawn to the fascia
+// height), the two counter flashings the roof kit carries, a box gutter, and the downspout that
+// drops from it or from a collector box. Built like the roof kit — every entry a profile the canvas can open, drawn to
+// the wall, gutter and downspout sizes — except the scupper and the collector box: those are
+// built to size in the 3D tool, and their rows only take the roofer there.
+const PARAPET_WIDTHS = [8, 10, 12, 14, 16, 18, 20, 24]; // across the top of the parapet, wall plus blocking, inches
+const GUTTER_SIZES = [5, 6, 7, 8];                        // box gutter: bottom and front, inches — "a 6-inch box" is 6 × 6
+const DOWNSPOUT_SIZES = ["3×3", "4×4", "6×6", "3×4", "4×5", "4×6", "5×6"]; // downspout, out from the wall × across it, inches — the square ones first, the usual brake-metal sizes
+const FASCIA_HEIGHTS = [4, 5, 5.5, 6, 7, 8, 8.5, 9, 10]; // edge metal: the face down the fascia, inches — ATAS bends 4 / 5½ / 7 / 8½, Vortex 5 / 7 / 8 / 8½ / 9, 6 for the ticket that says six, shops go to 10
+const inWord = (v) => (Number.isInteger(v) ? `${v}"` : `${Math.floor(v)}½"`); // 12.5 -> 12½" (fracIn is not initialised yet at load)
+function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4", fascia = 5.5, atas = false, es1 = false } = {}) {
+  const KICK = 0.5 / Math.SQRT2; // a ½" leg kicked out at 45° — the drip on a face-fastened face, the lip on a cleat
+  const OUT = 4, IN = 3;         // coping faces: the street side hangs an inch lower than the roof side
+  const TF = wallWidth + 0.5;    // face-fastened cap: the wall plus ¼" of play a side
+  const TC = wallWidth + 1;      // cleated caps: ½" a side, to clear the cleat's lip and the hook hem returned inside the face
+  const G = gutterSize;          // box gutter: bottom and front this size, the back an inch taller
+  const [D, W] = downspout.split("×").map(Number); // downspout: D out from the wall, W across it
+  const F = fascia;              // edge metal: the face down the fascia — a gravel stop, a drip edge or a snap-on fascia, and the hook strip under them
+  const CANT = 0.75, TOP = 0.75; // gravel stop: the cant stands ¾" above the deck (ATAS, Ohio 07 71 00), ¾" back from the edge of the nailer — the step out to the face is a shop default, no source sizes it
+  const GS_FLANGE = 4, DE_FLANGE = 3, SNAP_TOP = 2.375; // the legs on the roof: gravel stop 4" (ATAS, Ohio), drip edge 3" (DMI, K&M), snap-on 2⅜" (Vortex One-Edge) — the ½" kick and ½" open hem are the kit's; the ATAS toggle bends the spec's ¾" and 1"
+  const counters = buildRoofKit().filter((it) => it.id === "counter" || it.id === "counter2");
+  // The bottom of the three covers: the face ends at y and the drip kicks out 45° — the kit's ½" kick with a ½"
+  // open hem as the end fold, or, to the ATAS spec, a ¾" kick with a 1" open hem drawn as legs: the hem folds
+  // back along the kick to the corner, then turns to run the last ¼" up the inside of the face.
+  const DRIP = atas ? 0.75 / Math.SQRT2 : KICK;
+  const edgeEnd = (y) => (atas ? [kitPt(0, y), kitPt(-DRIP, y + DRIP), kitFold(0, y, "right"), kitPt(0, y - 0.25)] : [kitPt(0, y), kitPt(-DRIP, y + DRIP)]);
+  const edgeHem = atas ? "none" : "open-right";
+  const edgeDrip = atas ? '¾" 45° kick · 1" open hem' : '½" 45° kick';
+  const kickWord = atas ? '¾" kick with a 1" open hem' : '½" kick with an open hem';
+  const es = (name) => (es1 ? `${name} (ES-1)` : name); // the job calls for tested edge metal: the coping and edge pieces say so on the order
+  // A coping cleat drops an inch less than the face it holds, so its kick lands on the hook's free edge; the hook
+  // strip under the edge metal drops the whole face, so its kick nests inside the cover's kicked hem. Drawn plumb
+  // with the wall or the nailer on its right, the way the caps' outside face is drawn — the kick turns out, away from it.
+  const cleat = (drop) => [kitPt(0, 0), kitPt(0, drop), kitPt(-KICK, drop + KICK)];
+  return [
+    { id: "coping0", name: es("Coping Cap — Face-Fastened"), dims: `${inWord(TF)} top · 4" outside face · 3" roof-side face · ½" 45° kicks · ${wallWidth}" wall`, per: "parapet", on: false,
+      where: "Over the top of the parapet with no cleat — the top the wall's width plus ¼\" of play a side, the outside face an inch longer than the roof side for cover on the street side (slope the blocking under the cap so it drains to the roof), each face kicked out at the bottom and hemmed, screwed through with gasketed fasteners. Every screw shows; tick a cleated cap when the street side can't.",
+      points: [kitPt(-KICK, OUT + KICK), kitPt(0, OUT), kitPt(0, 0), kitPt(TF, 0), kitPt(TF, IN), kitPt(TF + KICK, IN + KICK)], hemStart: "closed-left", hemEnd: "closed-left", paintSide: "right" },
+    { id: "coping1", name: es("Coping Cap — One Cleat"), dims: `${inWord(TC)} top · 4" outside face hooked · 3" roof-side face kicked · ${wallWidth}" wall`, per: "parapet", on: true,
+      where: "Over the parapet with the outside face dropping straight to a ¾\" hook hem that snaps under the Coping Cleat, so nothing shows from the street; the roof-side face kicked, hemmed and screwed into the blocking where only the roof sees it. The top is the wall plus ½\" a side to clear the cleat's lip. One Coping Cleat per length of cap.",
+      points: [kitPt(0, OUT), kitPt(0, 0), kitPt(TC, 0), kitPt(TC, IN), kitPt(TC + KICK, IN + KICK)], hemStart: "hook-left", hemEnd: "closed-left", paintSide: "right" },
+    { id: "coping2", name: es("Coping Cap — Two Cleats"), dims: `${inWord(TC)} top · 4" and 3" faces, both hooked · ${wallWidth}" wall`, per: "parapet", on: false,
+      where: "Both faces hemmed to hook a cleat — no exposed fasteners anywhere, and the cap floats so it can move with the heat: the spec'd way on a high-wind or ES-1 job. One Coping Cleat and one Coping Cleat — Roof Side per length of cap.",
+      points: [kitPt(0, OUT), kitPt(0, 0), kitPt(TC, 0), kitPt(TC, IN)], hemStart: "hook-left", hemEnd: "hook-left", paintSide: "right" },
+    { id: "copingcleat", name: es("Coping Cleat"), dims: '3" × ½" 45° kick', per: "parapet with a cleated cap, on the street side", on: true,
+      where: "Continuous cleat the cap's 4\" outside face hooks — a 3\" strip screwed flat to the face of the wall 12\" o.c., top edge flush with the top of the blocking, the bottom ½\" kicked out 45° so the cap's hook hem snaps under it. One length per length of cap. Usually 24 ga bare or paint-grip; 22 ga where the spec calls for it.",
+      points: cleat(OUT - 1), hemStart: "none", hemEnd: "none", paintSide: "left" },
+    { id: "copingcleat2", name: es("Coping Cleat — Roof Side"), dims: '2" × ½" 45° kick', per: "parapet with a two-cleat cap, on the roof side", on: false,
+      where: "The same cleat cut for the cap's 3\" roof-side face — a 2\" strip on the inside of the wall with the same ½\" kick, so the two-cleat cap's shorter hem lands on it. Only the Two Cleats cap needs it, one length per length of cap.",
+      points: cleat(IN - 1), hemStart: "none", hemEnd: "none", paintSide: "left" },
+    ...counters.map((it) => (it.id === "counter"
+      ? { ...it, per: "parapet, curb and wall base flashing in masonry", where: "Covers the top of the base flashing at parapets, curbs and walls — 1\" leg set into a saw-cut reglet or a raked mortar joint, 4\" face down the wall, kicked out and hemmed at the bottom." }
+      : { ...it, per: "parapet, curb and wall base flashing on stucco, EIFS, block or panel", where: "Same job on a wall nothing can be cut into — stucco, EIFS, block or panel — the top edge kicked out 45° to hold a bead of sealant, screwed through the face." })),
+    // Edge metal for the open edges — a roof has parapets or open edges, so these start unticked and the box keeps
+    // opening on the one-cleat coping. Drawn the way the caps' outside face is: the face plumb at x = 0, the nailer
+    // and the roof to its right with the roof leg flat on the nailer top at y = 0, the kick turning out. Paint is
+    // on the left of travel (the top of the roof leg, the roof side of the cant, the outside of the face, the top of
+    // the kick), so the open hem folds right: back under the kick toward the nailer, the pocket the strip's kick
+    // nests in. The strip is the coping cleat's shape as tall as the face, so its kick root meets the cover's.
+    { id: "gravelstop", name: es("Gravel Stop Fascia"), dims: `4" roof flange · ¾" cant · ${inWord(F)} face · ${edgeDrip}`, per: "roof edge", on: false,
+      where: `The edge of a low-slope roof with no parapet and no gutter — the 4\" flange on the deck is stripped into the membrane, the cant stands up ¾\" to hold the gravel and the water back from the edge, steps ¾\" out to the edge of the nailer, and the face drops over it to a ${kickWord} that hooks the Hook Strip: no fastener through the face, the cleated edge the ES-1 systems are built on. Where the spec or the inspector calls for a tested ES-1 edge, that edge comes from a certified shop. One Hook Strip per length, set ¾\" proud of the nailer, up inside the cant.`,
+      points: [kitPt(TOP + GS_FLANGE, 0), kitPt(TOP, 0), kitPt(TOP, -CANT), kitPt(0, -CANT), ...edgeEnd(F - CANT)], hemStart: "none", hemEnd: edgeHem, paintSide: "left" },
+    { id: "dripedge", name: es("Drip Edge — Membrane Roof"), dims: `3" roof flange · ${inWord(F)} face · ${edgeDrip}`, per: "roof edge", on: false,
+      where: `The same edge where the roof drains over it, into a gutter or clear of the wall, so no cant — a 3\" flange flat on the deck, stripped into the membrane, the face down the nailer to a ${kickWord} that hooks the Hook Strip set flush with the nailer top. Not the Eave or the D-Style Drip Edge of the standing seam box: no panel hooks this one, it hangs on the Hook Strip and nothing else. One Hook Strip per length.`,
+      points: [kitPt(DE_FLANGE, 0), kitPt(0, 0), ...edgeEnd(F)], hemStart: "none", hemEnd: edgeHem, paintSide: "left" },
+    { id: "snapfascia", name: es("Snap-On Fascia"), dims: `2⅜" top return · ${inWord(F)} face · ${edgeDrip}`, per: "roof edge", on: false,
+      where: `The two-piece edge on a single-ply roof, put on last — the membrane is terminated over the nailer and the Hook Strip screwed flush with its top; the cover's 2⅜\" return lies on the nailer over the termination, the face drops over the strip, and the ${kickWord} snaps under the strip's lip. Nothing stripped in, no fastener showing, and it comes off without touching the roof. One Hook Strip per length. For a canted nailer, open it on the canvas and tilt the return to the bevel. When the spec names an anchor-bar system, the bar comes from that maker and only the cover is bent.`,
+      points: [kitPt(SNAP_TOP, 0), kitPt(0, 0), ...edgeEnd(F)], hemStart: "none", hemEnd: edgeHem, paintSide: "left" },
+    { id: "hookstrip", name: es("Hook Strip / Continuous Cleat"), dims: `${inWord(F)} × ½" 45° kick`, per: "roof edge, under the edge metal", on: false,
+      where: "Continuous cleat the Gravel Stop, the Drip Edge and the Snap-On Fascia hook — a strip as tall as the face it holds, screwed flat to the face of the nailer 12\" o.c., the bottom ½\" kicked out 45° so the cover's kicked hem snaps over it. Top edge where the top of the face lands: flush with the nailer under the Drip Edge and the Snap-On Fascia, ¾\" above it under the Gravel Stop, inside the cant. One length per length of edge metal. Usually 24 ga bare or paint-grip; 22 ga where the spec calls for it — FM 1-49 wants the cleat a gauge heavier than the cover.",
+      points: cleat(F), hemStart: "none", hemEnd: "none", paintSide: "left" },
+    { id: "boxgutter", name: `Box Gutter — ${G}"`, dims: `${G}" × ${G}" · ${G + 1}" back · 1" hemmed return`, per: "gutter run", on: true,
+      where: "Along the low edge of the roof — bottom and front the gutter's size, the back an inch taller against the fascia so an overflow spills over the front and never behind it, a 1\" return across the top of the front, hemmed under, for stiffness and for the hangers to clip. Both edges hemmed. Drops to a downspout through an outlet cut in the bottom, or into a collector box.",
+      points: [kitPt(G - 1, -G), kitPt(G, -G), kitPt(G, 0), kitPt(0, 0), kitPt(0, -(G + 1))], hemStart: "closed-left", hemEnd: "closed-left", paintSide: "right" },
+    { id: "scupper", name: "Scupper", tool3d: "scupper", dims: "built to size in the 3D tool", per: "outlet through the parapet",
+      where: "Through-wall outlet that lets the roof drain out through the parapet — a sleeve sized to the wall with a flange on the roof side, into a collector box or straight down a downspout." },
+    { id: "collector", name: "Collector Box", tool3d: "collector", dims: "built to size in the 3D tool", per: "drop",
+      where: "The conductor head under a scupper or a gutter outlet — catches the water and feeds the downspout, with the outlet the downspout below fits." },
+    { id: "downspout", name: `Downspout — ${downspout}"`, dims: `${D}" out × ${W}" on the wall · 1" lock flange · ½" pocket`, per: "drop", on: true,
+      where: `Carries the water down from a box gutter's outlet or a collector box — ${W}" face against the wall, ${D}" out. Drawn as the brake bends it: a 1" flange, the four sides, and the back ending in a ½" open pocket the flange snaps into, closed with a hand seamer on the corner against the wall where it never shows. Strapped to the wall; the shop makes the elbows from the same stock.`,
+      points: [kitPt(1, 0), kitPt(0, 0), kitPt(0, D), kitPt(W, D), kitPt(W, 0), kitPt(0.5, 0)], hemStart: "none", hemEnd: "open-right", paintSide: "left" },
+  ];
+}
+const COM_KIT = buildCommercialKit();
+// Every box row's starting tick, both kits, by kit id — what a row goes back to when the last
+// of that piece leaves the order.
+const KIT_DEFAULT_SEL = { ...ROOF_KIT_DEFAULT_SEL, ...Object.fromEntries(COM_KIT.filter((it) => !it.tool3d).map((it) => [it.id, it.on ? 1 : 0])) };
+// Quick presets on the trim canvas: every piece of the roof kit at a 4:12 roof and every drawn
+// piece of the commercial kit at its stock sizes, under the names the boxes give them (the boxes
+// redraw the pitch- and size-driven ones to any pitch or size), plus Custom for a blank start.
 const KIT_4_12 = Object.fromEntries(buildRoofKit({ pitch: 4 }).map((it) => [it.id, it]));
+const PITCHED_KIT = new Set(Object.values(KIT_4_12).filter((it) => it.pitched).map((it) => it.id)); // the pieces whose shape follows the roof pitch
+const KIT_PRESET_ITEMS = [...Object.values(KIT_4_12), ...COM_KIT.filter((it) => !it.tool3d && !KIT_4_12[it.id])];
+const KIT_BY_ID = Object.fromEntries(KIT_PRESET_ITEMS.map((it) => [it.id, it]));
+const KIT_PRESETS = Object.fromEntries(KIT_PRESET_ITEMS.map((it) => [it.name, it.id]));
 const TRIM_PRESETS = {
-  "Eave": KIT_4_12.eave.points,
-  "Rake": KIT_4_12.rake.points,
-  "Ridge Cap": KIT_4_12.ridge.points,
-  "Valley": KIT_4_12.valley.points,
-  "Sidewall Flashing": KIT_4_12.sidewall.points,
-  "Headwall Flashing": KIT_4_12.endwall.points,
-  "Counter Flashing": KIT_4_12.counter.points,
-  "F-Channel": [[0, 0], [0, 10.5], [7, 10.5], [7, 4], [10, 4], [10, 0]],
+  ...Object.fromEntries(KIT_PRESET_ITEMS.map((it) => [it.name, it.points])),
   "Custom": [[0, 0], [0, 6]],
+};
+// A preset from a kit brings its standard end folds and painted side along with the shape;
+// the shop staples set only the shape and leave the folds as they are.
+const presetFolds = (name) => { const it = KIT_BY_ID[KIT_PRESETS[name]]; return it ? { hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide } : null; };
+// The two boxes: what each is called, which ?view= opens it from the site, and its colours.
+const BOX_KINDS = {
+  res: { label: "Residential Standing Seam", view: "box", accent: "#A0602E", accentLight: "#B8703A", icon: Package,
+    blurb: "The standard trims for a 24 ga standing seam roof, drawn to your pitch — add them all at once" },
+  com: { label: "Commercial in a Box", view: "commercial", accent: "#4F5D6B", accentLight: "#61707F", icon: Building2,
+    blurb: "Coping, edge metal, counter flashing, box gutters and downspouts for a low-slope roof" },
 };
 
 const STATUS_FLOW = ["Pending", "In Production", "Ready for Pickup", "Completed"];
 const RIB_LABELS = { bead: "Bead Ribs", pencil: "Pencil Ribs", v: "V Ribs", striations: "Striations" };
 const PART3D_LABELS = { collector: "Collector Box", scupper: "Scupper", chimney: "Chimney Cap" };
-const CAP_STYLE_LABELS = { pyramid: "Pyramid", stevenson: "Stevenson Top", texas: "Texas Top", chateau: "Chateau Cap" };
+// Roof styles for the chimney cap (shroud). Every style sits on the same base: a skirt
+// with a flat top flange and four corner posts, the way the shop builds them.
+const CAP_STYLES = [
+  { id: "hip", label: "Hip & Ridge", hint: "Four slopes meeting at a ridge — the standard cap" },
+  { id: "pyramid", label: "Pyramid", hint: "Four slopes meeting at a point" },
+  { id: "gable", label: "Gable", hint: "Two slopes with closed gable ends" },
+  { id: "stevenson", label: "Stevenson (Low Hip)", hint: "A shallow hip roof" },
+  { id: "texas", label: "Texas Top (Turtle)", hint: "A near-flat crowned lid" },
+  { id: "flat", label: "Flat Top", hint: "A flat pan with a turned-down edge" },
+  { id: "mission", label: "Mission Arch", hint: "A barrel-arched roof" },
+  { id: "twotier", label: "Two-Tier", hint: "A hip roof with a smaller hip stacked on top" },
+  { id: "chateau", label: "Chateau", hint: "A flared, bell-shaped roof" },
+];
+const CAP_STYLE_LABELS = Object.fromEntries(CAP_STYLES.map((s) => [s.id, s.label]));
+const CAP_RIB_STYLES = ["hip", "pyramid", "gable", "stevenson", "texas", "twotier"]; // roofs that can carry standing seam ribs
 
 const ACCESSORY_TYPES = ["Screws", "Butyl Tape", "Pipe Boots", "Sealant", "Clips"];
 const DRY_IN_TYPES = ["Underlayment", "Cap Nails", "High Temp Ice & Water"];
@@ -823,6 +940,12 @@ function findGauge(gaugeId, brand) {
 function formatDim(n) {
   return (+n).toFixed(2).replace(/\.?0+$/, "");
 }
+// Inches for the ticket: two decimals, except a value that lands on an odd eighth (⅛, ⅜, ⅝, ⅞)
+// keeps its third — 3.125", not 3.13" — so the shop reads the fraction it actually bends to.
+function fmtIn(v) {
+  const e = v * 8, onEighth = Math.abs(e - Math.round(e)) < 1e-6 && Math.round(e) % 2 !== 0;
+  return v.toFixed(onEighth ? 3 : 2);
+}
 
 // Formats a length given in inches as feet + leftover inches: 126 -> "10' 6"", 120 -> "10'".
 function formatFeetInches(totalInches) {
@@ -834,7 +957,7 @@ function formatFeetInches(totalInches) {
 
 // Renders a trim profile as a plain, static SVG string (not the interactive drawing
 // tool) for print/export — clean outline with length labels at each segment.
-function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = "none") {
+function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = "none", paintSide = "left") {
   if (!points || points.length < 2) return "";
   const xs = points.map((p) => p[0]), ys = points.map((p) => p[1]);
   const size = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys), 1);
@@ -851,7 +974,13 @@ function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = 
     const len = dist(points[i - 1], points[i]);
     const mx = (pathPts[i - 1][0] + pathPts[i][0]) / 2;
     const my = (pathPts[i - 1][1] + pathPts[i][1]) / 2;
-    labels += `<text x="${mx.toFixed(1)}" y="${(my - 8).toFixed(1)}" font-size="11" text-anchor="middle" font-family="monospace" fill="#333">${len.toFixed(2)}"</text>`;
+    const folded = i > 1 && foldSide(points[i]);
+    let lx = mx, ly = my - 8;
+    if (folded || len < 1.5) { // a short leg, or a hem drawn as a leg over the leg it folds along: the label sits off to the side — a leg's on the painted side, a hem's on the unpainted side, where it folds
+      const [px, py] = folded ? sidePerp(unitVec(pathPts[i - 2], pathPts[i - 1]), folded) : sidePerp(unitVec(pathPts[i - 1], pathPts[i]), paintSide); // a fold's side is named off the leg it folds along
+      lx = mx + px * 16; ly = my + py * 16 + 4;
+    }
+    labels += `<text x="${lx.toFixed(1)}" y="${ly.toFixed(1)}" font-size="11" text-anchor="middle" font-family="monospace" fill="#333" stroke="#fff" stroke-width="3" paint-order="stroke">${fmtIn(len)}"${folded ? " hem" : ""}</text>`;
   }
   const dotSvg = pathPts.map((p) => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="${colorHex || "#333"}" />`).join("");
   // End folds are drawn in inches inside a scaled group so the same geometry the canvas
@@ -872,11 +1001,11 @@ function generateProfileSvgString(points, colorHex, hemStart = "none", hemEnd = 
 // print dialog — the person can "Save as PDF" from there. No PDF library needed or
 // available in this environment, so this is the reliable cross-browser path.
 function printPartAsPDF(item) {
-  const svg = generateProfileSvgString(item.points, item.colorHex, item.hemStart, item.hemEnd);
+  const svg = generateProfileSvgString(item.points, item.colorHex, item.hemStart, item.hemEnd, item.paintSide);
   const win = window.open("", "_blank");
   if (!win) { window.alert("Your browser blocked the print window — please allow popups for this site and try again."); return; }
   const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  win.document.write(`<!doctype html><html><head><title>${esc(item.name || "Trim Part")}</title>
+  win.document.write(`<!doctype html><html><head><title>${esc(item.name || item.partName || "Trim Part")}</title>
     <style>
       body{font-family:system-ui,-apple-system,sans-serif;padding:28px;color:#1C1C1E;max-width:720px;margin:0 auto;}
       h1{font-size:20px;margin:0 0 2px;}
@@ -888,14 +1017,14 @@ function printPartAsPDF(item) {
       .printbtn{margin-top:28px;padding:11px 22px;background:#D4AF37;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:14px;cursor:pointer;}
       @media print { .printbtn{display:none;} }
     </style></head><body>
-    <h1>${esc(item.name || "Trim Part")}</h1>
+    <h1>${esc(item.name || item.partName || "Trim Part")}</h1>
     <div class="sub">Fortified Sheet Metal — Order Spec Sheet</div>
     <div class="row">
       <div>${svg}</div>
       <div class="details">
         <div><b>Quantity</b>${esc(item.quantity)}</div>
         <div><b>Length / piece</b>${esc(item.lengthPerPiece)} ft</div>
-        <div><b>Girth</b>${item.girth != null ? item.girth.toFixed(2) : "—"}"</div>
+        <div><b>Girth</b>${item.girth != null ? fmtIn(item.girth) : "—"}"</div>
         <div><b>Brand</b>${esc(item.brand)}</div>
         <div><b>Color</b>${esc(item.colorName)}</div>
         <div><b>Paint side</b>${item.paintSide === "left" ? "Left" : "Right"}</div>
@@ -1063,8 +1192,11 @@ function computePrice(order, priceList, coilWidthScale) {
     const W = order.partW || 0, D = order.partD || 0, H = order.partH || 0, CH = order.partCapH || 0;
     let sqin;
     if (order.partType === "chimney") {
-      const slant = Math.sqrt((Math.max(W, D) / 2) ** 2 + CH ** 2);
-      sqin = 2 * (W + D) * H + 2 * (W + D) * slant + W * D * 1.25; // walls + hip cap + base skirt allowance
+      const oh = order.partOverhang ?? 2, postH = order.partPostH ?? 6, shelf = order.partShelf ?? 3, leg = order.partLeg ?? 3;
+      const EW = W + 2 * oh, ED = D + 2 * oh;
+      const slant = Math.sqrt((Math.max(EW, ED) / 2) ** 2 + CH ** 2);
+      // the base (shelf + down leg + hem, all the way round) + four posts + the roof out to its eave + drip and seams
+      sqin = 2 * (W + D) * (shelf + leg + 0.5) + 4 * postH * 6 + 2 * (EW + ED) * slant * 1.1;
     } else {
       sqin = 2 * (W + D) * H + W * D; // walls + bottom
     }
@@ -1169,6 +1301,10 @@ function profileGirth(pts, hemStart = "none", hemEnd = "none") {
   if (!pts || pts.length < 2) return 0;
   return pts.reduce((s, p, i) => s + (i > 0 ? dist(pts[i - 1], p) : 0), 0) + hemAllowance(hemStart) + hemAllowance(hemEnd);
 }
+// Pieces a sheet yields: the girth's rounding must not cost a piece — a ½" leg at 45° is
+// stored to the thousandth and comes out 0.5006", so 48/6.0006 has to be 8, not 7. The
+// sheet may come up a sixty-fourth short over its whole width, which is what the shear holds.
+const piecesPerSheet = (sheetWidth, girth) => (girth > 0 ? Math.floor((sheetWidth + 1 / 64) / girth) : 0);
 function unitVec(a, b) {
   const dx = b[0] - a[0], dy = b[1] - a[1];
   const m = Math.hypot(dx, dy) || 1;
@@ -1453,8 +1589,46 @@ function tagPointer(box, unit, gap) {
 }
 
 const PITCH_CHIPS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 16, 18];
+// A roof pitch typed where a bend's angle goes — "4:12", "4/12", "4-12", "4 in 12", "4 on 12",
+// "4.5:12", "4 pitch" or "4 pitch 12" (rise over 12). Gives the rise, the run and the roof angle
+// in degrees. A pitch break is two of them: "6:12 to 3:12" (also "over" or ">") adds the lower
+// roof's angle as th2.
+function parseOnePitch(raw) {
+  const worded = /pitch/.test(raw);
+  const str = raw.replace(/pitch|roof/g, "").trim();
+  let m = str.match(/^(\d+(?:\.\d+)?)\s*(?::|\/|-|in|on)\s*(\d+(?:\.\d+)?)$/), rise, run;
+  if (!m && worded) m = str.match(/^(\d+(?:\.\d+)?)\s+(\d+(?:\.\d+)?)$/);
+  if (m) { rise = +m[1]; run = +m[2]; }
+  else if (worded && (m = str.match(/^(\d+(?:\.\d+)?)$/))) { rise = +m[1]; run = 12; }
+  else return null;
+  if (!(run > 0) || !(rise >= 0)) return null;
+  return { rise, run, th: (Math.atan(rise / run) * 180) / Math.PI };
+}
+function parsePitch(input) {
+  const raw = String(input ?? "").trim().toLowerCase();
+  const parts = raw.split(/\s*(?:\bto\b|\bover\b|>)\s*/);
+  if (parts.length > 2) return null;
+  const upper = parseOnePitch(parts[0]);
+  if (!upper) return null;
+  if (parts.length === 1) return upper;
+  const lower = parseOnePitch(parts[1]);
+  return lower ? { ...upper, rise2: lower.rise, run2: lower.run, th2: lower.th } : null;
+}
+// The inside angle a bend needs for a roof angle th (degrees), by the kind of bend it is. Break
+// is the one kind that needs two: the upper roof's angle and the flatter lower roof's.
+const PITCH_BENDS = [
+  { id: "internal", label: "Internal", hint: "Chimney back pan, cricket or upslope curb — roof climbs away from the wall", angle: (th) => 90 - th },
+  { id: "open", label: "Open", hint: "Headwall flashing — roof falls away from the wall", angle: (th) => 90 + th },
+  { id: "ridge", label: "Ridge", hint: "Ridge or peak — both legs on the slope", angle: (th) => 180 - 2 * th },
+  { id: "hip", label: "Hip", hint: "Hip cap or valley pan — the slopes meet on the diagonal, so the fold is flatter than the ridge", angle: (th) => 180 - (Math.acos(Math.cos((th * Math.PI) / 180) ** 2) * 180) / Math.PI },
+  { id: "break", label: "Break", hint: "Pitch break — the upper roof breaks to a flatter one; type both, like 6:12 to 3:12", twoPitch: true, angle: (th, th2 = 0) => 90 + (th - th2) },
+];
+const pitchBendAngle = (id, th, th2) => (PITCH_BENDS.find((b) => b.id === id) || PITCH_BENDS[2]).angle(th, th2);
+// Which kind of bend a drawn bend already is, judged at the given roof angle — a kit piece opened
+// from the box or the preset row matches one of them to the degree; a plain 90° or a custom bend matches none.
+const inferPitchKind = (angle, th) => PITCH_BENDS.find((b) => !b.twoPitch && Math.abs(b.angle(th) - angle) < 1.5)?.id || null;
 const FRACTION_CHIPS = [["⅛", "1/8"], ["¼", "1/4"], ["⅜", "3/8"], ["½", "1/2"], ["⅝", "5/8"], ["¾", "3/4"], ["⅞", "7/8"]];
-const fmtDeg = (d) => { const r = Math.round(d * 10) / 10; return `${Number.isInteger(r) ? r : r.toFixed(1)}°`; };
+const fmtDeg = (d) => `${Math.round(d)}°`; // bends are called out to the whole degree — the brake is not set finer
 const trimNum = (v) => String(Math.round(v * 1000) / 1000);
 
 // Picker pictures for the fold sheet: a leg coming down with the fold at its end, all four
@@ -1497,7 +1671,7 @@ function PitchPicture({ kind, th }) {
   );
 }
 
-function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, setHemStart, setHemEnd, setPaintSide, viewResetKey }) {
+function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, setHemStart, setHemEnd, setPaintSide, viewResetKey, roofPitch = 4 }) {
   const svgRef = useRef(null);
   const [dragIdx, setDragIdx] = useState(null);
   const [zoom, setZoom] = useState(1); // 1 = the auto-fit view; smaller zooms in, larger zooms out
@@ -1517,6 +1691,11 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const [draft, setDraft] = useState("");
   const [pitchOpen, setPitchOpen] = useState(false);
   const [pitch, setPitch] = useState(4);
+  const [pitchKind, setPitchKind] = useState("open");   // the kind of bend a typed pitch is applied as at the bend that is open
+  const [stickyKind, setStickyKind] = useState("open"); // Internal or Open, whichever was tapped last — it carries from bend to bend and part to part
+  // A profile loaded from the box or the preset row brings the pitch it was drawn at, so the
+  // chips start there and a bend's kind can be read off the drawing.
+  useEffect(() => { setPitch(roofPitch || 4); }, [roofPitch, viewResetKey]);
   const [invalid, setInvalid] = useState(false); // Done with a value that can't be applied keeps the sheet open and says so
   // A tap back on the last leg (Draw mode) offers a hem: two rings, one either side, and the
   // chosen one folds the leg back on itself. `t` is where along the leg the tap landed.
@@ -1596,7 +1775,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
 
   // Formats a length in inches for display, switching to mm when metric is selected.
   // Under an inch the leading zero comes off — .50" the way it's called out on a drawing.
-  const formatLen = (inches) => (unitSystem === "metric" ? `${Math.round(inches * 25.4)}mm` : `${inches.toFixed(2).replace(/^0\./, ".")}"`);
+  const formatLen = (inches) => (unitSystem === "metric" ? `${Math.round(inches * 25.4)}mm` : `${fmtIn(inches).replace(/^0\./, ".")}"`);
 
   // When a preset is loaded, reset to a neutral zoom. Sizing itself is now handled by
   // the proportional margin above (scales with each shape's own size), so every preset
@@ -1686,6 +1865,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     const raw = parseLength(text);
     if (!isFinite(raw) || raw <= 0) return false;
     const val = unitSystem === "metric" ? raw / 25.4 : raw; // always store in inches internally
+    if (i > 1 && foldSide(points[i]) && val > dist(points[i - 2], points[i - 1]) + 1e-9) return false; // a hem can't fold back past the start of its leg
     const dir = unitVec(points[i - 1], points[i]);
     const target = [points[i - 1][0] + dir[0] * val, points[i - 1][1] + dir[1] * val];
     const dx = target[0] - points[i][0], dy = target[1] - points[i][1];
@@ -1721,12 +1901,24 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   };
   // The sheet opens on the number as its tag reads it — sub-inch without the leading zero
   // (parseLength takes ".5" the same as "0.5", so what's typed back still reads fine).
-  const lengthDraft = (i) => (unitSystem === "metric" ? String(Math.round(dist(points[i - 1], points[i]) * 25.4)) : trimNum(Math.round(dist(points[i - 1], points[i]) * 100) / 100).replace(/^0\./, "."));
-  const angleDraft = (i) => trimNum(Math.round(insideAngle(points[i - 1], points[i], points[i + 1]) * 10) / 10);
+  const lengthDraft = (i) => (unitSystem === "metric" ? String(Math.round(dist(points[i - 1], points[i]) * 25.4)) : trimNum(+fmtIn(dist(points[i - 1], points[i]))).replace(/^0\./, "."));
+  const angleDraft = (i) => String(Math.round(insideAngle(points[i - 1], points[i], points[i + 1])));
   const openLength = (i) => { if (i < 1 || i > points.length - 1) return; const t = lengthDraft(i); setEditor({ kind: "length", i, orig: t }); setDraft(t); };
   // A hem's fold is a fixed 180°, not a bend to edit — the angle sheet skips it.
   const angleEditable = (i) => i >= 1 && i <= points.length - 2 && !foldSide(points[i + 1]);
-  const openAngle = (i) => { if (!angleEditable(i)) return; const t = angleDraft(i); setEditor({ kind: "angle", i, orig: t }); setDraft(t); };
+  // The kind a typed pitch bends this joint as: a ridge or hip bend, as drawn at the drawing's
+  // pitch, is always its own kind; every other bend takes Internal or Open, whichever was
+  // tapped last (Open to start), so the choice carries from bend to bend and part to part.
+  const kindForBend = (i) => {
+    const auto = inferPitchKind(insideAngle(points[i - 1], points[i], points[i + 1]), (Math.atan(pitch / 12) * 180) / Math.PI);
+    return auto === "ridge" || auto === "hip" ? auto : stickyKind;
+  };
+  const openAngle = (i) => {
+    if (!angleEditable(i)) return;
+    const t = angleDraft(i);
+    setPitchKind(kindForBend(i));
+    setEditor({ kind: "angle", i, orig: t }); setDraft(t);
+  };
   const openFold = (end) => {
     if (points.length < 2) return;
     if (mode !== "folds") modeBeforeFold.current = mode;
@@ -1743,7 +1935,13 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const commitDraft = () => {
     if (!editor || draft.trim() === (editor.orig ?? "").trim()) return true; // nothing typed: leave the geometry exactly as it is
     if (editor.kind === "length") return applyLength(editor.i, draft);
-    if (editor.kind === "angle") return applyAngle(editor.i, parseFloat(draft));
+    if (editor.kind === "angle") {
+      // A pitch becomes the angle for the chosen kind of bend; anything else must be a whole number
+      // of degrees (a ° or "deg" is fine) — "4:0" or "4x" is refused, not read as 4°.
+      const p = parsePitch(draft);
+      const deg = draft.trim().match(/^(\d+(?:\.\d+)?)\s*(?:°|deg(?:ree)?s?\.?)?$/i); // plain degrees, ° or "deg" allowed; "0x10" or "1e2" are not
+      return applyAngle(editor.i, Math.round(p ? pitchBendAngle(p.th2 != null ? "break" : pitchKind, p.th, p.th2) : deg ? +deg[1] : NaN));
+    }
     if (editor.kind === "rotate") { const deg = parseFloat(draft); if (!isFinite(deg)) return false; applyRotation(deg); }
     return true;
   };
@@ -1759,6 +1957,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     while (editor.kind === "angle" && j >= stepRange[0] && j <= stepRange[1] && !angleEditable(j)) j += delta;
     if (j < stepRange[0] || j > stepRange[1]) return;
     const t = editor.kind === "length" ? lengthDraft(j) : angleDraft(j);
+    if (editor.kind === "angle") setPitchKind(kindForBend(j));
     setEditor({ ...editor, i: j, orig: t });
     setDraft(t);
   };
@@ -1933,7 +2132,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
   const hiBend = editor?.kind === "angle" ? editor.i : null;   // bend being edited
   const otherSide = paintSide === "left" ? "right" : "left";
   const editorTitle = editor?.kind === "length" ? `LENGTH · leg ${editor.i} of ${points.length - 1}`
-    : editor?.kind === "angle" ? `ANGLE · bend ${editor.i} of ${points.length - 2} · inside angle`
+    : editor?.kind === "angle" ? `ANGLE · bend ${editor.i} of ${points.length - 2} · inside angle, or a pitch like 4:12`
     : editor?.kind === "rotate" ? "ROTATE · degrees clockwise, 0 = as drawn"
     : editor?.kind === "fold" ? `${editor.end === "start" ? "START" : "END"} FOLD` : "";
   const btn = (active, extra = {}) => ({
@@ -2266,7 +2465,7 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
                   placeholder={editor.kind === "length" && unitSystem === "imperial" ? 'e.g. 6.5 or 6 1/2' : ""}
                   style={{ flex: 1, minWidth: 0, fontSize: 20, fontWeight: 700, background: "transparent", border: "none", borderBottom: `2px solid ${invalid ? "#FF6B6B" : SAFETY}`, color: "#fff", padding: "4px 2px", outline: "none" }} />
                 <span className="mono" style={{ fontSize: 12, color: "#8FB4C9", fontWeight: 700, minWidth: 22 }}>
-                  {editor.kind === "length" ? (unitSystem === "metric" ? "mm" : "in") : "°"}
+                  {editor.kind === "length" ? (unitSystem === "metric" ? "mm" : "in") : editor.kind === "angle" && parsePitch(draft) ? "pitch" : "°"}
                 </span>
                 {stepRange && (
                   <div style={{ display: "flex", gap: 4, borderLeft: "1px solid rgba(255,255,255,0.2)", paddingLeft: 8 }}>
@@ -2279,8 +2478,10 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
               </div>
               {invalid && (
                 <div role="alert" style={{ fontSize: 10.5, color: "#FF9B9B", marginTop: 5 }}>
-                  {editor.kind === "length" ? `Enter a length above 0${unitSystem === "imperial" ? ' — like 6.5, 6 1/2 or 3/8' : " in mm"}.`
-                    : editor.kind === "angle" ? "Enter an inside angle between 0 and 180 degrees." : "Enter the rotation in degrees."}
+                  {editor.kind === "length" && editor.i > 1 && foldSide(points[editor.i]) && (unitSystem === "metric" ? parseLength(draft) / 25.4 : parseLength(draft)) > dist(points[editor.i - 2], points[editor.i - 1])
+                    ? `A hem folds back along its leg — ${formatLen(dist(points[editor.i - 2], points[editor.i - 1]))} at most.`
+                    : editor.kind === "length" ? `Enter a length above 0${unitSystem === "imperial" ? ' — like 6.5, 6 1/2 or 3/8' : " in mm"}.`
+                    : editor.kind === "angle" ? "Enter an inside angle between 0 and 180 degrees, or a roof pitch like 4:12." : "Enter the rotation in degrees."}
                 </div>
               )}
               {editor.kind === "length" && unitSystem === "imperial" && (
@@ -2293,36 +2494,48 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
               {editor.kind === "angle" && (
                 <div style={{ marginTop: 8 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <button type="button" data-testid="pitch-toggle" onClick={() => setPitchOpen((o) => !o)} style={btn(pitchOpen)}>
-                      {pitchOpen ? "▾" : "▸"} Pitch
+                    <button type="button" data-testid="pitch-toggle" onClick={() => setPitchOpen((o) => !o)} style={btn(pitchOpen || !!parsePitch(draft))}>
+                      {pitchOpen || parsePitch(draft) ? "▾" : "▸"} Pitch
                     </button>
                     <span style={{ fontSize: 10.5, color: "#8FB4C9" }}>
-                      {pitchOpen ? "Pick the roof pitch, then the kind of bend" : "Set the bend from a roof pitch"}
+                      {pitchOpen || parsePitch(draft) ? "Pick the roof pitch, then the kind of bend" : "Set the bend from a roof pitch — or type one above, like 4:12"}
                     </span>
                   </div>
-                  {pitchOpen && (() => {
-                    const th = (Math.atan(pitch / 12) * 180) / Math.PI;
-                    const cards = [
-                      { id: "internal", label: "Internal", value: 90 - th, hint: "Roof climbs away from the wall" },
-                      { id: "open", label: "Open", value: 90 + th, hint: "Headwall or apron — roof falls away from the wall" },
-                      { id: "ridge", label: "Ridge", value: 180 - 2 * th, hint: "Ridge or peak — both legs on the slope" },
-                    ];
+                  {(pitchOpen || parsePitch(draft)) && (() => {
+                    // A pitch typed in the box drives the cards; otherwise the chip picked below does.
+                    // Two pitches ("6:12 to 3:12") are a pitch break, the one kind that needs both.
+                    const typed = parsePitch(draft);
+                    const isBreak = typed?.th2 != null;
+                    const th = typed ? typed.th : (Math.atan(pitch / 12) * 180) / Math.PI;
+                    const cards = PITCH_BENDS.filter((b) => !b.twoPitch || isBreak).map((b) => ({ ...b, value: b.angle(th, typed?.th2) }));
+                    const doneKind = (isBreak ? cards.find((c) => c.id === "break") : cards.find((c) => c.id === pitchKind)) || cards[2];
                     return (
-                      <div style={{ marginTop: 8 }}>
-                        <div className="mono" style={{ fontSize: 9, letterSpacing: "0.12em", color: SAFETY, fontWeight: 700 }}>
-                          PITCH <span style={{ color: "#fff" }}>{pitch}:12</span> <span style={{ color: "#8FB4C9" }}>· {fmtDeg(th)}</span>
+                      <div style={{ marginTop: 8 }} data-testid="pitch-panel">
+                        <div className="mono" style={{ fontSize: 9, letterSpacing: "0.12em", color: SAFETY, fontWeight: 700 }} data-testid="pitch-caption">
+                          PITCH <span style={{ color: "#fff" }}>{typed ? `${typed.rise}:${typed.run}${isBreak ? ` to ${typed.rise2}:${typed.run2}` : ""}` : `${pitch}:12`}</span> <span style={{ color: "#8FB4C9" }}>· {fmtDeg(th)}{isBreak ? ` to ${fmtDeg(typed.th2)}` : ""} roof angle{typed ? ` · Done applies ${doneKind.label}, ${fmtDeg(doneKind.value)}${isBreak ? "" : " — tap a card for another kind"}` : ""}</span>
                         </div>
                         <div style={{ display: "flex", gap: 4, overflowX: "auto", paddingBottom: 4, marginTop: 4 }}>
                           {PITCH_CHIPS.map((r) => (
-                            <button key={r} type="button" data-testid={`pitch-${r}`} onClick={() => setPitch(r)} style={btn(pitch === r, { flex: "0 0 auto", padding: "5px 8px" })}>{r}:12</button>
+                            <button key={r} type="button" data-testid={`pitch-${r}`}
+                              onClick={() => {
+                                // A chip bends the joint right away as the kind that is lit, so the drawing
+                                // follows the pitch while it is browsed and the kind never needs tapping again.
+                                const kind = pitchKind === "break" ? "open" : pitchKind;
+                                const value = Math.round(pitchBendAngle(kind, (Math.atan(r / 12) * 180) / Math.PI));
+                                setPitch(r); setPitchOpen(true); setInvalid(false);
+                                applyAngle(editor.i, value);
+                                const t = String(value); setDraft(t); setEditor({ ...editor, orig: t });
+                                inputRef.current?.focus();
+                              }}
+                              style={btn(typed ? typed.rise === r && typed.run === 12 && !isBreak : pitch === r, { flex: "0 0 auto", padding: "5px 8px" })}>{r}:12</button>
                           ))}
                         </div>
-                        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginTop: 4 }}>
+                        <div style={{ display: "grid", gridTemplateColumns: `repeat(${cards.length}, 1fr)`, gap: 6, marginTop: 4 }}>
                           {cards.map((c) => (
                             <button key={c.id} type="button" data-testid={`pitch-${c.id}`} title={c.hint}
-                              onClick={() => { applyAngle(editor.i, c.value); const t = trimNum(Math.round(c.value * 10) / 10); setDraft(t); setEditor({ ...editor, orig: t }); }}
-                              style={btn(Math.abs(parseFloat(draft) - c.value) < 0.06, { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "6px 4px" })}>
-                              <PitchPicture kind={c.id} th={th} />
+                              onClick={() => { if (!c.twoPitch) setPitchKind(c.id); if (c.id === "internal" || c.id === "open") setStickyKind(c.id); applyAngle(editor.i, Math.round(c.value)); const t = String(Math.round(c.value)); setDraft(t); setEditor({ ...editor, orig: t }); setPitchOpen(true); setInvalid(false); }}
+                              style={btn(typed ? c.id === doneKind.id : parseFloat(draft) === Math.round(c.value), { display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: "6px 4px" })}>
+                              <PitchPicture kind={c.id === "hip" || c.id === "break" ? "ridge" : c.id} th={c.id === "hip" || c.id === "break" ? (180 - c.value) / 2 : th} />
                               <span className="mono" style={{ fontSize: 13, color: SAFETY }}>{fmtDeg(c.value)}</span>
                               <span style={{ fontSize: 10.5 }}>{c.label}</span>
                             </button>
@@ -2598,7 +2811,167 @@ function makeTaperedBoxGeometry(topW, topD, botW, botD, height) {
   return geo;
 }
 
-function Part3DPreview({ partType, w, d, h, capH, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle }) {
+// A roof from flat polygons (each a fan of triangles), so every style can be one mesh.
+function makePolyGeometry(polys) {
+  const pos = [];
+  for (const poly of polys) for (let i = 1; i + 1 < poly.length; i++) pos.push(...poly[0], ...poly[i], ...poly[i + 1]);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(pos), 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+// ---- Chimney cap (shroud), built the way the shop makes them: a base skirt with a flat
+// top flange, four square corner posts, and a roof that overhangs the base by `oh`, with
+// standing seam ribs and hip/ridge caps when `ribs` is on. Sizes in inches, y up, the
+// skirt's bottom at y = 0; the caller centres the whole group afterwards. ----
+function buildChimneyCap(group, { W, D, shelf, leg, postH, CH, oh, style, ribs }, mat, addEdges) {
+  const add = (geo, x = 0, y = 0, z = 0, parent = group) => {
+    const m = new THREE.Mesh(geo, mat.clone());
+    m.position.set(x, y, z);
+    addEdges(geo, m);
+    parent.add(m);
+    return m;
+  };
+  const T = 0.12;                                              // sheet thickness as drawn
+  const FL = Math.min(shelf, Math.min(W, D) / 2 - 0.1);        // the shelf can't be wider than half the base
+  const P = Math.max(1, Math.min(4, Math.min(W, D) * 0.09));   // post size
+  // 1. the base: a flat shelf round the opening with a down leg on its outside edge and a
+  //    small hem turned in at the bottom of the leg (see the close-up photo on PR #34)
+  add(makeSideWallsGeometry(W, D, leg));                                   // down leg
+  const HEM = Math.min(0.5, leg / 2);
+  add(new THREE.BoxGeometry(W, T, HEM), 0, T / 2, -(D / 2 - HEM / 2));      // hem, four sides
+  add(new THREE.BoxGeometry(W, T, HEM), 0, T / 2, (D / 2 - HEM / 2));
+  add(new THREE.BoxGeometry(HEM, T, D - 2 * HEM), -(W / 2 - HEM / 2), T / 2, 0);
+  add(new THREE.BoxGeometry(HEM, T, D - 2 * HEM), (W / 2 - HEM / 2), T / 2, 0);
+  add(new THREE.BoxGeometry(W, T, FL), 0, leg, -(D / 2 - FL / 2));          // shelf, four sides
+  add(new THREE.BoxGeometry(W, T, FL), 0, leg, (D / 2 - FL / 2));
+  add(new THREE.BoxGeometry(FL, T, D - 2 * FL), -(W / 2 - FL / 2), leg, 0);
+  add(new THREE.BoxGeometry(FL, T, D - 2 * FL), (W / 2 - FL / 2), leg, 0);
+  // 2. posts standing on the shelf, just in from the outside corners
+  const px = W / 2 - P / 2 - 0.3, pz = D / 2 - P / 2 - 0.3;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(new THREE.BoxGeometry(P, postH, P), sx * px, leg + postH / 2, sz * pz);
+  // 3. roof, built with its long axis along X and turned if the cap is deeper than wide
+  const y0 = leg + postH;
+  const EW = W + 2 * oh, ED = D + 2 * oh;
+  const long = Math.max(EW, ED), short = Math.min(EW, ED);
+  const roof = new THREE.Group();
+  roof.position.y = y0;
+  if (ED > EW) roof.rotation.y = Math.PI / 2;
+  group.add(roof);
+  const a = long / 2, b = short / 2;
+  const ribW = 0.35, ribH = 0.55;
+  // A standing seam: a slim box laid from `from` to `to`, lifted off the face along `n`.
+  const seam = (from, to, n, w = ribW) => {
+    const dir = new THREE.Vector3().subVectors(to, from), len = dir.length();
+    if (len < 0.5) return;
+    const geo = new THREE.BoxGeometry(w, ribH, len);
+    const m = new THREE.Mesh(geo, mat.clone());
+    m.position.copy(from).add(to).multiplyScalar(0.5).addScaledVector(n, ribH / 2);
+    m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir.normalize());
+    roof.add(m);
+  };
+  const V = (x, y, z) => new THREE.Vector3(x, y, z);
+  // Ribs down one sloped face: the eave runs along local X at z = +p (half-width hw), the
+  // face rises `rise` over plan depth `p` to a ridge of half-length `rh` (0 for a point).
+  const faceRibs = (hw, p, rh, rise, rotY, spacing) => {
+    const g = new THREE.Group();
+    g.rotation.y = rotY;
+    roof.add(g);
+    const n = V(0, p, rise).normalize();
+    const k = Math.max(1, Math.floor((2 * hw - 1) / spacing));
+    for (let i = 0; i < k; i++) {
+      const x = -((k - 1) / 2) * spacing + i * spacing;
+      const t = hw > rh ? Math.min(1, (hw - Math.abs(x)) / (hw - rh)) : 1;
+      if (t <= 0.08) continue;
+      const from = V(x, 0, p), to = V(x, t * rise, p - t * p);
+      const geo = new THREE.BoxGeometry(ribW, ribH, from.distanceTo(to));
+      const m = new THREE.Mesh(geo, mat.clone());
+      m.position.copy(from).add(to).multiplyScalar(0.5).addScaledVector(n, ribH / 2);
+      m.quaternion.setFromUnitVectors(V(0, 0, 1), new THREE.Vector3().subVectors(to, from).normalize());
+      g.add(m);
+    }
+  };
+  const drip = (w, d, y) => { const m = add(makeSideWallsGeometry(w, d, 0.6), 0, y - 0.6, 0, roof); return m; };
+  const hipRoof = (rise, ridgeHalf, withRibs, gable = false) => {
+    const rh = gable ? a : ridgeHalf;
+    const c0 = [-a, 0, -b], c1 = [a, 0, -b], c2 = [a, 0, b], c3 = [-a, 0, b];
+    const r0 = [-rh, rise, 0], r1 = [rh, rise, 0];
+    const polys = [[c3, c2, r1, r0], [c1, c0, r0, r1]];
+    if (gable) { polys.push([c0, c3, r0], [c2, c1, r1]); }           // closed vertical gable ends
+    else { polys.push([c0, c3, r0], [c2, c1, r1]); }                 // hip ends (triangles up to the ridge ends)
+    add(makePolyGeometry(polys), 0, 0, 0, roof);
+    drip(long, short, 0);
+    if (!withRibs) return;
+    const spacing = Math.max(4, Math.min(9, long / 4));
+    faceRibs(a, b, rh, rise, 0, spacing);
+    faceRibs(a, b, rh, rise, Math.PI, spacing);
+    if (!gable) {
+      faceRibs(b, a - rh, 0, rise, Math.PI / 2, spacing);
+      faceRibs(b, a - rh, 0, rise, -Math.PI / 2, spacing);
+      // hip caps from each corner up to the ridge end, then the ridge cap
+      seam(V(-a, 0, -b), V(-rh, rise, 0), V(-1, 1, -1).normalize(), 0.5);
+      seam(V(a, 0, -b), V(rh, rise, 0), V(1, 1, -1).normalize(), 0.5);
+      seam(V(a, 0, b), V(rh, rise, 0), V(1, 1, 1).normalize(), 0.5);
+      seam(V(-a, 0, b), V(-rh, rise, 0), V(-1, 1, 1).normalize(), 0.5);
+    }
+    if (rh > 0.5) seam(V(-rh, rise, 0), V(rh, rise, 0), V(0, 1, 0), 0.6);
+  };
+  const ridgeHalf = (long - short) / 2;
+  if (style === "pyramid") hipRoof(CH, 0, ribs);
+  else if (style === "gable") hipRoof(CH, a, ribs, true);
+  else if (style === "stevenson") hipRoof(Math.max(0.75, CH * 0.5), ridgeHalf, ribs);
+  else if (style === "texas") hipRoof(Math.max(0.6, CH * 0.22), ridgeHalf, ribs);
+  else if (style === "flat") { add(new THREE.BoxGeometry(long, T, short), 0, T / 2, 0, roof); drip(long, short, 0); }
+  else if (style === "mission") {
+    // a barrel arch along the long axis, rising CH over the short span, with closed ends
+    const geo = new THREE.CylinderGeometry(b, b, long, 28, 1, true, 0, Math.PI);
+    geo.rotateZ(Math.PI / 2);           // axis along X; the +X half of the tube becomes the +Y half — an arch standing up
+    geo.scale(1, CH / b, 1);
+    add(geo, 0, 0, 0, roof);
+    for (const sx of [-1, 1]) {
+      const end = new THREE.CircleGeometry(b, 28, 0, Math.PI);
+      end.rotateY(sx * Math.PI / 2);
+      end.scale(1, CH / b, 1);
+      add(end, sx * a, 0, 0, roof);
+    }
+    drip(long, short, 0);
+  } else if (style === "twotier") {
+    hipRoof(CH * 0.6, ridgeHalf, ribs);
+    const s = 0.55, ph = Math.max(2, postH * 0.5), ry = CH * 0.6 * 0.55;
+    const upper = new THREE.Group();
+    upper.position.y = ry + ph;
+    roof.add(upper);
+    const q = Math.max(0.8, P * 0.7);
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(new THREE.BoxGeometry(q, ph, q), sx * a * s * 0.85, ry + ph / 2, sz * b * s * 0.85, roof);
+    const a2 = a * s, b2 = b * s, rh2 = Math.max(0, a2 - b2);
+    const c0 = [-a2, 0, -b2], c1 = [a2, 0, -b2], c2 = [a2, 0, b2], c3 = [-a2, 0, b2], r0 = [-rh2, CH * 0.5, 0], r1 = [rh2, CH * 0.5, 0];
+    add(makePolyGeometry([[c3, c2, r1, r0], [c1, c0, r0, r1], [c0, c3, r0], [c2, c1, r1]]), 0, 0, 0, upper);
+    add(makeSideWallsGeometry(2 * a2, 2 * b2, 0.5), 0, -0.5, 0, upper);
+    if (ribs) {
+      seam(V(-a2, ry + ph, -b2), V(-rh2, ry + ph + CH * 0.5, 0), V(-1, 1, -1).normalize(), 0.45);
+      seam(V(a2, ry + ph, -b2), V(rh2, ry + ph + CH * 0.5, 0), V(1, 1, -1).normalize(), 0.45);
+      seam(V(a2, ry + ph, b2), V(rh2, ry + ph + CH * 0.5, 0), V(1, 1, 1).normalize(), 0.45);
+      seam(V(-a2, ry + ph, b2), V(-rh2, ry + ph + CH * 0.5, 0), V(-1, 1, 1).normalize(), 0.45);
+    }
+  } else if (style === "chateau") {
+    // a flared, concave bell that follows the rectangular eave: rings that pull in fast
+    // near the eave and slowly near the top, joined by quads, with a small flat cap
+    const rings = [[1, 0], [0.62, 0.35], [0.42, 0.65], [0.3, 0.88], [0.26, 1]].map(([s, t]) => ({ a: a * s, b: b * s, y: CH * t }));
+    const polys = [];
+    for (let i = 0; i + 1 < rings.length; i++) {
+      const r0 = rings[i], r1 = rings[i + 1];
+      const q = (x0, z0, x1, z1) => polys.push([[x0 * r0.a, r0.y, z0 * r0.b], [x1 * r0.a, r0.y, z1 * r0.b], [x1 * r1.a, r1.y, z1 * r1.b], [x0 * r1.a, r1.y, z0 * r1.b]]);
+      q(-1, 1, 1, 1); q(1, 1, 1, -1); q(1, -1, -1, -1); q(-1, -1, -1, 1);
+    }
+    const top = rings[rings.length - 1];
+    polys.push([[-top.a, top.y, -top.b], [top.a, top.y, -top.b], [top.a, top.y, top.b], [-top.a, top.y, top.b]]);
+    add(makePolyGeometry(polys), 0, 0, 0, roof);
+    drip(long, short, 0);
+  } else hipRoof(CH, ridgeHalf, ribs); // "hip" and anything unknown
+}
+
+function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, shelf, leg, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle }) {
   const mountRef = useRef(null);
   const stateRef = useRef({});
   const rotateRef = useRef(null);
@@ -2778,60 +3151,10 @@ function Part3DPreview({ partType, w, d, h, capH, colorHex, outletShape, flangeW
         [top, bottom, left, right].forEach((m) => group.add(m));
       });
     } else {
-      // Chimney cap only — no mesh screen box/frame, just the roof piece that sits over the opening.
-      const CH = Math.max(1, +capH || 6);
-      const skirt = new THREE.BoxGeometry(W * 1.25, 0.12, D * 1.25);
-      const skirtMesh = new THREE.Mesh(skirt, mat.clone());
-      skirtMesh.position.y = 0;
-      group.add(skirtMesh);
-
-      if (capStyle === "texas") {
-        // Texas Top: a near-flat lid sitting right at the opening.
-        const lidGeo = new THREE.BoxGeometry(W * 1.15, CH * 0.25, D * 1.15);
-        const lidMesh = new THREE.Mesh(lidGeo, mat.clone());
-        lidMesh.position.y = 0.15 + (CH * 0.25) / 2;
-        addEdges(lidGeo, lidMesh);
-        group.add(lidMesh);
-      } else if (capStyle === "stevenson") {
-        // Stevenson Top: a shallow, low-pitched hip roof.
-        const shallowCH = CH * 0.55;
-        const capGeo = new THREE.ConeGeometry(Math.sqrt(W * W + D * D) / 2 * 1.15, shallowCH, 4);
-        capGeo.rotateY(Math.PI / 4);
-        const capMesh = new THREE.Mesh(capGeo, mat.clone());
-        capMesh.position.y = shallowCH / 2;
-        addEdges(capGeo, capMesh);
-        group.add(capMesh);
-      } else if (capStyle === "chateau") {
-        // Chateau Cap: a flared, concave bell profile — built as stacked frustums that widen faster near the bottom.
-        const rTop = Math.sqrt(W * W + D * D) / 2 * 0.55;
-        const rMid = Math.sqrt(W * W + D * D) / 2 * 0.75;
-        const rBot = Math.sqrt(W * W + D * D) / 2 * 1.35;
-        const seg1H = CH * 0.4, seg2H = CH * 0.6;
-        const seg1Geo = new THREE.CylinderGeometry(rTop, rMid, seg1H, 4, 1, true);
-        seg1Geo.rotateY(Math.PI / 4);
-        const seg1Mesh = new THREE.Mesh(seg1Geo, mat.clone());
-        seg1Mesh.position.y = CH - seg1H / 2;
-        addEdges(seg1Geo, seg1Mesh);
-        group.add(seg1Mesh);
-        const seg2Geo = new THREE.CylinderGeometry(rMid, rBot, seg2H, 4, 1, true);
-        seg2Geo.rotateY(Math.PI / 4);
-        const seg2Mesh = new THREE.Mesh(seg2Geo, mat.clone());
-        seg2Mesh.position.y = CH - seg1H - seg2H / 2;
-        addEdges(seg2Geo, seg2Mesh);
-        group.add(seg2Mesh);
-        const capTopGeo = new THREE.BoxGeometry(rTop * 1.2, 0.12, rTop * 1.2);
-        const capTopMesh = new THREE.Mesh(capTopGeo, mat.clone());
-        capTopMesh.position.y = CH;
-        group.add(capTopMesh);
-      } else {
-        // Pyramid (default): straight hip roof cap.
-        const capGeo = new THREE.ConeGeometry(Math.sqrt(W * W + D * D) / 2 * 1.05, CH, 4);
-        capGeo.rotateY(Math.PI / 4);
-        const capMesh = new THREE.Mesh(capGeo, mat.clone());
-        capMesh.position.y = CH / 2;
-        addEdges(capGeo, capMesh);
-        group.add(capMesh);
-      }
+      buildChimneyCap(group, {
+        W, D, shelf: Math.max(0.5, +shelf || 3), leg: Math.max(0.5, +leg || 3), postH: Math.max(0.5, +postH || 6), CH: Math.max(0.5, +capH || 6),
+        oh: Math.max(0, +overhang ?? 2), style: capStyle || "hip", ribs: ribs !== false,
+      }, mat, addEdges);
     }
 
     // frame the camera on the whole group — use the bounding diagonal (not just one axis)
@@ -2842,7 +3165,7 @@ function Part3DPreview({ partType, w, d, h, capH, colorHex, outletShape, flangeW
     group.position.sub(center); // recenter the model at world origin — camera can now always look at (0,0,0), which stays correct through any rotation
     const radius = Math.max(0.5, size.length() / 2);
     const fovRad = (camera.fov * Math.PI) / 180;
-    const marginFactor = 1.65; // >1 leaves breathing room so the part never touches the frame edge
+    const marginFactor = 1.25; // >1 leaves breathing room so the part never touches the frame edge
     const baseDist = (radius * marginFactor) / Math.tan(fovRad / 2);
     const dirVec = new THREE.Vector3(0.6, 0.5, 0.8).normalize();
     let zoomLevel = viewStateRef.current.zoomLevel;
@@ -2913,7 +3236,7 @@ function Part3DPreview({ partType, w, d, h, capH, colorHex, outletShape, flangeW
       renderer.dispose();
       if (mount) mount.innerHTML = "";
     };
-  }, [partType, w, d, h, capH, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle]);
+  }, [partType, w, d, h, capH, postH, overhang, ribs, shelf, leg, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle]);
 
   const STEP = 0.35;
   const spinIntervalRef = useRef(null);
@@ -3253,7 +3576,12 @@ export default function ShopOrderApp() {
   const [partD, setPartD] = useState(8);
   const [partH, setPartH] = useState(10);
   const [partCapH, setPartCapH] = useState(6);
-  const [capStyle, setCapStyle] = useState("pyramid"); // "pyramid" | "stevenson" | "texas" | "chateau"
+  const [partPostH, setPartPostH] = useState(6);      // chimney cap: open height between the flange and the roof
+  const [partOverhang, setPartOverhang] = useState(2); // chimney cap: how far the roof eave reaches past the base
+  const [partShelf, setPartShelf] = useState(3);       // chimney cap: the flat shelf round the opening
+  const [partLeg, setPartLeg] = useState(3);           // chimney cap: the down leg on the shelf's outside edge
+  const [capRibs, setCapRibs] = useState(true);        // chimney cap: standing seam ribs on the roof, or smooth
+  const [capStyle, setCapStyle] = useState("hip"); // see CAP_STYLES
   const [partView, setPartView] = useState("3d"); // "3d" | "flat"
   const [outletShape, setOutletShape] = useState("box"); // "round" | "box"
   const [flangeW, setFlangeW] = useState(4);
@@ -3295,9 +3623,10 @@ export default function ShopOrderApp() {
   }, [coilWidth, profile]);
   // Clips default to the panel profile being ordered, so "Clips — <profile>" matches the panel.
   useEffect(() => { if (shapeType === "panel") setAccProfile(profile); }, [shapeType, profile]);
-  const [points, setPoints] = useState(TRIM_PRESETS["Eave"]);
-  const [preset, setPreset] = useState("Eave");
+  const [points, setPoints] = useState(TRIM_PRESETS["Eave / Drip Edge"]);
+  const [preset, setPreset] = useState("Eave / Drip Edge");
   const [viewResetKey, setViewResetKey] = useState(0);
+  const [drawnPitch, setDrawnPitch] = useState(4); // the roof pitch the profile on the canvas was drawn at — the box's, or 4:12 for a preset
   const [hemStart, setHemStart] = useState("none");
   const [hemEnd, setHemEnd] = useState("none");
   const [paintSide, setPaintSide] = useState("left");
@@ -3328,12 +3657,29 @@ export default function ShopOrderApp() {
   const matSaveChain = useRef(Promise.resolve()); // serializes board writes so rapid taps can't land out of order
   const [submitting, setSubmitting] = useState(false);
   const [basket, setBasket] = useState([]);
-  // Roof in a Box — the standard 24 ga standing seam trim set, drawn to pitch
+  const [editingId, setEditingId] = useState(null); // the part from the list that is back on the canvas to be changed
+  const editSnapshot = useRef(null); // what the canvas and form held before a part was tapped — put back when the edit ends
+  const canvasTopRef = useRef(null);
+  // The boxes — Residential Standing Seam (the 24 ga trim set, drawn to pitch) and Commercial in a
+  // Box (coping, cleats, counter flashing, gutters and downspouts, drawn to their sizes)
   const [roofBoxOpen, setRoofBoxOpen] = useState(false);
+  const [roofBoxKind, setRoofBoxKind] = useState("res"); // which box is up — "res" or "com" (BOX_KINDS)
+  const [comWall, setComWall] = useState(12);            // Commercial in a Box: the parapet's width across the top
+  const [comGutter, setComGutter] = useState(6);         //   the box gutter's size
+  const [comDownspout, setComDownspout] = useState("4×4"); // the downspout's size
+  const [comFascia, setComFascia] = useState(5.5);        //   the edge metal's face height
+  const [comAtas, setComAtas] = useState(false);          //   the covers' drip to the ATAS spec (¾" kick, 1" hem)
+  const [comEs1, setComEs1] = useState(false);            //   the job calls for ES-1 tested edge metal
+  const [box3dReturn, setBox3dReturn] = useState(false); // the 3D tool was reached from Commercial in a Box — it offers the way back
   const [roofBoxPitch, setRoofBoxPitch] = useState(4);
   const [roofBoxSeam, setRoofBoxSeam] = useState(1.5);
   const [roofBoxLower, setRoofBoxLower] = useState(3);
   const [roofBoxSel, setRoofBoxSel] = useState({}); // id -> qty (0 = not in the box)
+  const [roofBoxRowPitch, setRoofBoxRowPitch] = useState({}); // id -> the pitch that one piece is bent to, when it differs from the roof's
+  const [boxNote, setBoxNote] = useState(""); // one line the box shows after a round trip — "Added Ridge Cap ×4 — pick the next piece."
+  const [boxStripAll, setBoxStripAll] = useState(false); // the "In the order now" strip shows eight parts until asked for all
+  const [boxReturn, setBoxReturn] = useState(null); // the kit id of the box piece on the canvas, or "edit" for a part opened from the box's list — the box comes back when that work is done
+  const [boxReturnKind, setBoxReturnKind] = useState("res"); // …and which box that was, so it is the one that comes back
   const [tabLoaded, setTabLoaded] = useState(false);
   // Job Vault — each member's saved trim/panel configs (Supabase vault_items, owner-only)
   const [vaultItems, setVaultItems] = useState([]);
@@ -3347,16 +3693,18 @@ export default function ShopOrderApp() {
   //   ?view=color  the Color Lab button opens straight to Pick Your Finish
   //   ?view=trim   "Trim drawing" on roofcoil.com/members.html opens the drawing tool
   //   ?view=panel  "Panel orders" opens the panel calculator
+  //   ?view=box    "Open Residential Standing Seam" on sheet-metal-trim.html opens that box
+  //   ?view=commercial  "Open Commercial in a Box" opens the other one
   // members.html embeds this app in an iframe with one of these, then switches tools
   // with a same-origin postMessage ({type:"rc:view"}) so a half-drawn profile isn't
   // lost to a reload when the member flips tabs.
   const openTool = useCallback((view) => {
     if (view === "color") { setTab("order"); setOrderStep("color"); }
     else if (view === "trim" || view === "panel") { setTab("order"); setShapeType(view); setOrderStep("details"); }
-    else if (view === "box") { setTab("order"); setShapeType("trim"); setOrderStep("details"); setRoofBoxOpen(true); }
+    else if (view === "box" || view === "commercial") { setTab("order"); setShapeType("trim"); setOrderStep("details"); setRoofBoxKind(view === "commercial" ? "com" : "res"); setRoofBoxOpen(true); }
   }, []);
   const deepLinkView = new URLSearchParams(window.location.search).get("view");
-  const deepLinked = ["color", "trim", "panel", "box"].includes(deepLinkView);
+  const deepLinked = ["color", "trim", "panel", "box", "commercial"].includes(deepLinkView);
   useEffect(() => {
     if (deepLinked) openTool(deepLinkView);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4013,6 +4361,7 @@ export default function ShopOrderApp() {
           throw new Error("Couldn't make sense of that sketch");
         }
         setPoints(parsed.map((p) => [+p[0], +p[1]]));
+        setBoxReturn((r) => (r === "edit" ? r : null)); // a scanned shape is not the box piece
         setViewResetKey((k) => k + 1);
         setToast("Sketch scanned — check the shape and adjust any points/lengths before using it.");
         setTimeout(() => setToast(""), 5000);
@@ -4056,7 +4405,7 @@ export default function ShopOrderApp() {
       const base = {
         id: uid(), type: "trim", partName: "Sample Part",
         customerName: "Sample Customer", phone: "(555) 555-0100",
-        points: TRIM_PRESETS["Eave"], lengthPerPiece: 10, hemStart: "none", hemEnd: "none", paintSide: "left",
+        points: TRIM_PRESETS["Eave / Drip Edge"], lengthPerPiece: 10, hemStart: "none", hemEnd: "none", paintSide: "left",
         quantity: 4, gaugeId: GAUGE_OPTIONS[0].id, paintId: PAINT_OPTIONS[0].id, brand: "Fortified Metal",
         notes: "", status: "Pending", createdAt: daysAgo(1),
         ...trimColor("Fortified Metal", "Charcoal Gray"),
@@ -4066,7 +4415,7 @@ export default function ShopOrderApp() {
       // so sample/seed data rolls up into Materials Needed the same way real orders do.
       const girth = profileGirth(merged.points, merged.hemStart, merged.hemEnd);
       const sheetWidth = merged.sheetWidth || 48;
-      const partsPerSheet = girth > 0 ? Math.floor(sheetWidth / girth) : 0;
+      const partsPerSheet = piecesPerSheet(sheetWidth, girth);
       const sheetsNeeded = partsPerSheet > 0 ? Math.ceil(merged.quantity / partsPerSheet) : 0;
       Object.assign(merged, { girth, sheetWidth, partsPerSheet, sheetsNeeded });
       merged.price = computePrice(merged, priceList, coilWidthScale);
@@ -4096,10 +4445,10 @@ export default function ShopOrderApp() {
     const samples = [
       // Dave Rutherford — 2 trim pieces + 1 panel run, all Pending
       mkTrim({ jobId: jobDave, partName: "Eave — North Slope", customerName: "Dave Rutherford", phone: "(817) 555-0142",
-        points: TRIM_PRESETS["Eave"], quantity: 12, lengthPerPiece: 10, hemStart: "closed-left",
+        points: TRIM_PRESETS["Eave / Drip Edge"], quantity: 12, lengthPerPiece: 10, hemStart: "closed-left",
         brand: "Berridge", ...trimColor("Berridge", "Charcoal Grey"), status: "Pending", createdAt: daysAgo(1) }),
       mkTrim({ jobId: jobDave, partName: "Rake — West Gable", customerName: "Dave Rutherford", phone: "(817) 555-0142",
-        points: TRIM_PRESETS["Rake"], quantity: 8, lengthPerPiece: 10, hemEnd: "open-right",
+        points: TRIM_PRESETS["Rake / Gable Trim"], quantity: 8, lengthPerPiece: 10, hemEnd: "open-right",
         brand: "Berridge", ...trimColor("Berridge", "Charcoal Grey"), status: "Pending", createdAt: daysAgo(1) }),
       mkTrim({ jobId: jobDave, partName: "Ridge Cap — North Slope", customerName: "Dave Rutherford", phone: "(817) 555-0142",
         points: TRIM_PRESETS["Ridge Cap"], quantity: 4, lengthPerPiece: 10,
@@ -4124,7 +4473,7 @@ export default function ShopOrderApp() {
 
       // Marcus Webb — 2 trim pieces + 1 panel run, all Ready for Pickup
       mkTrim({ jobId: jobMarcus, partName: "F-Channel — Soffit Return", customerName: "Marcus Webb", phone: "(469) 555-0177",
-        points: TRIM_PRESETS["F-Channel"], quantity: 10, lengthPerPiece: 10,
+        points: [[0, 0], [0, 10.5], [7, 10.5], [7, 4], [10, 4], [10, 0]], quantity: 10, lengthPerPiece: 10,
         brand: "Adax Metals", ...trimColor("Adax Metals", "Matte Black"), status: "Ready for Pickup", createdAt: daysAgo(5) }),
       mkTrim({ jobId: jobMarcus, partName: "Z-Bar — Wainscot Transition", customerName: "Marcus Webb", phone: "(469) 555-0177",
         points: [[0, 0], [0, 7.5], [6, 1.5], [6, 9]], quantity: 14, lengthPerPiece: 10,
@@ -4135,7 +4484,7 @@ export default function ShopOrderApp() {
 
       // Tammy Ostrowski — 2 trim pieces + 1 panel run, all Completed
       mkTrim({ jobId: jobTammy, partName: "Eave — Shop Addition", customerName: "Tammy Ostrowski", phone: "(214) 555-0163",
-        points: TRIM_PRESETS["Eave"], quantity: 20, lengthPerPiece: 10, hemStart: "closed-left", hemEnd: "closed-left",
+        points: TRIM_PRESETS["Eave / Drip Edge"], quantity: 20, lengthPerPiece: 10, hemStart: "closed-left", hemEnd: "closed-left",
         brand: "Fortified Metal", ...trimColor("Fortified Metal", "Copper Metallic"), status: "Completed", createdAt: daysAgo(9) }),
       mkTrim({ jobId: jobTammy, partName: "Ridge Cap — Shop Addition", customerName: "Tammy Ostrowski", phone: "(214) 555-0163",
         points: TRIM_PRESETS["Ridge Cap"], quantity: 5, lengthPerPiece: 10,
@@ -4205,14 +4554,14 @@ export default function ShopOrderApp() {
     : shapeType === "metal"
     ? { type: "metal", flatWidth, flatLength, coilWidth: metalCoilWidth, coilLength: metalCoilLength, quantity, gaugeId, paintId, brand, colorName }
     : shapeType === "part3d"
-    ? { type: "part3d", partType, partW, partD, partH, partCapH, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, quantity, gaugeId, paintId, brand, colorName }
+    ? { type: "part3d", partType, partW, partD, partH, partCapH, partPostH, partOverhang, partShelf, partLeg, capRibs, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, quantity, gaugeId, paintId, brand, colorName }
     : { type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, brand, colorName };
   const estimate = computePrice(draft, priceList, coilWidthScale);
   const girth = profileGirth(points, hemStart, hemEnd); // legs plus the end folds — the width the shear cuts
   // Qty / sheet width are "" while a field is cleared for retyping — treat that as 0 so
   // this stays numeric (dropWidth.toFixed on "" used to white-screen the whole app).
   const sheetWidthNum = +sheetWidth || 0, quantityNum = +quantity || 0;
-  const partsPerSheet = girth > 0 ? Math.floor(sheetWidthNum / girth) : 0;
+  const partsPerSheet = piecesPerSheet(sheetWidthNum, girth);
   const sheetsNeeded = partsPerSheet > 0 ? Math.ceil(quantityNum / partsPerSheet) : 0;
   const dropWidth = partsPerSheet > 0 ? Math.max(0, sheetWidthNum - partsPerSheet * girth) : sheetWidthNum;
 
@@ -4225,83 +4574,200 @@ export default function ShopOrderApp() {
     setOutletShape("box"); setFlangeW(4); setFlangeD(4); setOutletDiameter(4); setOutletLength(6); setFlangeTapered(true);
     setFlangeLength(4); setOutletRoundTapered(false);
     setTopTrim(false); setBodyTaper(false); setTaperStart(0); setTaperLength(6);
-    setPoints(TRIM_PRESETS["Eave"]); setPreset("Eave");
+    setPoints(TRIM_PRESETS["Eave / Drip Edge"]); setPreset("Eave / Drip Edge");
     setHemStart("none"); setHemEnd("none"); setPaintSide("left");
     setGaugeId(GAUGE_OPTIONS[0].id); setPaintId(PAINT_OPTIONS[0].id); setBrand(BRANDS[0]); setColorName(COLORS_BY_BRAND[BRANDS[0]][0].name);
     setQuantity(4); setLengthPerPiece(10); setSheetWidth(48); setPartName("");
+    setEditingId(null); setBoxReturn(null); editSnapshot.current = null; setRoofBoxOpen(false); setBox3dReturn(false);
     setCustomerName(""); setPhone(""); setNotes("");
   };
 
   const clearDrawing = () => {
     setPoints([]); setHemStart("none"); setHemEnd("none"); setPaintSide("left");
     setQuantity(4); setLengthPerPiece(10); setPartName("");
+    setEditingId(null); setBoxReturn(null);
+  };
+
+  // The part on the canvas as an order item — a new one, or the edited version of `base`, which
+  // keeps its id and kit and its name if the name box was emptied. Gauge, paint and colour come
+  // from the form, which carries the part's own while it is being edited.
+  const draftPart = (base) => {
+    const own = { gaugeId, paintId, brand, colorName, colorHex: colorObj.hex };
+    return {
+      ...(base || {}), id: base?.id || uid(),
+      name: partName.trim() || base?.name || `Part ${basket.length + 1}`,
+      points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
+      girth, partsPerSheet, sheetsNeeded, dropWidth, photo: partPhoto, pitch: drawnPitch, ...own,
+      price: computePrice({ type: "trim", points, quantity, lengthPerPiece, ...own }, priceList, coilWidthScale),
+    };
+  };
+  // Every part the order is made of: the list, plus the canvas draft as one more — or, while a
+  // part from the list is back on the canvas, the draft standing in for that part.
+  const editingItem = editingId ? basket.find((i) => i.id === editingId) || null : null;
+  const orderParts = () => {
+    if (points.length < 2) return [...basket];
+    return editingItem ? basket.map((i) => (i.id === editingItem.id ? draftPart(i) : i)) : [...basket, draftPart()];
   };
 
   const addToBasket = () => {
     if (points.length < 2) { setToast("Draw at least two points before adding this part to the order."); return; }
-    const item = {
-      id: uid(),
-      name: partName.trim() || `Part ${basket.length + 1}`,
-      points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
-      girth, partsPerSheet, sheetsNeeded, dropWidth, photo: partPhoto,
-      gaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
-      price: computePrice({ type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, brand, colorName }, priceList, coilWidthScale),
-    };
+    const fromBox = boxReturn && boxReturn !== "edit" ? boxReturn : null;
+    const item = fromBox ? { ...draftPart(), kit: fromBox } : draftPart();
     setBasket((b) => [...b, item]);
     clearDrawing();
     setPartPhoto(null);
+    if (fromBox) { // back to the box to pick the next piece — its row unticked, since it is in the order now
+      setRoofBoxSel((sel) => ({ ...sel, [fromBox]: 0 }));
+      setBoxNote(`Added ${item.name} ×${item.quantity} — pick the next piece.`);
+      setRoofBoxKind(boxReturnKind); setRoofBoxOpen(true);
+    }
     setToast(`"${item.name}" added to the order — ${basket.length + 1} part${basket.length + 1 === 1 ? "" : "s"} so far.`);
     setTimeout(() => setToast(""), 3000);
   };
 
-  const removeBasketItem = (id) => setBasket((b) => b.filter((i) => i.id !== id));
+  const removeBasketItem = (id) => {
+    const gone = basket.find((i) => i.id === id);
+    setBasket((b) => b.filter((i) => i.id !== id));
+    // the last of a kit piece leaving the order ticks its box row back the way the box ships it
+    if (gone?.kit && !basket.some((i) => i.id !== id && i.kit === gone.kit)) setRoofBoxSel((sel) => (Object.keys(sel).length ? { ...sel, [gone.kit]: KIT_DEFAULT_SEL[gone.kit] || 0 } : sel));
+    if (id === editingId) restoreCanvas();
+  };
+  // Tap a part in the list and it comes back onto the canvas and the form — legs, folds, painted
+  // side, name, quantity, length, sheet width, photo, gauge, paint and colour — to be changed and
+  // put back in its place. Whatever was on the canvas and the form is kept aside and comes back
+  // when the edit ends, so tapping a part to look at it never costs a drawing in progress.
+  const editBasketItem = (it, fromBox = false) => {
+    if (!editingId) editSnapshot.current = { points, hemStart, hemEnd, paintSide, partName, quantity, lengthPerPiece, sheetWidth, partPhoto, drawnPitch, preset, materialCategory, gaugeId, paintId, brand, colorName, boxReturn, boxReturnKind };
+    setEditingId(it.id);
+    if (fromBox) { setRoofBoxOpen(false); setBoxReturn("edit"); setBoxReturnKind(roofBoxKind); }
+    setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
+    setHemStart(it.hemStart || "none"); setHemEnd(it.hemEnd || "none"); setPaintSide(it.paintSide || "left");
+    setPartName(it.name); setQuantity(it.quantity); setLengthPerPiece(it.lengthPerPiece); setSheetWidth(it.sheetWidth);
+    setPartPhoto(it.photo || null); setDrawnPitch(it.pitch || 4);
+    setMaterialCategory(UNPAINTED_MATERIALS.includes(it.brand) ? "unpainted" : "painted");
+    if (it.gaugeId) setGaugeId(it.gaugeId); if (it.paintId) setPaintId(it.paintId);
+    if (it.brand) setBrand(it.brand); if (it.colorName) setColorName(it.colorName); // brand then colour directly — handleBrandChange would reset the colour
+    setViewResetKey((k) => k + 1);
+    canvasTopRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    setToast(`Editing "${it.name}" — change what you need, then Update Part.`); setTimeout(() => setToast(""), 3500);
+  };
+  // The edit is over: the canvas and form go back to what they held before the part was tapped.
+  const restoreCanvas = () => {
+    const s = editSnapshot.current;
+    editSnapshot.current = null;
+    setEditingId(null);
+    if (boxReturn === "edit") { setRoofBoxKind(boxReturnKind); setRoofBoxOpen(true); } // the part was opened from a box's list — back to that box
+    if (!s) { clearDrawing(); setPartPhoto(null); return; }
+    setBoxReturn(s.boxReturn || null); setBoxReturnKind(s.boxReturnKind || "res");
+    setPoints(s.points); setHemStart(s.hemStart); setHemEnd(s.hemEnd); setPaintSide(s.paintSide);
+    setPartName(s.partName); setQuantity(s.quantity); setLengthPerPiece(s.lengthPerPiece); setSheetWidth(s.sheetWidth);
+    setPartPhoto(s.partPhoto); setDrawnPitch(s.drawnPitch); setPreset(s.preset);
+    setMaterialCategory(s.materialCategory); setGaugeId(s.gaugeId); setPaintId(s.paintId); setBrand(s.brand); setColorName(s.colorName);
+    setViewResetKey((k) => k + 1);
+  };
+  const updateBasketItem = () => {
+    if (!editingItem) { setEditingId(null); return; }
+    if (points.length < 2) { setToast("Draw at least two points before updating this part."); return; }
+    const item = draftPart(editingItem);
+    setBasket((b) => b.map((i) => (i.id === editingId ? item : i)));
+    if (boxReturn === "edit") setBoxNote(`Updated ${item.name} ×${item.quantity}.`);
+    restoreCanvas();
+    setToast(`"${item.name}" updated.`); setTimeout(() => setToast(""), 3000);
+  };
+  const cancelEdit = () => { restoreCanvas(); setToast("Left as it was."); setTimeout(() => setToast(""), 2000); };
 
-  /* ---------- Roof in a Box ---------- */
-  const roofKit = buildRoofKit({ pitch: roofBoxPitch, seamHeight: roofBoxSeam, lowerPitch: roofBoxLower });
-  // Opening the box (tile, button or ?view=box) starts it with the usual pieces ticked
-  // and puts the order on 24 gauge, which is what the kit is drawn for.
+  /* ---------- The boxes: Residential Standing Seam and Commercial in a Box ---------- */
+  const boxKind = BOX_KINDS[roofBoxKind];
+  const boxNoun = roofBoxKind === "com" ? "part" : "trim"; // what the box calls its rows — a gutter is not a trim
+  // The roof kit: every piece at the roof's pitch, carrying the pitch it was bent to — except a piece
+  // the roofer gave its own pitch, which is bent from a kit built at that pitch instead. The commercial
+  // kit is drawn to its wall, gutter and downspout sizes — nothing in it follows a pitch.
+  const roofKit = roofBoxKind === "com" ? buildCommercialKit({ wallWidth: comWall, gutterSize: comGutter, downspout: comDownspout, fascia: comFascia, atas: comAtas, es1: comEs1 }) : (() => {
+    const base = buildRoofKit({ pitch: roofBoxPitch, seamHeight: roofBoxSeam, lowerPitch: roofBoxLower }).map((it) => ({ ...it, pitch: roofBoxPitch }));
+    const kitsAt = {};
+    return base.map((it) => {
+      const own = roofBoxRowPitch[it.id];
+      if (!it.pitched || !own || own === roofBoxPitch) return it;
+      // a transition bent to its own pitch still has to break to something flatter than itself
+      const lower = own <= roofBoxLower ? Math.max(ROOF_PITCHES[0], ...ROOF_PITCHES.filter((r) => r < own)) : roofBoxLower;
+      if (!kitsAt[own]) kitsAt[own] = buildRoofKit({ pitch: own, seamHeight: roofBoxSeam, lowerPitch: lower });
+      return { ...kitsAt[own].find((k) => k.id === it.id), pitch: own };
+    });
+  })();
+  // Opening a box (tile, button or ?view=box / ?view=commercial) starts its rows ticked the way the
+  // kit ships them — rows the roofer already set keep their tick — and prices its parts as 24 gauge,
+  // which is what the kits are drawn for.
   const roofBoxPitchRef = useRef(null);
   useEffect(() => {
-    if (!roofBoxOpen) return;
-    setRoofBoxSel((sel) => (Object.keys(sel).length ? sel : { ...ROOF_KIT_DEFAULT_SEL }));
+    if (!roofBoxOpen) { setBoxNote(""); setBoxStripAll(false); return; }
+    setRoofBoxSel((sel) => {
+      let next = sel;
+      for (const it of roofBoxKind === "com" ? COM_KIT : buildRoofKit()) if (!it.tool3d && !(it.id in next)) { if (next === sel) next = { ...sel }; next[it.id] = it.on ? 1 : 0; }
+      return next;
+    });
     const onKey = (e) => { if (e.key === "Escape") setRoofBoxOpen(false); };
     window.addEventListener("keydown", onKey);
     const focusTimer = setTimeout(() => roofBoxPitchRef.current?.focus(), 0);
     return () => { window.removeEventListener("keydown", onKey); clearTimeout(focusTimer); };
-  }, [roofBoxOpen]);
-  const openRoofBox = () => { setShapeType("trim"); setOrderStep("details"); setRoofBoxOpen(true); };
+  }, [roofBoxOpen, roofBoxKind]);
+  const openRoofBox = (kind = roofBoxKind) => { setShapeType("trim"); setOrderStep("details"); setRoofBoxKind(kind); setRoofBoxOpen(true); };
   // The kit is drawn for 24 gauge, so its parts are priced and sent as 24 ga (copper keeps
   // its weight) without changing the gauge of whatever is on the canvas.
   const kitGaugeId = brand === "Copper" ? gaugeId : "24ga";
   const roofBoxItem = (it, qty) => {
     const g = profileGirth(it.points, it.hemStart, it.hemEnd);
-    const pps = g > 0 ? Math.floor(sheetWidthNum / g) : 0;
+    const pps = piecesPerSheet(sheetWidthNum, g);
     return {
       id: uid(), name: it.name, kit: it.id,
       points: it.points.map((pt) => [...pt]), hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide,
       quantity: qty, lengthPerPiece, sheetWidth: sheetWidthNum,
       girth: g, partsPerSheet: pps, sheetsNeeded: pps > 0 ? Math.ceil(qty / pps) : 0, dropWidth: pps > 0 ? Math.max(0, sheetWidthNum - pps * g) : sheetWidthNum,
-      photo: null, gaugeId: kitGaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
+      photo: null, pitch: it.pitch ?? roofBoxPitch, gaugeId: kitGaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
       price: computePrice({ type: "trim", points: it.points, quantity: qty, lengthPerPiece, gaugeId: kitGaugeId, paintId, brand, colorName }, priceList, coilWidthScale),
     };
   };
-  const roofBoxPicked = roofKit.filter((it) => (roofBoxSel[it.id] || 0) > 0).map((it) => roofBoxItem(it, Math.max(1, Math.round(+roofBoxSel[it.id] || 1))));
+  const roofBoxPicked = roofKit.filter((it) => !it.tool3d && (roofBoxSel[it.id] || 0) > 0).map((it) => roofBoxItem(it, Math.max(1, Math.round(+roofBoxSel[it.id] || 1))));
+  // A box piece opened on the canvas and not yet added rides along with the box's Add.
+  const boxPending = boxReturn && boxReturn !== "edit" && boxReturnKind === roofBoxKind && points.length >= 2 ? { ...draftPart(), kit: boxReturn } : null;
   const addRoofBoxToOrder = () => {
-    if (roofBoxPicked.length === 0) { setToast("Tick at least one trim to add the box to the order."); setTimeout(() => setToast(""), 3000); return; }
-    setBasket((b) => [...b, ...roofBoxPicked]);
-    clearDrawing(); // same as Add Part: the canvas draft must not ride along as an extra part
-    setPartPhoto(null);
+    const added = boxPending ? [boxPending, ...roofBoxPicked] : roofBoxPicked;
+    if (added.length === 0) { setToast("Tick at least one trim to add the box to the order."); setTimeout(() => setToast(""), 3000); return; }
+    setBasket((b) => [...b, ...added]);
+    setRoofBoxSel((sel) => { const next = { ...sel }; for (const it of added) if (it.kit) next[it.kit] = 0; return next; }); // in the order now — tick again for more
+    if (!editingId) { clearDrawing(); setPartPhoto(null); } // same as Add Part: the canvas draft must not ride along as an extra part — unless it is a part being edited, which orderParts already counts once
     setRoofBoxOpen(false);
-    const pcs = roofBoxPicked.reduce((sum, it) => sum + it.quantity, 0);
-    setToast(`Roof in a Box — ${roofBoxPicked.length} trim${roofBoxPicked.length === 1 ? "" : "s"}, ${pcs} piece${pcs === 1 ? "" : "s"} added to the order.`);
+    const pcs = added.reduce((sum, it) => sum + (+it.quantity || 0), 0);
+    setToast(`${boxKind.label} — ${added.length} ${boxNoun}${added.length === 1 ? "" : "s"}, ${pcs} piece${pcs === 1 ? "" : "s"} added to the order${boxPending ? ` (the ${boxPending.name} from the canvas with them)` : ""}.`);
     setTimeout(() => setToast(""), 4000);
+  };
+  // One row straight into the order at its quantity (1 if it is unticked), the box staying open.
+  const addRoofBoxRow = (it) => {
+    const fromCanvas = boxPending && boxPending.kit === it.id; // this very piece is on the canvas — that one goes in, legs as tweaked
+    const item = fromCanvas ? boxPending : roofBoxItem(it, Math.max(1, Math.round(+roofBoxSel[it.id] || 1)));
+    setBasket((b) => [...b, item]);
+    setRoofBoxSel((sel) => ({ ...sel, [it.id]: 0 })); // in the order now — tick again for more
+    if (fromCanvas) { clearDrawing(); setPartPhoto(null); }
+    setBoxNote(`Added ${item.name} ×${item.quantity}${it.pitched ? ` at ${fmtPitch(item.pitch || it.pitch)}` : ""}${fromCanvas ? ", as drawn on the canvas" : ""}.`);
   };
   // Load one kit piece into the canvas to tweak legs before adding it the usual way.
   const drawRoofBoxItem = (it) => {
+    if (editingId) restoreCanvas(); // a piece from the box is a new part, not the edited one
+    const replaced = boxPending && boxPending.kit !== it.id ? boxPending.name : null;
+    setBoxReturn(it.id); setBoxReturnKind(roofBoxKind);
     setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
-    setHemStart(it.hemStart); setHemEnd(it.hemEnd); setPaintSide(it.paintSide); setPartName(it.name);
+    setHemStart(it.hemStart); setHemEnd(it.hemEnd); setPaintSide(it.paintSide); setPartName(it.name); setDrawnPitch(it.pitch ?? roofBoxPitch);
+    setQuantity(roofBoxSel[it.id] > 0 ? roofBoxSel[it.id] : 4);
     setViewResetKey((k) => k + 1); setRoofBoxOpen(false);
-    setToast(`${it.name} is on the canvas — adjust any leg, then Add Part to Order.`); setTimeout(() => setToast(""), 3500);
+    setToast(`${it.name} is on the canvas — adjust any leg, then Add Part to Order.${replaced ? ` It took the place of the ${replaced} that was there.` : ""}`); setTimeout(() => setToast(""), 4000);
+  };
+  // A scupper or a collector box is built in the 3D tool, not drawn — its row in Commercial in a Box
+  // takes the roofer there with that part up, and the tool shows the way back. The trims in the
+  // list stay as they are; the 3D part is sent as its own part, the way the 3D tool always has.
+  const openBox3dPart = (it) => {
+    if (editingId) restoreCanvas(); // a part being changed goes back in its place first
+    setRoofBoxOpen(false); setBox3dReturn(true);
+    setPartType(it.tool3d); setShapeType("part3d"); setOrderStep("details");
+    setToast(`${it.name} — size it in the 3D tool and send it as its own part. The parts in your list stay; sending brings you back to Commercial in a Box for the rest.`); setTimeout(() => setToast(""), 5000);
   };
 
   // Screws only sell in lots of 100 — the qty spinner steps by the lot size and any
@@ -4333,9 +4799,8 @@ export default function ShopOrderApp() {
 
   const basketPartsCount = basket.reduce((s, i) => s + i.quantity, 0);
   const basketSheets = basket.reduce((s, i) => s + i.sheetsNeeded, 0);
-  const basketTotal = basket.reduce((s, i) => s + i.price, 0);
   const combinedEstimate = shapeType === "trim"
-    ? basketTotal + (points.length >= 2 ? estimate : 0)
+    ? orderParts().reduce((s, i) => s + i.price, 0)
     : estimate;
 
   // PO numbers come from a server-side counter — customers only see their own
@@ -4360,14 +4825,7 @@ export default function ShopOrderApp() {
     }
 
     if (shapeType === "trim") {
-      const items = [...basket];
-      if (points.length >= 2) {
-        items.push({
-          id: uid(), name: partName.trim() || `Part ${basket.length + 1}`,
-          points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
-          girth, partsPerSheet, sheetsNeeded, gaugeId, paintId, brand, colorName, colorHex: colorObj.hex, photo: partPhoto,
-        });
-      }
+      const items = orderParts();
       if (items.length === 0) { setToast("Draw at least two points, or add a part to the order first."); return; }
       setSubmitting(true);
       const jobId = uid();
@@ -4442,6 +4900,11 @@ export default function ShopOrderApp() {
       partD: isPart3d ? partD : undefined,
       partH: isPart3d ? partH : undefined,
       partCapH: isPart3d && partType === "chimney" ? partCapH : undefined,
+      partPostH: isPart3d && partType === "chimney" ? partPostH : undefined,
+      partOverhang: isPart3d && partType === "chimney" ? partOverhang : undefined,
+      partShelf: isPart3d && partType === "chimney" ? partShelf : undefined,
+      partLeg: isPart3d && partType === "chimney" ? partLeg : undefined,
+      capRibs: isPart3d && partType === "chimney" ? capRibs : undefined,
       capStyle: isPart3d && partType === "chimney" ? capStyle : undefined,
       outletShape: isPart3d && partType === "collector" ? outletShape : undefined,
       flangeW: isPart3d && partType === "collector" && outletShape === "box" ? flangeW : undefined,
@@ -4477,7 +4940,9 @@ export default function ShopOrderApp() {
     setSubmitting(false);
     if (!saved) return; // insertOrders already said so — keep the form so they can retry
     setToast(`Order sent — estimate ${money(order.price)}. The shop will confirm final pricing.`);
-    resetForm();
+    if (box3dReturn) { // reached from Commercial in a Box: the trim order is still being built, so back to it — name, phone and notes kept
+      setBox3dReturn(false); setBoxNote(`${PART3D_LABELS[partType]} sent as its own order — pick the next piece.`); openRoofBox("com");
+    } else resetForm();
     setTimeout(() => setToast(""), 5000);
   };
 
@@ -4512,14 +4977,7 @@ export default function ShopOrderApp() {
   // is order-shaped so computePrice and ShapeThumb both accept it as-is.
   const buildVaultPayloads = () => {
     if (shapeType === "trim") {
-      const parts = [...basket];
-      if (points.length >= 2) {
-        parts.push({
-          name: partName.trim() || `Part ${basket.length + 1}`,
-          points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
-          gaugeId, paintId, brand, colorName, colorHex: colorObj.hex, photo: partPhoto,
-        });
-      }
+      const parts = orderParts();
       return parts.map((it, idx) => ({
         type: "trim", partName: it.name, points: it.points, lengthPerPiece: it.lengthPerPiece,
         hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide, quantity: it.quantity,
@@ -4551,6 +5009,11 @@ export default function ShopOrderApp() {
       partD: isPart3d ? partD : undefined,
       partH: isPart3d ? partH : undefined,
       partCapH: isPart3d && partType === "chimney" ? partCapH : undefined,
+      partPostH: isPart3d && partType === "chimney" ? partPostH : undefined,
+      partOverhang: isPart3d && partType === "chimney" ? partOverhang : undefined,
+      partShelf: isPart3d && partType === "chimney" ? partShelf : undefined,
+      partLeg: isPart3d && partType === "chimney" ? partLeg : undefined,
+      capRibs: isPart3d && partType === "chimney" ? capRibs : undefined,
       capStyle: isPart3d && partType === "chimney" ? capStyle : undefined,
       outletShape: isPart3d && partType === "collector" ? outletShape : undefined,
       flangeW: isPart3d && partType === "collector" && outletShape === "box" ? flangeW : undefined,
@@ -4613,6 +5076,8 @@ export default function ShopOrderApp() {
   const loadVaultItem = (item, sourceLabel = "your Job Vault") => {
     const p = item.payload || {};
     const kind = p.type || item.kind;
+    if (editingId) restoreCanvas(); // a saved item is a new part, not the edited one
+    setBoxReturn(null); setRoofBoxOpen(false); setBox3dReturn(false); // and not the box piece either
     setTab("order");
     setShapeType(kind);
     setOrderStep("details");
@@ -4659,6 +5124,11 @@ export default function ShopOrderApp() {
       if (p.partD != null) setPartD(p.partD);
       if (p.partH != null) setPartH(p.partH);
       if (p.partCapH != null) setPartCapH(p.partCapH);
+      if (p.partPostH != null) setPartPostH(p.partPostH);
+      if (p.partOverhang != null) setPartOverhang(p.partOverhang);
+      if (p.partShelf != null) setPartShelf(p.partShelf);
+      if (p.partLeg != null) setPartLeg(p.partLeg);
+      if (p.capRibs != null) setCapRibs(!!p.capRibs);
       if (p.capStyle) setCapStyle(p.capStyle);
       if (p.outletShape) setOutletShape(p.outletShape);
       if (p.flangeW != null) setFlangeW(p.flangeW);
@@ -4769,6 +5239,13 @@ export default function ShopOrderApp() {
           100% { transform: scale(1); }
         }
         .pop-in { animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        /* Box rows (both kits): tick, picture, words, controls — on a phone the controls drop under the words */
+        .box-row { display: grid; grid-template-columns: 22px 54px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+        .box-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+        @media (max-width: 560px) {
+          .box-row { grid-template-columns: 22px 54px minmax(0, 1fr); }
+          .box-row .box-controls { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+        }
         @keyframes wiggle {
           0%, 100% { transform: rotate(0deg); }
           25% { transform: rotate(-4deg); }
@@ -5086,13 +5563,14 @@ export default function ShopOrderApp() {
                 {[
                   { id: "panel", label: "Roof Panel", desc: "Formed standing-seam or snap-lock panels", icon: Square, accent: SAFETY },
                   { id: "trim", label: "Trim Profile", desc: "Custom-drawn flashing and trim pieces", icon: PenTool, accent: "#4F9A63" },
-                  { id: "box", label: "Roof in a Box", desc: "The standard trims for a 24 ga standing seam roof, drawn to your pitch — add them all at once", icon: Package, accent: "#A0602E" },
+                  { id: "box", kind: "res", label: BOX_KINDS.res.label, desc: BOX_KINDS.res.blurb, icon: BOX_KINDS.res.icon, accent: BOX_KINDS.res.accent },
+                  { id: "commercial", kind: "com", label: BOX_KINDS.com.label, desc: BOX_KINDS.com.blurb, icon: BOX_KINDS.com.icon, accent: BOX_KINDS.com.accent },
                   { id: "metal", label: "Unfabricated Metal", desc: "Raw coil or 4x10 flat sheet stock", icon: Layers, accent: "#3E7CB1" },
                   { id: "part3d", label: "3D Parts", desc: "Collector boxes, scuppers, chimney caps", icon: Box, accent: "#8A5FBF" },
                 ].map((t) => {
                   const Icon = t.icon;
                   return (
-                    <button key={t.id} onClick={() => { if (t.id === "box") { openRoofBox(); return; } if (t.id === "part3d") setAccessories([]); setShapeType(t.id); setOrderStep("details"); }} className="mac-btn"
+                    <button key={t.id} data-testid={`tile-${t.id}`} onClick={() => { if (t.kind) { openRoofBox(t.kind); return; } if (t.id === "part3d") { setAccessories([]); setBox3dReturn(false); } setShapeType(t.id); setOrderStep("details"); }} className="mac-btn"
                       style={{
                         display: "flex", alignItems: "center", gap: 14, padding: 16, borderRadius: 12, border: `1px solid ${t.accent}`,
                         background: `linear-gradient(180deg, ${t.accent}, ${t.accent}dd)`, color: "#fff", cursor: "pointer", textAlign: "left",
@@ -5329,6 +5807,15 @@ export default function ShopOrderApp() {
               </>
             ) : shapeType === "part3d" ? (
               <>
+                {box3dReturn && (
+                  <button type="button" onClick={() => { setBox3dReturn(false); openRoofBox("com"); }} data-testid="box-3d-back" title="Back to Commercial in a Box — your parts are still in the list"
+                    style={{
+                      padding: "5px 11px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer", marginBottom: 8,
+                      border: `1px solid ${BOX_KINDS.com.accent}`, background: `linear-gradient(180deg, ${BOX_KINDS.com.accentLight}, ${BOX_KINDS.com.accent})`, color: "#fff", display: "inline-flex", alignItems: "center", gap: 5,
+                    }}>
+                    <Building2 size={12} /> ← Back to {BOX_KINDS.com.label}
+                  </button>
+                )}
                 <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
                   {[
                     { id: "collector", label: "Collector Box" },
@@ -5360,45 +5847,73 @@ export default function ShopOrderApp() {
                       onBlur={(e) => { if (e.target.value === "") setPartD(8); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
                   </label>
-                  <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                  {partType !== "chimney" && <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Height (in){partType === "collector" && <span style={{ color: theme.textSecondary, fontWeight: 400 }}> (max 150)</span>}
                     <input type="number" min={0.1} max={partType === "collector" ? 150 : undefined} step="0.1" value={partH}
                       onChange={(e) => setPartH(e.target.value === "" ? "" : Math.max(0, partType === "collector" ? Math.min(150, +e.target.value) : +e.target.value))}
                       onBlur={(e) => { if (e.target.value === "") setPartH(10); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
-                  </label>
+                  </label>}
                 </div>
 
-                {partType === "chimney" && (
-                  <>
-                    <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 8 }}>
-                      Cap Style
-                      <div style={{ display: "flex", gap: 5, marginTop: 4, flexWrap: "wrap" }}>
-                        {[
-                          { id: "pyramid", label: "Pyramid" },
-                          { id: "stevenson", label: "Stevenson Top" },
-                          { id: "texas", label: "Texas Top" },
-                          { id: "chateau", label: "Chateau Cap" },
-                        ].map((s) => (
-                          <button key={s.id} type="button" onClick={() => setCapStyle(s.id)}
-                            style={{
-                              flex: "1 1 45%", padding: "7px 4px", borderRadius: 6, fontSize: 10.5, fontWeight: 600, cursor: "pointer",
-                              border: `1px solid ${capStyle === s.id ? INK : theme.border}`, background: capStyle === s.id ? INK : theme.inputBg, color: capStyle === s.id ? "#fff" : theme.text,
-                            }}>
-                            {s.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <label style={{ display: "block", width: "100%", fontSize: 11, color: theme.textSecondary, marginTop: 8 }}>
-                      Cap Height (in)
-                      <input type="number" min={0.1} step="0.1" value={partCapH}
-                        onChange={(e) => setPartCapH(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
-                        onBlur={(e) => { if (e.target.value === "") setPartCapH(6); }}
-                        className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
+                {partType === "chimney" && (() => {
+                  const numStyle = { width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.inputBg, color: theme.text, boxSizing: "border-box" };
+                  const num = (label, value, set, fallback, testid) => (
+                    <label style={{ flex: 1, minWidth: 0, fontSize: 11, color: theme.textSecondary }}>
+                      {label}
+                      <input type="number" min={0} step="0.25" value={value} data-testid={testid}
+                        onChange={(e) => set(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
+                        onBlur={(e) => { if (e.target.value === "") set(fallback); }}
+                        className="mono" style={numStyle} />
                     </label>
-                  </>
-                )}
+                  );
+                  const canRib = CAP_RIB_STYLES.includes(capStyle);
+                  return (
+                    <>
+                      <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>
+                        Width × Depth are the base's outside size. The base is a flat shelf round the opening with a down leg on its outside edge; the posts stand on the shelf and the roof overhangs it.
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                        {num("Shelf (in)", partShelf, setPartShelf, 3, "cap-shelf")}
+                        {num("Down leg (in)", partLeg, setPartLeg, 3, "cap-leg")}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                        {num("Open height — posts (in)", partPostH, setPartPostH, 6, "cap-post-h")}
+                        {num("Roof rise (in)", partCapH, setPartCapH, 6, "cap-rise")}
+                        {num("Roof overhang (in)", partOverhang, setPartOverhang, 2, "cap-overhang")}
+                      </div>
+                      <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 8 }}>
+                        Roof Style
+                        <div style={{ display: "flex", gap: 5, marginTop: 4, flexWrap: "wrap" }}>
+                          {CAP_STYLES.map((s) => (
+                            <button key={s.id} type="button" onClick={() => setCapStyle(s.id)} title={s.hint} data-testid={`cap-style-${s.id}`}
+                              style={{
+                                flex: "1 1 30%", padding: "7px 4px", borderRadius: 6, fontSize: 10.5, fontWeight: 600, cursor: "pointer",
+                                border: `1px solid ${capStyle === s.id ? INK : theme.border}`, background: capStyle === s.id ? INK : theme.inputBg, color: capStyle === s.id ? "#fff" : theme.text,
+                              }}>
+                              {s.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 8, opacity: canRib ? 1 : 0.5 }}>
+                        Standing Seam Ribs
+                        <div style={{ display: "flex", gap: 5, marginTop: 4 }}>
+                          {[[true, "Ribs on"], [false, "Smooth"]].map(([on, label]) => (
+                            <button key={label} type="button" onClick={() => setCapRibs(on)} disabled={!canRib} data-testid={on ? "cap-ribs-on" : "cap-ribs-off"}
+                              style={{
+                                flex: 1, padding: "7px 4px", borderRadius: 6, fontSize: 10.5, fontWeight: 600, cursor: canRib ? "pointer" : "default",
+                                border: `1px solid ${capRibs === on ? INK : theme.border}`, background: capRibs === on ? INK : theme.inputBg, color: capRibs === on ? "#fff" : theme.text,
+                              }}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        {!canRib && <div style={{ fontSize: 10, marginTop: 3 }}>This roof style is made smooth.</div>}
+                      </div>
+                    </>
+                  );
+                })()}
 
                 {partType === "collector" && (
                   <>
@@ -5560,7 +6075,7 @@ export default function ShopOrderApp() {
 
                 <div style={{ marginTop: 8 }}>
                   {partView === "3d" ? (
-                    <Part3DPreview partType={partType} w={partW} d={partD} h={partH} capH={partCapH} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} flangeLength={flangeLength} outletRoundTapered={outletRoundTapered} capStyle={capStyle} />
+                    <Part3DPreview partType={partType} w={partW} d={partD} h={partH} capH={partCapH} postH={partPostH} overhang={partOverhang} ribs={capRibs} shelf={partShelf} leg={partLeg} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} flangeLength={flangeLength} outletRoundTapered={outletRoundTapered} capStyle={capStyle} />
                   ) : (
                     <FlatPatternSVG partType={partType} w={partW} d={partD} h={partH} capH={partCapH} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} />
                   )}
@@ -5873,16 +6388,27 @@ export default function ShopOrderApp() {
               </>
             ) : (
               <>
-                <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
-                  <button type="button" onClick={() => setRoofBoxOpen(true)} title="The standard trims for a 24 ga standing seam roof, drawn to your pitch"
-                    style={{
-                      padding: "5px 11px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer",
-                      border: "1px solid #A0602E", background: "linear-gradient(180deg, #B8703A, #A0602E)", color: "#fff", display: "flex", alignItems: "center", gap: 5,
-                    }}>
-                    <Package size={12} /> Roof in a Box
-                  </button>
+                <div ref={canvasTopRef} style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                  {Object.entries(BOX_KINDS).map(([kind, k]) => {
+                    const Icon = k.icon, back = boxReturn && boxReturnKind === kind; // the box a piece came from is the one to go back to
+                    return (
+                      <button key={kind} type="button" onClick={() => openRoofBox(kind)} title={k.blurb} data-testid={`box-open-${kind}`}
+                        style={{
+                          padding: "5px 11px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                          border: `1px solid ${k.accent}`, background: `linear-gradient(180deg, ${k.accentLight}, ${k.accent})`, color: "#fff", display: "flex", alignItems: "center", gap: 5,
+                        }}>
+                        <Icon size={12} /> {back ? `← Back to ${k.label}` : k.label}
+                      </button>
+                    );
+                  })}
                   {Object.keys(TRIM_PRESETS).map((p) => (
-                    <button key={p} onClick={() => { setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt])); setViewResetKey((k) => k + 1); }}
+                    <button key={p} onClick={() => {
+                      setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt])); setDrawnPitch(4);
+                      if (boxReturn && boxReturn !== "edit") { setPartName(""); setBoxReturn(null); }
+                      const f = presetFolds(p);
+                      if (f) { setHemStart(f.hemStart); setHemEnd(f.hemEnd); setPaintSide(f.paintSide); }
+                      setViewResetKey((k) => k + 1);
+                    }}
                       style={{
                         padding: "5px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
                         border: `1px solid ${preset === p ? INK : "#D9D5C7"}`, background: preset === p ? INK : "#fff", color: preset === p ? "#fff" : INK_DEEP,
@@ -5892,7 +6418,7 @@ export default function ShopOrderApp() {
                   ))}
                   {customPresetsLoaded && customPresets.map((cp) => (
                     <span key={cp.id} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
-                      <button onClick={() => { setPreset(cp.name); setPoints(cp.points.map((pt) => [...pt])); setViewResetKey((k) => k + 1); }}
+                      <button onClick={() => { setPreset(cp.name); setPoints(cp.points.map((pt) => [...pt])); if (boxReturn && boxReturn !== "edit") { setPartName(""); setBoxReturn(null); } setViewResetKey((k) => k + 1); }}
                         style={{
                           padding: "5px 8px 5px 10px", borderRadius: "999px 0 0 999px", fontSize: 11, cursor: "pointer",
                           border: `1px solid ${SAFETY}`, borderRight: "none", background: preset === cp.name ? SAFETY : "#fff", color: preset === cp.name ? "#fff" : SAFETY,
@@ -5941,17 +6467,47 @@ export default function ShopOrderApp() {
                         style={{ width: "100%", maxWidth: 760, maxHeight: "94vh", overflowY: "auto", background: theme.card, color: theme.text, borderRadius: 14, boxShadow: "0 30px 80px rgba(0,0,0,0.55)", padding: "16px 18px 14px" }}>
                         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
                           <div>
-                            <div id="roof-box-title" className="disp" style={{ fontSize: 18, color: theme.text, display: "flex", alignItems: "center", gap: 8 }}><Package size={18} color="#A0602E" /> Roof in a Box</div>
+                            <div id="roof-box-title" className="disp" style={{ fontSize: 18, color: theme.text, display: "flex", alignItems: "center", gap: 8 }}><boxKind.icon size={18} color={boxKind.accent} /> {boxKind.label}</div>
                             <div style={{ fontSize: 12, color: theme.textSecondary, marginTop: 3, lineHeight: 1.45 }}>
-                              The standard trims for a 24 ga standing seam roof in one place. Set the pitch and seam height, tick what the job needs, and add them all to the order — or open any one on the canvas to tweak a leg.
+                              {roofBoxKind === "com"
+                                ? "The sheet metal for a low-slope roof in one place. Set the wall width, the fascia height and the gutter and downspout sizes, tick what the job needs, and add them all to the order — or open any one on the canvas to tweak a leg. Scuppers and collector boxes are built to size in the 3D tool; their rows take you there."
+                                : "The standard trims for a 24 ga standing seam roof in one place. Set the pitch and seam height, tick what the job needs, and add them all to the order — or open any one on the canvas to tweak a leg."}
                             </div>
                           </div>
                           <button type="button" onClick={() => setRoofBoxOpen(false)} aria-label="Close" style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 20, cursor: "pointer", lineHeight: 1 }}>✕</button>
                         </div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end", marginTop: 12 }}>
+                          {roofBoxKind === "com" ? (<>
+                          <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", flexDirection: "column", gap: 3 }}>Wall width (top of parapet)
+                            <select ref={roofBoxPitchRef} value={comWall} onChange={(e) => setComWall(+e.target.value)} className="mono" style={selStyle} data-testid="box-wall">
+                              {PARAPET_WIDTHS.map((w) => <option key={w} value={w}>{w}"</option>)}
+                            </select>
+                          </label>
+                          <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", flexDirection: "column", gap: 3 }}>Box gutter
+                            <select value={comGutter} onChange={(e) => setComGutter(+e.target.value)} className="mono" style={selStyle} data-testid="box-gutter">
+                              {GUTTER_SIZES.map((g) => <option key={g} value={g}>{g}"</option>)}
+                            </select>
+                          </label>
+                          <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", flexDirection: "column", gap: 3 }}>Fascia height (edge metal)
+                            <select value={comFascia} onChange={(e) => setComFascia(+e.target.value)} className="mono" style={selStyle} data-testid="box-fascia">
+                              {FASCIA_HEIGHTS.map((f) => <option key={f} value={f}>{inWord(f)}</option>)}
+                            </select>
+                          </label>
+                          <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", flexDirection: "column", gap: 3 }}>Downspout
+                            <select value={comDownspout} onChange={(e) => setComDownspout(e.target.value)} className="mono" style={selStyle} data-testid="box-downspout">
+                              {DOWNSPOUT_SIZES.map((d) => <option key={d} value={d}>{d}"</option>)}
+                            </select>
+                          </label>
+                          <label style={{ fontSize: 10.5, color: theme.text, display: "flex", alignItems: "center", gap: 5, paddingBottom: 7, cursor: "pointer" }} title={'The drip the ATAS spec calls for on the gravel stop, drip edge and snap-on fascia, in place of the kit\'s ½" kick and ½" hem'}>
+                            <input type="checkbox" checked={comAtas} onChange={(e) => setComAtas(e.target.checked)} data-testid="box-atas" style={{ width: 14, height: 14, cursor: "pointer" }} /> ATAS drip — ¾" kick, 1" hem
+                          </label>
+                          <label style={{ fontSize: 10.5, color: theme.text, display: "flex", alignItems: "center", gap: 5, paddingBottom: 7, cursor: "pointer" }} title="The job calls for ES-1 tested edge metal — the coping and edge pieces are marked ES-1 on the order">
+                            <input type="checkbox" checked={comEs1} onChange={(e) => setComEs1(e.target.checked)} data-testid="box-es1" style={{ width: 14, height: 14, cursor: "pointer" }} /> ES-1 edge metal
+                          </label>
+                          </>) : (<>
                           <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", flexDirection: "column", gap: 3 }}>Roof pitch
                             <select ref={roofBoxPitchRef} value={roofBoxPitch} className="mono" style={selStyle} data-testid="box-pitch"
-                              onChange={(e) => { const pch = +e.target.value; setRoofBoxPitch(pch); setRoofBoxLower((low) => (low < pch ? low : Math.max(ROOF_PITCHES[0], ...ROOF_PITCHES.filter((r) => r < pch)))); }}>
+                              onChange={(e) => { const pch = +e.target.value; setRoofBoxPitch(pch); setRoofBoxRowPitch({}); setRoofBoxLower((low) => (low < pch ? low : Math.max(ROOF_PITCHES[0], ...ROOF_PITCHES.filter((r) => r < pch)))); }}>
                               {ROOF_PITCHES.map((r) => <option key={r} value={r}>{fmtPitch(r)}</option>)}
                             </select>
                           </label>
@@ -5966,40 +6522,119 @@ export default function ShopOrderApp() {
                               {roofBoxPitch <= ROOF_PITCHES[0] && <option value={roofBoxPitch}>— (roof is already {fmtPitch(roofBoxPitch)})</option>}
                             </select>
                           </label>
+                          </>)}
                           <div className="mono" style={{ fontSize: 10.5, color: theme.textSecondary, marginLeft: "auto", textAlign: "right", lineHeight: 1.5 }}>
                             {gaugeLabel} · {brand} · {colorName}<br />{lengthPerPiece} ft pieces · {sheetWidthNum}" sheets
                           </div>
                         </div>
+                        {roofBoxKind === "com" && comEs1 && (
+                          <div data-testid="box-es1-note" style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, background: "rgba(79,93,107,0.10)", border: "1px solid rgba(79,93,107,0.35)", fontSize: 11.5, color: theme.text, lineHeight: 1.45 }}>
+                            <b>ES-1.</b> Tested edge metal has to be made at a certified shop, to its listing. The coping and edge pieces are marked ES-1 on the order, and the shop will confirm the price.
+                          </div>
+                        )}
+                        {boxNote && (
+                          <div data-testid="box-note" style={{ marginTop: 10, fontSize: 12, fontWeight: 600, color: theme.text, display: "flex", alignItems: "center", gap: 6 }}><Check size={14} color={SAFETY} /> {boxNote}</div>
+                        )}
+                        {basket.length > 0 && (
+                          <div data-testid="box-in-order" style={{ marginTop: 10, padding: "8px 10px", borderRadius: 8, background: "rgba(212,175,55,0.10)", border: `1px solid rgba(212,175,55,0.35)` }}>
+                            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                              <span className="disp" style={{ fontSize: 10.5, color: theme.textSecondary }}>In the order now</span>
+                              <span className="mono" style={{ fontSize: 10.5, color: theme.text, fontWeight: 600 }}>{basket.length} part{basket.length === 1 ? "" : "s"} · {basketPartsCount} pcs · {basketSheets} sheet{basketSheets === 1 ? "" : "s"}</span>
+                              <span style={{ fontSize: 10.5, color: theme.textSecondary }}>— tap one to change it</span>
+                            </div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+                              {(boxStripAll ? basket : basket.slice(0, 8)).map((b) => {
+                                const editing = b.id === editingId;
+                                return (
+                                  <button key={b.id} type="button" onClick={() => (editing ? setRoofBoxOpen(false) : editBasketItem(b, true))} title={editing ? "This part is on the canvas now — back to it" : "Open this part on the canvas to change it"} data-testid="box-in-order-part"
+                                    style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 8px 3px 3px", borderRadius: 999, border: `1px solid ${editing ? SAFETY : theme.border}`, background: editing ? "rgba(212,175,55,0.18)" : theme.inputBg, color: theme.text, fontSize: 11, cursor: "pointer" }}>
+                                    <span style={{ background: INK, borderRadius: 4, padding: 2, display: "flex" }}><ShapeThumb order={{ type: "trim", points: b.points, hemStart: b.hemStart, hemEnd: b.hemEnd, colorHex: b.colorHex }} size={18} /></span>
+                                    <span style={{ fontWeight: 600 }}>{b.name}</span><span className="mono" style={{ color: theme.textSecondary }}>×{b.quantity}{b.kit && PITCHED_KIT.has(b.kit) && b.pitch ? ` · ${fmtPitch(b.pitch)}` : ""}</span>
+                                    {editing && <span className="mono" style={{ fontSize: 9, color: SAFETY, fontWeight: 700, letterSpacing: "0.08em" }}>EDITING</span>}
+                                  </button>
+                                );
+                              })}
+                              {basket.length > 8 && (
+                                <button type="button" onClick={() => setBoxStripAll((v) => !v)} data-testid="box-in-order-more"
+                                  style={{ padding: "3px 10px", borderRadius: 999, border: `1px dashed ${theme.border}`, background: "transparent", color: theme.textSecondary, fontSize: 11, cursor: "pointer" }}>
+                                  {boxStripAll ? "Show fewer" : `+${basket.length - 8} more`}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
                         <div style={{ marginTop: 10 }}>
                           {roofKit.map((it) => {
+                            if (it.tool3d) return ( // built in the 3D tool — the row is the way there
+                              <div key={it.id} data-testid={`box-row-${it.id}`} className="box-row" style={{ padding: "8px 0", borderTop: `1px solid ${theme.border}` }}>
+                                <span aria-hidden="true" />
+                                <div style={{ background: INK, borderRadius: 6, padding: 3, display: "flex" }}>
+                                  <ShapeThumb order={{ type: "part3d", partType: it.tool3d, colorHex: colorObj.hex }} size={48} />
+                                </div>
+                                <div style={{ minWidth: 0 }}>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{it.name} <span className="mono" style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 500 }}>{it.dims}</span></div>
+                                  <div style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 1.4 }}>{it.where}</div>
+                                  <div className="mono" style={{ fontSize: 10, color: theme.textSecondary, marginTop: 2 }}>{it.tool3d === "collector" ? "Width, depth, height and the outlet" : "Width, depth and height"} set in the 3D tool · sent as its own part · one per {it.per}</div>
+                                </div>
+                                <div className="box-controls">
+                                  <button type="button" onClick={() => openBox3dPart(it)} data-testid={`box-row-3d-${it.id}`} title={`Open the 3D tool with a ${it.name.toLowerCase()} up — the parts in your list stay`}
+                                    style={{ fontSize: 10.5, fontWeight: 700, padding: "4px 9px", borderRadius: 6, border: "none", background: "#8A5FBF", color: "#fff", cursor: "pointer", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 5 }}>
+                                    <Box size={12} /> Open in the 3D tool →
+                                  </button>
+                                </div>
+                              </div>
+                            );
                             const qty = roofBoxSel[it.id] || 0;
                             const on = qty > 0;
+                            const inOrder = basket.filter((b) => b.kit === it.id && +b.quantity > 0);
+                            const inOrderPcs = inOrder.reduce((sum, b) => sum + (+b.quantity || 0), 0);
                             const g = profileGirth(it.points, it.hemStart, it.hemEnd);
-                            const pps = g > 0 ? Math.floor(sheetWidthNum / g) : 0;
+                            const pps = piecesPerSheet(sheetWidthNum, g);
                             return (
-                              <div key={it.id} data-testid={`box-row-${it.id}`} style={{ display: "grid", gridTemplateColumns: "22px 54px 1fr auto", gap: 10, alignItems: "center", padding: "8px 0", borderTop: `1px solid ${theme.border}`, opacity: on ? 1 : 0.72 }}>
+                              <div key={it.id} data-testid={`box-row-${it.id}`} className="box-row" style={{ padding: "8px 0", borderTop: `1px solid ${theme.border}`, opacity: on ? 1 : 0.72 }}>
                                 <input type="checkbox" checked={on} aria-label={`Include ${it.name}`}
                                   onChange={(e) => setRoofBoxSel((sel) => ({ ...sel, [it.id]: e.target.checked ? 1 : 0 }))} style={{ width: 16, height: 16, cursor: "pointer" }} />
                                 <div style={{ background: INK, borderRadius: 6, padding: 3, display: "flex" }}>
                                   <ShapeThumb order={{ type: "trim", points: it.points, hemStart: it.hemStart, hemEnd: it.hemEnd, colorHex: colorObj.hex }} size={48} />
                                 </div>
                                 <div style={{ minWidth: 0 }}>
-                                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{it.name} <span className="mono" style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 500 }}>{it.dims}</span></div>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{it.name} <span className="mono" style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 500 }}>{it.dims}</span>
+                                    {inOrder.length > 0 && <span className="mono" data-testid="box-row-in-order" style={{ marginLeft: 8, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.06em", color: SAFETY, border: `1px solid ${SAFETY}`, borderRadius: 999, padding: "1px 7px" }}>IN ORDER · {inOrderPcs} pc{inOrderPcs === 1 ? "" : "s"}</span>}
+                                  </div>
                                   <div style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 1.4 }}>{it.where}</div>
                                   <div className="mono" style={{ fontSize: 10, color: theme.textSecondary, marginTop: 2 }}>
-                                    Girth {g.toFixed(2)}" · {Math.max(0, it.points.length - 2)} bend{it.points.length === 3 ? "" : "s"} · {pps} pcs/sheet · one {lengthPerPiece} ft piece per {lengthPerPiece} ft of {it.per}
+                                    Girth {fmtIn(g)}" · {Math.max(0, it.points.length - 2)} bend{it.points.length === 3 ? "" : "s"} · {pps} pcs/sheet · one {lengthPerPiece} ft piece per {lengthPerPiece} ft of {it.per}
                                   </div>
                                 </div>
-                                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-                                  <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", alignItems: "center", gap: 4 }}>Qty
-                                    <input type="number" min={1} step={1} value={on ? qty : ""} disabled={!on} placeholder="—" aria-label={`${it.name} quantity`}
-                                      onChange={(e) => setRoofBoxSel((sel) => ({ ...sel, [it.id]: Math.max(1, Math.round(+e.target.value) || 1) }))}
-                                      className="mono" style={{ width: 52, padding: "5px 6px", border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: theme.inputBg, color: theme.text }} />
-                                  </label>
-                                  <button type="button" onClick={() => drawRoofBoxItem(it)} title="Open this trim on the drawing canvas"
-                                    style={{ fontSize: 10.5, fontWeight: 600, padding: "4px 8px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, cursor: "pointer", whiteSpace: "nowrap" }}>
-                                    Open on canvas
-                                  </button>
+                                <div className="box-controls">
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                    {it.pitched ? (
+                                      <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", alignItems: "center", gap: 4 }} title="The roof pitch this piece is bent to — change it for this piece alone">Pitch
+                                        <select value={it.pitch} aria-label={`${it.name} pitch`} data-testid={`box-pitch-${it.id}`} className="mono"
+                                          onChange={(e) => { const r = +e.target.value; setRoofBoxRowPitch((m) => { const next = { ...m }; if (r === roofBoxPitch) delete next[it.id]; else next[it.id] = r; return next; }); }}
+                                          style={{ padding: "4px 5px", borderRadius: 6, border: `1px solid ${it.pitch !== roofBoxPitch ? SAFETY : theme.border}`, background: theme.inputBg, color: theme.text, fontSize: 11.5, fontWeight: 600 }}>
+                                          {ROOF_PITCHES.filter((r) => it.id !== "transition" || r > ROOF_PITCHES[0]).map((r) => <option key={r} value={r}>{fmtPitch(r)}</option>)}
+                                        </select>
+                                      </label>
+                                    ) : roofBoxKind === "res" ? (
+                                      <span style={{ fontSize: 10, color: theme.textSecondary }} title="This piece is the same at any roof pitch">any pitch</span>
+                                    ) : null}
+                                    <label style={{ fontSize: 10, color: theme.textSecondary, display: "flex", alignItems: "center", gap: 4 }}>Qty
+                                      <input type="number" min={1} step={1} value={on ? qty : ""} disabled={!on} placeholder="—" aria-label={`${it.name} quantity`}
+                                        onChange={(e) => setRoofBoxSel((sel) => ({ ...sel, [it.id]: Math.max(1, Math.round(+e.target.value) || 1) }))}
+                                        className="mono" style={{ width: 52, padding: "5px 6px", border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: theme.inputBg, color: theme.text }} />
+                                    </label>
+                                  </div>
+                                  <div style={{ display: "flex", gap: 6 }}>
+                                    <button type="button" onClick={() => addRoofBoxRow(it)} data-testid={`box-row-add-${it.id}`} title={boxPending && boxPending.kit === it.id ? "This piece is on the canvas — add it as drawn there" : `Add just this ${boxNoun} to the order at the quantity shown`}
+                                      style={{ fontSize: 10.5, fontWeight: 700, padding: "4px 9px", borderRadius: 6, border: "none", background: SAFETY, color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>
+                                      {boxPending && boxPending.kit === it.id ? "Add from canvas" : "Add to order"}
+                                    </button>
+                                    <button type="button" onClick={() => drawRoofBoxItem(it)} title={`Open this ${boxNoun} on the drawing canvas`}
+                                      style={{ fontSize: 10.5, fontWeight: 600, padding: "4px 8px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                      Open on canvas
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
                             );
@@ -6007,14 +6642,15 @@ export default function ShopOrderApp() {
                         </div>
                         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 12, paddingTop: 12, borderTop: `1px solid ${theme.border}` }}>
                           <div className="mono" style={{ fontSize: 11.5, color: theme.text, fontWeight: 600 }} data-testid="box-totals">
-                            {roofBoxPicked.length} trim{roofBoxPicked.length === 1 ? "" : "s"} · {totalPcs} pcs · {totalSheets} sheet{totalSheets === 1 ? "" : "s"} · est. {money(totalPrice)}
+                            {roofBoxPicked.length} {boxNoun}{roofBoxPicked.length === 1 ? "" : "s"} · {totalPcs} pcs · {totalSheets} sheet{totalSheets === 1 ? "" : "s"} · est. {money(totalPrice)}
+                            {boxPending && <span data-testid="box-pending" style={{ display: "block", fontWeight: 500, color: theme.textSecondary }}>+ the {boxPending.name} ×{boxPending.quantity} on the canvas goes in with them</span>}
                           </div>
                           <div style={{ display: "flex", gap: 8 }}>
                             <button type="button" onClick={() => setRoofBoxOpen(false)}
                               style={{ padding: "9px 14px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Close</button>
                             <button type="button" onClick={addRoofBoxToOrder} className="tap-bounce" data-testid="box-add"
                               style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: SAFETY, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-                              <Package size={14} /> Add {roofBoxPicked.length ? `${roofBoxPicked.length} trim${roofBoxPicked.length === 1 ? "" : "s"}` : "to order"}
+                              <Package size={14} /> Add {roofBoxPicked.length ? `${roofBoxPicked.length} ${boxNoun}${roofBoxPicked.length === 1 ? "" : "s"}` : "to order"}
                             </button>
                           </div>
                         </div>
@@ -6022,15 +6658,15 @@ export default function ShopOrderApp() {
                     </div>
                   );
                 })()}
-                <TrimCanvas points={points} setPoints={setPoints} colorHex={colorObj.hex} hemStart={hemStart} hemEnd={hemEnd} paintSide={paintSide}
+                <TrimCanvas points={points} setPoints={setPoints} colorHex={colorObj.hex} hemStart={hemStart} hemEnd={hemEnd} paintSide={paintSide} roofPitch={drawnPitch}
                   setHemStart={setHemStart} setHemEnd={setHemEnd} setPaintSide={setPaintSide} viewResetKey={viewResetKey} />
                 <div style={{ display: "flex", alignItems: "center", marginTop: 8, gap: 8, flexWrap: "wrap" }}>
-                  <button onClick={() => setPoints((p) => p.slice(0, -1))}
+                  <button onClick={() => { if (points.length <= 1 && boxReturn !== "edit") setBoxReturn(null); setPoints((p) => p.slice(0, -1)); }}
                     style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, padding: "5px 9px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, cursor: "pointer" }}>
                     <Undo2 size={12} /> Undo
                   </button>
                   <span className="mono" style={{ fontSize: 11, color: theme.text, fontWeight: 600 }}>
-                    Girth: {girth.toFixed(2)}"{hemAllowance(hemStart) + hemAllowance(hemEnd) > 0 ? ` (incl. ${fracIn(hemAllowance(hemStart) + hemAllowance(hemEnd))} folds)` : ""} · {points.length} pts
+                    Girth: {fmtIn(girth)}"{hemAllowance(hemStart) + hemAllowance(hemEnd) > 0 ? ` (incl. ${fracIn(hemAllowance(hemStart) + hemAllowance(hemEnd))} folds)` : ""} · {points.length} pts
                   </span>
                   <label style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, color: theme.text, fontWeight: 600 }}>
                     Qty
@@ -6046,7 +6682,7 @@ export default function ShopOrderApp() {
                       onBlur={(e) => { if (e.target.value === "") setSheetWidth(48); }}
                       className="mono" style={{ width: 48, padding: "5px 6px", border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12 }} />
                   </label>
-                  <button onClick={() => { setPoints([]); setHemStart("none"); setHemEnd("none"); setPaintSide("left"); }} title="Start the drawing over — folds and painted side reset with it"
+                  <button onClick={() => { setPoints([]); setHemStart("none"); setHemEnd("none"); setPaintSide("left"); if (boxReturn && boxReturn !== "edit") { setPartName(""); setBoxReturn(null); } }} title="Start the drawing over — folds and painted side reset with it"
                     style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, padding: "5px 9px", borderRadius: 6, border: `1px solid ${theme.border}`, background: theme.inputBg, cursor: "pointer" }}>
                     <Trash2 size={12} /> Clear
                   </button>
@@ -6061,7 +6697,7 @@ export default function ShopOrderApp() {
                     {partsPerSheet} pcs/{sheetWidth}" sheet · {sheetsNeeded} sheet{sheetsNeeded === 1 ? "" : "s"} needed
                   </span>
                   <span className="mono" style={{ fontSize: 11, color: SAFETY, fontWeight: 600 }} title="Leftover width per sheet after cutting all full pieces">
-                    Drop: {dropWidth.toFixed(2)}"
+                    Drop: {fmtIn(dropWidth)}"
                   </span>
                 </div>
                 <label style={{ display: "block", fontSize: 10.5, color: theme.textSecondary, marginTop: 10 }}>
@@ -6092,15 +6728,32 @@ export default function ShopOrderApp() {
                   )}
                 </div>
 
-                <button onClick={addToBasket}
-                  className="disp"
-                  style={{
-                    width: "100%", marginTop: 10, padding: "10px", borderRadius: 8, border: `2px solid ${SAFETY}`,
-                    background: theme.inputBg, color: SAFETY, fontSize: 12, fontWeight: 700, cursor: "pointer",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                  }}>
-                  <Plus size={14} /> Add Part to Order
-                </button>
+                {editingId && basket.some((i) => i.id === editingId) ? (
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <button onClick={updateBasketItem} className="disp" data-testid="update-part"
+                      style={{
+                        flex: 1, padding: "10px", borderRadius: 8, border: "none",
+                        background: SAFETY, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      }}>
+                      <Check size={14} /> Update Part
+                    </button>
+                    <button onClick={cancelEdit} className="disp" data-testid="cancel-edit"
+                      style={{ padding: "10px 14px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={addToBasket}
+                    className="disp" data-testid="add-part"
+                    style={{
+                      width: "100%", marginTop: 10, padding: "10px", borderRadius: 8, border: `2px solid ${SAFETY}`,
+                      background: theme.inputBg, color: SAFETY, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    }}>
+                    <Plus size={14} /> Add Part to Order
+                  </button>
+                )}
 
                 {basket.length > 0 && (
                   <div style={{ marginTop: 10, borderTop: "1px solid #EEE9DC", paddingTop: 10 }}>
@@ -6110,11 +6763,17 @@ export default function ShopOrderApp() {
                         {basketPartsCount} pcs · {basketSheets} sheet{basketSheets === 1 ? "" : "s"}
                       </span>
                     </div>
+                    <div style={{ fontSize: 10.5, color: theme.textSecondary, marginBottom: 4 }}>Tap a part to bring it back onto the canvas and change it.</div>
                     {basket.map((it, idx) => {
                       const itGauge = findGauge(it.gaugeId, it.brand);
                       const itBends = Math.max(0, it.points.length - 2);
+                      const editing = it.id === editingId;
                       return (
-                        <div key={it.id} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0", borderBottom: idx < basket.length - 1 ? "1px solid #F3F0E7" : "none" }}>
+                        <div key={it.id} role="button" tabIndex={0} data-testid="basket-row" title="Tap to edit this part"
+                          onClick={() => editBasketItem(it)} onKeyDown={(e) => { if (e.target !== e.currentTarget) return; if (e.key === "Enter" || e.key === " ") { e.preventDefault(); editBasketItem(it); } }}
+                          style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 6px", margin: "0 -6px", borderRadius: 6, cursor: "pointer",
+                            borderBottom: idx < basket.length - 1 && !editing ? "1px solid #F3F0E7" : "none",
+                            background: editing ? "rgba(212,175,55,0.12)" : "transparent", boxShadow: editing ? `inset 3px 0 0 ${SAFETY}` : "none" }}>
                           <div style={{ background: INK, borderRadius: 5, padding: 3, flexShrink: 0 }}>
                             <ShapeThumb order={{ type: "trim", points: it.points, hemStart: it.hemStart, hemEnd: it.hemEnd, colorHex: it.colorHex }} size={28} />
                           </div>
@@ -6122,18 +6781,22 @@ export default function ShopOrderApp() {
                             <img src={it.photo} alt="Reference" style={{ width: 34, height: 34, objectFit: "cover", borderRadius: 5, border: `1px solid ${theme.border}`, flexShrink: 0 }} />
                           )}
                           <span style={{ fontSize: 11.5, color: theme.text, flex: 1 }}>
-                            <strong>{it.name}</strong> — Qty {it.quantity} · {it.girth.toFixed(2)}" girth · {it.sheetsNeeded} sheet{it.sheetsNeeded === 1 ? "" : "s"} · {it.dropWidth.toFixed(2)}" drop
+                            <strong>{it.name}</strong>{editing && <span className="mono" style={{ fontSize: 9.5, color: SAFETY, fontWeight: 700, marginLeft: 6, letterSpacing: "0.08em" }}>EDITING</span>} — Qty {it.quantity} · {fmtIn(it.girth)}" girth · {it.sheetsNeeded} sheet{it.sheetsNeeded === 1 ? "" : "s"} · {fmtIn(it.dropWidth)}" drop
                             <br />
                             <span style={{ fontSize: 10.5, color: theme.textSecondary }}>
-                              {it.colorName} · {itGauge?.label} · {itBends} bend{itBends === 1 ? "" : "s"} · Paint side: {it.paintSide === "left" ? "Left" : "Right"}
+                              {it.colorName} · {itGauge?.label} · {itBends} bend{itBends === 1 ? "" : "s"} · Paint side: {it.paintSide === "left" ? "Left" : "Right"}{it.kit && PITCHED_KIT.has(it.kit) && it.pitch ? ` · ${fmtPitch(it.pitch)}` : ""}
                             </span>
                           </span>
                           <span className="mono" style={{ fontSize: 11, color: theme.textSecondary }}>{money(it.price)}</span>
-                          <button onClick={() => printPartAsPDF(it)} title="Export as PDF"
+                          <button onClick={(e) => { e.stopPropagation(); editBasketItem(it); }} title="Edit this part" aria-label={`Edit ${it.name}`}
+                            style={{ border: "none", background: "none", color: editing ? SAFETY : theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
+                            <Pencil size={13} />
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); printPartAsPDF(it); }} title="Export as PDF"
                             style={{ border: "none", background: "none", color: theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
                             <Printer size={13} />
                           </button>
-                          <button onClick={() => removeBasketItem(it.id)}
+                          <button onClick={(e) => { e.stopPropagation(); removeBasketItem(it.id); }} title="Remove" aria-label={`Remove ${it.name}`}
                             style={{ border: "none", background: "none", color: theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
                             <Trash2 size={12} />
                           </button>
@@ -6292,7 +6955,7 @@ export default function ShopOrderApp() {
           <div style={{ background: INK, borderRadius: 10, padding: 14, marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
               <div style={{ color: "#CFE3EF", fontSize: 11 }}>
-                {shapeType === "trim" ? `Estimated total${basket.length > 0 ? ` · ${basket.length + (points.length >= 2 ? 1 : 0)} part(s)` : ""}` : "Estimated total"}
+                {shapeType === "trim" ? `Estimated total${basket.length > 0 ? ` · ${orderParts().length} part(s)` : ""}` : "Estimated total"}
               </div>
               <div className="mono" style={{ color: "#fff", fontSize: 22, fontWeight: 600 }}>{shapeType === "panel" && coilOverMax ? coilGateText : money(combinedEstimate)}</div>
             </div>
@@ -7249,7 +7912,7 @@ export default function ShopOrderApp() {
                                     {o.type === "metal"
                                       ? `Flat ${o.flatWidth}" × ${(o.flatLength / 12).toFixed(1)}' + Coil ${o.coilWidth}" × ${(o.coilLength / 12).toFixed(0)}'`
                                       : o.type === "part3d"
-                                      ? `${PART3D_LABELS[o.partType] || o.partType}${o.capStyle ? ` (${CAP_STYLE_LABELS[o.capStyle] || o.capStyle})` : ""} — ${o.partW}"W × ${o.partD}"D × ${o.partH}"H${o.partType === "chimney" ? ` (cap ${o.partCapH}")` : ""}`
+                                      ? `${PART3D_LABELS[o.partType] || o.partType}${o.capStyle ? ` (${CAP_STYLE_LABELS[o.capStyle] || o.capStyle})` : ""} — ${o.partW}"W × ${o.partD}"D${o.partType === "chimney" ? ` · ${o.partShelf ?? 3}" shelf, ${o.partLeg ?? 3}" leg, ${o.partPostH ?? 6}" posts, ${o.partCapH}" rise, ${o.partOverhang ?? 2}" overhang, ${o.capRibs === false ? "smooth" : "standing seam ribs"}` : ` × ${o.partH}"H`}`
                                       : `Trim profile — ${o.lengthPerPiece} ft/pc`} · Qty {o.quantity}
                                   </>
                                 )}

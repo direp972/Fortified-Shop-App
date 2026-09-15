@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Confirm your email — RoofCoil.com</title>
+<link rel="icon" type="image/svg+xml" href="/trim-app-icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&family=Inter:wght@400;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; min-height: 100%; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: linear-gradient(180deg, #0B1E2C, #0F3D5C); color: #0A2B41; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; box-sizing: border-box; }
+  .card { background: #fff; border-radius: 16px; max-width: 430px; width: 100%; padding: 30px 28px; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+  .kicker { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: #8A94A6; margin: 0 0 10px; }
+  h1 { font-family: 'Oswald', sans-serif; font-size: 24px; margin: 0 0 8px; text-transform: uppercase; font-weight: 700; }
+  p { font-size: 14px; line-height: 1.55; color: #4E6273; margin: 0 0 18px; }
+  .btn { display: block; width: 100%; box-sizing: border-box; border: none; border-radius: 10px; background: #D4AF37; color: #0B1E2C; font-weight: 700; font-size: 15px; padding: 13px; cursor: pointer; font-family: inherit; text-align: center; text-decoration: none; }
+  .btn[disabled] { opacity: .7; cursor: default; }
+  .btn.alt { background: #0F3D5C; color: #fff; }
+  .err { color: #B3261E; background: #FDECEA; border-radius: 8px; padding: 9px 13px; font-size: 12.5px; margin: 0 0 14px; display: none; }
+  .foot { text-align: center; margin-top: 16px; font-size: 11px; color: #98A2AC; }
+  .foot a { color: #0F3D5C; font-weight: 700; text-decoration: none; }
+</style>
+</head>
+<body>
+<main class="card">
+  <p class="kicker" id="kicker">RoofCoil.com</p>
+  <h1 id="title">Confirm your email</h1>
+  <p id="sub">One click and your account is ready. You'll be signed in and sent straight back to where you started.</p>
+  <div class="err" id="err" role="alert"></div>
+  <button class="btn" id="go" type="button">Confirm my email</button>
+  <p class="foot" id="foot"></p>
+</main>
+<script>
+// The confirmation email links here instead of straight to Supabase's /verify URL, because
+// mail scanners (Outlook Safe Links and friends) open every link before the person does and
+// would burn the one-time code, leaving the real click with "link is invalid or has expired".
+// Nothing happens until the button is pressed: then the code is exchanged for a session and
+// the person is sent on to the page they signed up from with the session in the URL hash,
+// which is exactly what Supabase's own redirect does and what every page here already handles.
+(function () {
+  var SUPA = "https://znueitseoqijhkkvdomc.supabase.co";
+  var KEY = "sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
+  var HOSTS = ["roofcoil.com", "www.roofcoil.com", "shop.roofcoil.com", "fortifiedmetals.com", "www.fortifiedmetals.com", "localhost"];
+  var PHONE = "972-944-7963";
+  var HOME = "https://www.roofcoil.com/";
+
+  var q = new URLSearchParams(location.search);
+  var tokenHash = q.get("token_hash") || "";
+  var type = q.get("type") || "signup";
+  var next = safeNext(q.get("next"));
+  var onFortified = /fortifiedmetals\.com/.test(next);
+  var brand = onFortified ? "Fortified Metals" : "RoofCoil.com";
+
+  var $ = function (id) { return document.getElementById(id); };
+  $("kicker").textContent = brand + " · One account, every tool";
+  document.title = "Confirm your email — " + brand;
+  if (onFortified) $("foot").innerHTML = 'Powered by <a href="https://www.roofcoil.com">RoofCoil.com</a>';
+
+  // Only an https page on one of our own hosts, never this page itself; otherwise the home page.
+  function safeNext(raw) {
+    try {
+      if (!raw) return HOME;
+      var u = new URL(raw, location.href);
+      var local = u.protocol === "http:" && u.hostname === "localhost";
+      if ((u.protocol === "https:" || local) && HOSTS.indexOf(u.hostname) !== -1 && !/\/confirm\.html$/i.test(u.pathname)) { u.hash = ""; return u.toString(); }
+    } catch (e) {}
+    return HOME;
+  }
+  function showErr(m) { var e = $("err"); e.textContent = m; e.style.display = "block"; }
+  // The #signin marker makes auth.js open the sign-in box on arrival.
+  function offerSignIn(label) {
+    var a = document.createElement("a");
+    a.className = "btn alt"; a.href = next + "#signin"; a.textContent = label || "Go to sign in";
+    var old = $("go"); old.parentNode.replaceChild(a, old); a.id = "go";
+  }
+  function done(title, sub) { $("title").textContent = title; $("sub").textContent = sub; }
+
+  if (!tokenHash) {
+    done("This link is incomplete", "Open the link from your email again, or sign in with your email and password. If your account isn't confirmed yet, you'll get a button to send a fresh link.");
+    offerSignIn();
+    return;
+  }
+
+  $("go").onclick = async function () {
+    var btn = this;
+    btn.disabled = true; btn.textContent = "Confirming…";
+    $("err").style.display = "none";
+    var r, j;
+    try {
+      r = await fetch(SUPA + "/auth/v1/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: KEY },
+        body: JSON.stringify({ type: type, token_hash: tokenHash }),
+      });
+      j = await r.json();
+    } catch (e) {
+      btn.disabled = false; btn.textContent = "Confirm my email";
+      showErr("Couldn't reach the server — check your connection and try again.");
+      return;
+    }
+    if (!r.ok || !j.access_token || !j.refresh_token) {
+      var code = j.error_code || j.code || "";
+      var msg = j.msg || j.error_description || j.message || "";
+      if (code === "otp_expired" || /expired|invalid/i.test(msg)) {
+        done("This link has expired or was already used", "If you already confirmed, just sign in with your email and password. If not, sign in and you'll get a button to send a fresh link. Questions? Call " + PHONE + ".");
+      } else {
+        done("Something went wrong", msg || "Please try again in a minute, or call " + PHONE + ".");
+      }
+      offerSignIn();
+      return;
+    }
+    // Same shape as Supabase's own redirect: the landing page's script turns it into a session.
+    var hash = "#access_token=" + encodeURIComponent(j.access_token) +
+      "&expires_in=" + encodeURIComponent(j.expires_in || 3600) +
+      (j.expires_at ? "&expires_at=" + encodeURIComponent(j.expires_at) : "") +
+      "&refresh_token=" + encodeURIComponent(j.refresh_token) +
+      "&token_type=" + encodeURIComponent(j.token_type || "bearer") +
+      "&type=" + encodeURIComponent(type);
+    btn.textContent = "Signed in — one moment…";
+    location.replace(next + hash);
+  };
+})();
+</script>
+</body>
+</html>

@@ -17,13 +17,18 @@ const GoogleG = () => (
 );
 
 export default function AuthGate({ children }) {
-  const { user, loading, signUp, signIn, signInWithGoogle } = useAuth();
+  const { user, loading, signUp, signIn, signInWithGoogle, resendConfirmation } = useAuth();
   const [mode, setMode] = useState("signin"); // "signin" | "signup"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [error, setError] = useState("");
+  // A sign-in that hit "not confirmed": the exact email and password it used, so the
+  // "Send a new link" button asks for that account even if the fields change afterwards.
+  const [pending, setPending] = useState(null);
+  const needsResend = !!pending;
+  const setNeedsResend = (on) => setPending(on ? { email, password } : null);
   const [submitting, setSubmitting] = useState(false);
   const [signupDone, setSignupDone] = useState(false);
 
@@ -52,21 +57,37 @@ export default function AuthGate({ children }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setNeedsResend(false);
     setSubmitting(true);
     try {
       if (mode === "signup") {
         if (phone.replace(/\D/g, "").length < 10) { setError("A phone number is required so the shop can reach you about orders."); return; }
         const { data, error } = await signUp(email, password, name, phone);
         if (error) { setError(error.message); return; }
-        // A session back means the account is live and the gate opens on its own;
-        // the "check your email" screen is only for the confirmation-email fallback.
+        // The confirmation link in the email finishes the sign-in, so the gate shows
+        // "check your email" unless a session came back (the gate then opens on its own).
         if (!data || !data.session) setSignupDone(true);
       } else {
         const { error } = await signIn(email, password);
-        if (error) { setError(error.message); return; }
+        if (error) { setError(error.message); setNeedsResend(!!error.notConfirmed); return; }
       }
     } catch (e) {
       setError("Couldn't reach the server — check your connection and try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (!pending) return;
+    setSubmitting(true);
+    try {
+      const { error } = await resendConfirmation(pending.email, pending.password);
+      if (error) { setError(error.message); return; }
+      setError("");
+      setEmail(pending.email);
+      setPending(null);
+      setSignupDone(true);
     } finally {
       setSubmitting(false);
     }
@@ -86,7 +107,7 @@ export default function AuthGate({ children }) {
         <div style={{ maxWidth: 380, textAlign: "center", background: "#fff", borderRadius: 16, padding: 28, boxShadow: "0 30px 80px rgba(0,0,0,0.5)" }}>
           <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 10, color: INK }}>Check your email</div>
           <div style={{ fontSize: 13.5, color: "#555", lineHeight: 1.5 }}>
-            We sent a confirmation link to <strong>{email}</strong>. Click it, then come back and sign in.
+            We sent an email to <strong>{email}</strong>. If you're new, it has a link that confirms your account and signs you in right here. If you already have an account, it tells you how to sign in. Check your spam folder if it doesn't show up in a minute.
           </div>
           <button onClick={() => { setSignupDone(false); setMode("signin"); }}
             style={{ marginTop: 18, width: "100%", padding: "10px", borderRadius: 8, border: `1px solid ${INK}`, background: "transparent", color: INK, fontWeight: 600, cursor: "pointer" }}>
@@ -129,16 +150,26 @@ export default function AuthGate({ children }) {
         )}
         <label style={{ display: "block", fontSize: 12, color: "#555", marginBottom: 12 }}>
           Email
-          <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required
+          <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setPending(null); }} required
             style={{ width: "100%", padding: 10, marginTop: 4, border: "1px solid #ddd", borderRadius: 7, fontSize: 14, boxSizing: "border-box" }} />
         </label>
         <label style={{ display: "block", fontSize: 12, color: "#555", marginBottom: 16 }}>
           Password
-          <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6}
+          <input type="password" value={password} onChange={(e) => { setPassword(e.target.value); setPending(null); }} required minLength={6}
             style={{ width: "100%", padding: 10, marginTop: 4, border: "1px solid #ddd", borderRadius: 7, fontSize: 14, boxSizing: "border-box" }} />
         </label>
 
-        {error && <div style={{ fontSize: 12.5, color: "#B3261E", marginBottom: 14, background: "#FDECEA", padding: 8, borderRadius: 6 }}>{error}</div>}
+        {error && (
+          <div role="alert" style={{ fontSize: 12.5, color: "#B3261E", marginBottom: 14, background: "#FDECEA", padding: 8, borderRadius: 6 }}>
+            {error}
+            {needsResend && (
+              <button type="button" onClick={handleResend} disabled={submitting}
+                style={{ display: "block", marginTop: 8, border: "none", borderRadius: 6, background: "#0F3D5C", color: "#fff", fontWeight: 700, fontSize: 12.5, padding: "7px 11px", cursor: submitting ? "default" : "pointer" }}>
+                {submitting ? "Sending…" : "Send a new link"}
+              </button>
+            )}
+          </div>
+        )}
 
         <button type="submit" disabled={submitting}
           style={{ width: "100%", padding: "12px", borderRadius: 8, border: "none", background: SAFETY, color: "#fff", fontWeight: 700, fontSize: 14, cursor: submitting ? "default" : "pointer", opacity: submitting ? 0.7 : 1 }}>
