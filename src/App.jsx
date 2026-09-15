@@ -522,7 +522,7 @@ const COLORS_BY_BRAND = {
 };
 
 
-/* ------------------------- Residential Standing Seam (the roof kit) ------------------------- */
+/* --------------------------------- Residential Kit --------------------------------- */
 // The standard trim set for a 24 ga standing seam roof, drawn to the roof's pitch and the
 // panel's seam height. Every entry is a real profile the drawing tool can open and edit:
 // points in inches, y grows downward, drawn with the leg that sits on the panel (or the
@@ -563,7 +563,7 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
       where: "Bottom edge of the roof — deck flange under the panels, face down the fascia, kicked out 45° at the bottom to throw the water clear, and hemmed. The panels hook an Offset Cleat over the flange; tick it in place of the D-Style Drip Edge below when the job runs a cleat.",
       points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 2), kitPt(3 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "left" },
     { id: "dstyle", name: "D-Style Drip Edge", dims: '3¾" × 2" · 1¼" lip hemmed flat · ½" 45° kick', per: "eave", on: true,
-      where: "The eave the box starts with — for panels that hook the trim itself (the T-style): 2½\" on the deck, then a 1¼\" lip past the fascia, hemmed flat back under, that the panel's hemmed edge hooks and squeezes shut on: no cleat. Face down the fascia, kicked at the bottom with a closed hem.",
+      where: "The eave the kit starts with — for panels that hook the trim itself (the T-style): 2½\" on the deck, then a 1¼\" lip past the fascia, hemmed flat back under, that the panel's hemmed edge hooks and squeezes shut on: no cleat. Face down the fascia, kicked at the bottom with a closed hem.",
       points: [kitPt(0, 0), kitPt(3.75, 0), kitFold(2.5, 0, "left"), kitPt(2.5, 2), kitPt(2.5 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
     { id: "apron", name: "Gutter Apron", dims: '4½" × 2" · 15° kick', per: "eave with gutters", on: false,
       where: "Eave trim for gutter runs — a longer deck flange and a face kicked out over the gutter's back.",
@@ -611,7 +611,7 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
 }
 const ROOF_KIT_DEFAULT_SEL = Object.fromEntries(buildRoofKit().map((it) => [it.id, it.on ? 1 : 0]));
 
-/* ---------------------------------- Commercial in a Box ---------------------------------- */
+/* ---------------------------------- Commercial Kit ---------------------------------- */
 // The sheet metal for a low-slope commercial roof: coping over the parapets — face-fastened, or
 // hooked on one or two continuous cleats — the cleat itself, the edge metal for the open edges
 // (gravel stop, drip edge, snap-on fascia and the hook strip they hang on, drawn to the fascia
@@ -677,7 +677,7 @@ function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4"
       where: `The edge of a low-slope roof with no parapet and no gutter — the 4\" flange on the deck is stripped into the membrane, the cant stands up ¾\" to hold the gravel and the water back from the edge, steps ¾\" out to the edge of the nailer, and the face drops over it to a ${kickWord} that hooks the Hook Strip: no fastener through the face, the cleated edge the ES-1 systems are built on. Where the spec or the inspector calls for a tested ES-1 edge, that edge comes from a certified shop. One Hook Strip per length, set ¾\" proud of the nailer, up inside the cant.`,
       points: [kitPt(TOP + GS_FLANGE, 0), kitPt(TOP, 0), kitPt(TOP, -CANT), kitPt(0, -CANT), ...edgeEnd(F - CANT)], hemStart: "none", hemEnd: edgeHem, paintSide: "left" },
     { id: "dripedge", name: es("Drip Edge — Membrane Roof"), dims: `3" roof flange · ${inWord(F)} face · ${edgeDrip}`, per: "roof edge", on: false,
-      where: `The same edge where the roof drains over it, into a gutter or clear of the wall, so no cant — a 3\" flange flat on the deck, stripped into the membrane, the face down the nailer to a ${kickWord} that hooks the Hook Strip set flush with the nailer top. Not the Eave or the D-Style Drip Edge of the standing seam box: no panel hooks this one, it hangs on the Hook Strip and nothing else. One Hook Strip per length.`,
+      where: `The same edge where the roof drains over it, into a gutter or clear of the wall, so no cant — a 3\" flange flat on the deck, stripped into the membrane, the face down the nailer to a ${kickWord} that hooks the Hook Strip set flush with the nailer top. Not the Eave or the D-Style Drip Edge of the Residential Kit: no panel hooks this one, it hangs on the Hook Strip and nothing else. One Hook Strip per length.`,
       points: [kitPt(DE_FLANGE, 0), kitPt(0, 0), ...edgeEnd(F)], hemStart: "none", hemEnd: edgeHem, paintSide: "left" },
     { id: "snapfascia", name: es("Snap-On Fascia"), dims: `2⅜" top return · ${inWord(F)} face · ${edgeDrip}`, per: "roof edge", on: false,
       where: `The two-piece edge on a single-ply roof, put on last — the membrane is terminated over the nailer and the Hook Strip screwed flush with its top; the cover's 2⅜\" return lies on the nailer over the termination, the face drops over the strip, and the ${kickWord} snaps under the strip's lip. Nothing stripped in, no fastener showing, and it comes off without touching the roof. One Hook Strip per length. For a canted nailer, open it on the canvas and tilt the return to the bevel. When the spec names an anchor-bar system, the bar comes from that maker and only the cover is bent.`,
@@ -718,9 +718,9 @@ const TRIM_PRESETS = {
 const presetFolds = (name) => { const it = KIT_BY_ID[KIT_PRESETS[name]]; return it ? { hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide } : null; };
 // The two boxes: what each is called, which ?view= opens it from the site, and its colours.
 const BOX_KINDS = {
-  res: { label: "Residential Standing Seam", view: "box", accent: "#A0602E", accentLight: "#B8703A", icon: Package,
+  res: { label: "Residential Kit", view: "box", accent: "#A0602E", accentLight: "#B8703A", icon: Package,
     blurb: "The standard trims for a 24 ga standing seam roof, drawn to your pitch — add them all at once" },
-  com: { label: "Commercial in a Box", view: "commercial", accent: "#4F5D6B", accentLight: "#61707F", icon: Building2,
+  com: { label: "Commercial Kit", view: "commercial", accent: "#4F5D6B", accentLight: "#61707F", icon: Building2,
     blurb: "Coping, edge metal, counter flashing, box gutters and downspouts for a low-slope roof" },
 };
 
@@ -3660,23 +3660,23 @@ export default function ShopOrderApp() {
   const [editingId, setEditingId] = useState(null); // the part from the list that is back on the canvas to be changed
   const editSnapshot = useRef(null); // what the canvas and form held before a part was tapped — put back when the edit ends
   const canvasTopRef = useRef(null);
-  // The boxes — Residential Standing Seam (the 24 ga trim set, drawn to pitch) and Commercial in a
+  // The kits — Residential (the 24 ga trim set, drawn to pitch) and Commercial in a
   // Box (coping, cleats, counter flashing, gutters and downspouts, drawn to their sizes)
   const [roofBoxOpen, setRoofBoxOpen] = useState(false);
-  const [roofBoxKind, setRoofBoxKind] = useState("res"); // which box is up — "res" or "com" (BOX_KINDS)
-  const [comWall, setComWall] = useState(12);            // Commercial in a Box: the parapet's width across the top
+  const [roofBoxKind, setRoofBoxKind] = useState("res"); // which kit is up — "res" or "com" (BOX_KINDS)
+  const [comWall, setComWall] = useState(12);            // Commercial Kit: the parapet's width across the top
   const [comGutter, setComGutter] = useState(6);         //   the box gutter's size
   const [comDownspout, setComDownspout] = useState("4×4"); // the downspout's size
   const [comFascia, setComFascia] = useState(5.5);        //   the edge metal's face height
   const [comAtas, setComAtas] = useState(false);          //   the covers' drip to the ATAS spec (¾" kick, 1" hem)
   const [comEs1, setComEs1] = useState(false);            //   the job calls for ES-1 tested edge metal
-  const [box3dReturn, setBox3dReturn] = useState(false); // the 3D tool was reached from Commercial in a Box — it offers the way back
+  const [box3dReturn, setBox3dReturn] = useState(false); // the 3D tool was reached from the Commercial Kit — it offers the way back
   const [roofBoxPitch, setRoofBoxPitch] = useState(4);
   const [roofBoxSeam, setRoofBoxSeam] = useState(1.5);
   const [roofBoxLower, setRoofBoxLower] = useState(3);
   const [roofBoxSel, setRoofBoxSel] = useState({}); // id -> qty (0 = not in the box)
   const [roofBoxRowPitch, setRoofBoxRowPitch] = useState({}); // id -> the pitch that one piece is bent to, when it differs from the roof's
-  const [boxNote, setBoxNote] = useState(""); // one line the box shows after a round trip — "Added Ridge Cap ×4 — pick the next piece."
+  const [boxNote, setBoxNote] = useState(""); // one line the kit shows after a round trip — "Added Ridge Cap ×4 — pick the next piece."
   const [boxStripAll, setBoxStripAll] = useState(false); // the "In the order now" strip shows eight parts until asked for all
   const [boxReturn, setBoxReturn] = useState(null); // the kit id of the box piece on the canvas, or "edit" for a part opened from the box's list — the box comes back when that work is done
   const [boxReturnKind, setBoxReturnKind] = useState("res"); // …and which box that was, so it is the one that comes back
@@ -3693,8 +3693,8 @@ export default function ShopOrderApp() {
   //   ?view=color  the Color Lab button opens straight to Pick Your Finish
   //   ?view=trim   "Trim drawing" on roofcoil.com/members.html opens the drawing tool
   //   ?view=panel  "Panel orders" opens the panel calculator
-  //   ?view=box    "Open Residential Standing Seam" on sheet-metal-trim.html opens that box
-  //   ?view=commercial  "Open Commercial in a Box" opens the other one
+  //   ?view=box    "Open the Residential Kit" on sheet-metal-trim.html opens that kit
+  //   ?view=commercial  "Open the Commercial Kit" opens the other one
   //   ?view=metal  raw coil and flat sheet;  ?view=part3d  collector boxes, scuppers, caps
   //   ?view=type   the "What do you need?" chooser, for a member who hasn't decided yet
   // members.html embeds this app in an iframe with one of these, then switches tools
@@ -4681,7 +4681,7 @@ export default function ShopOrderApp() {
   };
   const cancelEdit = () => { restoreCanvas(); setToast("Left as it was."); setTimeout(() => setToast(""), 2000); };
 
-  /* ---------- The boxes: Residential Standing Seam and Commercial in a Box ---------- */
+  /* ---------- The kits: Residential and Commercial ---------- */
   const boxKind = BOX_KINDS[roofBoxKind];
   const boxNoun = roofBoxKind === "com" ? "part" : "trim"; // what the box calls its rows — a gutter is not a trim
   // The roof kit: every piece at the roof's pitch, carrying the pitch it was bent to — except a piece
@@ -4765,14 +4765,14 @@ export default function ShopOrderApp() {
     setViewResetKey((k) => k + 1); setRoofBoxOpen(false);
     setToast(`${it.name} is on the canvas — adjust any leg, then Add Part to Order.${replaced ? ` It took the place of the ${replaced} that was there.` : ""}`); setTimeout(() => setToast(""), 4000);
   };
-  // A scupper or a collector box is built in the 3D tool, not drawn — its row in Commercial in a Box
+  // A scupper or a collector box is built in the 3D tool, not drawn — its row in the Commercial Kit
   // takes the roofer there with that part up, and the tool shows the way back. The trims in the
   // list stay as they are; the 3D part is sent as its own part, the way the 3D tool always has.
   const openBox3dPart = (it) => {
     if (editingId) restoreCanvas(); // a part being changed goes back in its place first
     setRoofBoxOpen(false); setBox3dReturn(true);
     setPartType(it.tool3d); setShapeType("part3d"); setOrderStep("details");
-    setToast(`${it.name} — size it in the 3D tool and send it as its own part. The parts in your list stay; sending brings you back to Commercial in a Box for the rest.`); setTimeout(() => setToast(""), 5000);
+    setToast(`${it.name} — size it in the 3D tool and send it as its own part. The parts in your list stay; sending brings you back to the Commercial Kit for the rest.`); setTimeout(() => setToast(""), 5000);
   };
 
   // Screws only sell in lots of 100 — the qty spinner steps by the lot size and any
@@ -4945,7 +4945,7 @@ export default function ShopOrderApp() {
     setSubmitting(false);
     if (!saved) return; // insertOrders already said so — keep the form so they can retry
     setToast(`Order sent — estimate ${money(order.price)}. The shop will confirm final pricing.`);
-    if (box3dReturn) { // reached from Commercial in a Box: the trim order is still being built, so back to it — name, phone and notes kept
+    if (box3dReturn) { // reached from the Commercial Kit: the trim order is still being built, so back to it — name, phone and notes kept
       setBox3dReturn(false); setBoxNote(`${PART3D_LABELS[partType]} sent as its own order — pick the next piece.`); openRoofBox("com");
     } else resetForm();
     setTimeout(() => setToast(""), 5000);
@@ -5813,7 +5813,7 @@ export default function ShopOrderApp() {
             ) : shapeType === "part3d" ? (
               <>
                 {box3dReturn && (
-                  <button type="button" onClick={() => { setBox3dReturn(false); openRoofBox("com"); }} data-testid="box-3d-back" title="Back to Commercial in a Box — your parts are still in the list"
+                  <button type="button" onClick={() => { setBox3dReturn(false); openRoofBox("com"); }} data-testid="box-3d-back" title="Back to the Commercial Kit — your parts are still in the list"
                     style={{
                       padding: "5px 11px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer", marginBottom: 8,
                       border: `1px solid ${BOX_KINDS.com.accent}`, background: `linear-gradient(180deg, ${BOX_KINDS.com.accentLight}, ${BOX_KINDS.com.accent})`, color: "#fff", display: "inline-flex", alignItems: "center", gap: 5,
