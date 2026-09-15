@@ -1940,35 +1940,57 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     padding: "6px 9px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", color: "#fff",
     border: `1px solid ${active ? SAFETY : "rgba(255,255,255,0.25)"}`, background: active ? "rgba(212,175,55,0.22)" : "rgba(255,255,255,0.06)", ...extra,
   });
+  // A toolbar key is a small blank: squared and mitered, lit from above by a bend line,
+  // hemmed along the bottom. It presses down; nothing here floats.
   const darkBtn = (extra = {}) => ({
-    height: 34, padding: "0 9px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: INK, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", ...extra,
+    height: 36, padding: "0 11px", borderRadius: 0, clipPath: "polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)",
+    border: "none", background: INK, color: "#fff", fontSize: 11, fontWeight: 700, letterSpacing: ".02em", cursor: "pointer",
+    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.18), inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -2px 0 rgba(0,0,0,0.35)",
+    transition: "background-color 60ms linear, box-shadow 60ms linear", ...extra,
   });
 
   return (
     <div style={{ position: "relative", userSelect: "none", WebkitUserSelect: "none", MozUserSelect: "none" }}>
       {/* Tools live above the drawing, not on top of it, so nothing sits over the profile. */}
       <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 5 }}>
-        <div style={{ display: "flex", borderRadius: 6, overflow: "hidden", border: "1px solid rgba(255,255,255,0.18)" }}>
+        <div style={{ display: "flex", borderRadius: 0, overflow: "hidden",
+          clipPath: "polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px)",
+          boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.20)" }}>
           {[["draw", "Draw"], ["select", "Select"], ["folds", "Folds"]].map(([id, label]) => (
             <button key={id} type="button" data-testid={`mode-${id}`}
               onClick={() => { setMode(id); setSelectedIdx(null); modeBeforeFold.current = null; setPendingFold(null); if (id === "draw") setZoom(1); if (editor?.kind === "fold" && id !== "folds") setEditor(null); }}
-              style={{ padding: "5px 10px", fontSize: 10.5, fontWeight: 700, border: "none", cursor: "pointer",
-                background: mode === id ? SAFETY : INK, color: "#fff" }}>
+              className="tb-btn"
+              style={{ height: 32, padding: "0 12px", fontSize: 10.5, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase",
+                border: "none", borderRadius: 0, cursor: "pointer",
+                background: mode === id ? SAFETY : INK,
+                color: mode === id ? INK_DEEP : "#C9D8E2",
+                boxShadow: mode === id
+                  ? "inset 0 2px 4px rgba(10,43,65,0.30)"
+                  : "inset 0 1px 0 rgba(255,255,255,0.10), inset -1px 0 0 rgba(255,255,255,0.12)",
+                transition: "background-color 60ms linear, color 60ms linear, box-shadow 60ms linear" }}>
               {label}
             </button>
           ))}
         </div>
         <span style={{ flex: 1 }} />
         <button type="button" aria-label="Zoom in" onClick={() => setZoom((z) => Math.max(0.35, +(z - 0.2).toFixed(2)))}
-          style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: INK, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>
+          className="tb-btn"
+          style={{ width: 30, height: 30, borderRadius: 0, clipPath: "polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)", border: "none", background: INK, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1,
+            boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.18), inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.32)" }}>
           +
         </button>
         <button type="button" aria-label="Zoom out" onClick={() => setZoom((z) => Math.min(3, +(z + 0.2).toFixed(2)))}
-          style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: INK, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>
+          className="tb-btn"
+          style={{ width: 30, height: 30, borderRadius: 0, clipPath: "polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)", border: "none", background: INK, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1,
+            boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.18), inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.32)" }}>
           −
         </button>
         <button type="button" aria-label="Canvas settings" onClick={() => setShowSettings((s) => !s)}
-          style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${showSettings ? SAFETY : "rgba(255,255,255,0.18)"}`, background: INK, color: "#fff", fontSize: 12, cursor: "pointer", lineHeight: 1 }}>
+          className="tb-btn"
+          style={{ width: 30, height: 30, borderRadius: 0, clipPath: "polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)", border: "none", background: INK, color: "#fff", fontSize: 12, cursor: "pointer", lineHeight: 1,
+            boxShadow: showSettings
+              ? `inset 0 0 0 1px ${SAFETY}, inset 0 2px 4px rgba(10,43,65,0.35)`
+              : "inset 0 0 0 1px rgba(255,255,255,0.18), inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.32)" }}>
           ⚙
         </button>
       </div>
@@ -4713,23 +4735,33 @@ export default function ShopOrderApp() {
         .mono { font-family: 'IBM Plex Mono', monospace; }
         input[type=number]::-webkit-inner-spin-button { opacity: 1; }
         select { -webkit-appearance: none; appearance: none; }
+        /* Press feedback is a die closing, not a spring: the key goes DOWN 1px, its
+           bend line goes out and the face takes an inset shadow. Linear timing — a
+           press has no bounce in it. Nothing scales and nothing floats. */
         .mac-btn {
-          transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease, filter 0.15s ease;
+          transition: background-color 60ms linear, box-shadow 60ms linear, filter 60ms linear;
         }
         .mac-btn:hover {
-          transform: scale(1.08) translateY(-1px);
-          filter: brightness(1.04);
+          filter: brightness(1.06);
+          box-shadow: inset 0 0 0 1px rgba(212,175,55,0.55);
         }
         .mac-btn:active {
-          transform: scale(0.97);
+          transform: translateY(1px);
+          box-shadow: inset 0 0 0 1px rgba(212,175,55,0.55), inset 0 2px 3px rgba(10,43,65,0.35);
         }
-        /* Bouncy press feedback for everyday buttons — a snappier, more playful tap than a flat click. */
+        .tb-btn { transition: background-color 60ms linear, box-shadow 60ms linear, filter 60ms linear; }
+        .tb-btn:hover { filter: brightness(1.14); }
+        .tb-btn:active { transform: translateY(1px); filter: brightness(0.94); }
         .tap-bounce {
-          transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.12s ease;
+          transition: transform 50ms linear, box-shadow 50ms linear, filter 50ms linear;
         }
         .tap-bounce:active {
-          transform: scale(0.93);
-          filter: brightness(0.97);
+          transform: translateY(1px);
+          box-shadow: inset 0 2px 3px rgba(10,43,65,0.32);
+          filter: brightness(0.96);
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .mac-btn:active, .tap-bounce:active, .tb-btn:active { transform: none; }
         }
         @keyframes popIn {
           0% { transform: scale(0.7); opacity: 0; }

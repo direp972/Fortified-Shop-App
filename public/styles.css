@@ -4,7 +4,16 @@
 --disp:'Oswald',sans-serif;--body:'Inter',sans-serif;--mono:'IBM Plex Mono',monospace;
 --gut:clamp(18px,4vw,56px);--r:16px;--r-sm:10px;
 --shadow-1:0 1px 2px rgba(10,43,65,.06),0 4px 14px rgba(10,43,65,.07);
---shadow-2:0 2px 4px rgba(10,43,65,.08),0 14px 40px rgba(10,43,65,.16)}
+--shadow-2:0 2px 4px rgba(10,43,65,.08),0 14px 40px rgba(10,43,65,.16);
+/* Sheared-blank geometry: two diagonally opposite corners mitered, so a control has a
+   grain direction instead of reading as a capsule. --chf sets the cut depth per control. */
+--chf:10px;
+--shear:polygon(var(--chf) 0,100% 0,100% calc(100% - var(--chf)),calc(100% - var(--chf)) 100%,0 100%,0 var(--chf));
+--tag:polygon(9px 0,100% 0,100% 100%,9px 100%,0 50%);
+/* Depth is painted into the piece: a bend line under the top edge, a hem at the bottom. */
+--bend:rgba(255,255,255,.62);--hem:rgba(10,43,65,.38);--hem-h:3px;
+--tick:rgba(207,224,236,.45);--scribe:#0B1E2C;--gold-edge:#A8862A;
+--blank:#BFC6CF;--blank-edge:#9AA4B0;--blank-ink:#414E5C;--press:60ms}
 *{box-sizing:border-box}
 html{scroll-behavior:smooth}
 body{margin:0;background:var(--paper);color:var(--ink-deep);font-family:var(--body);font-size:16px;line-height:1.55;-webkit-font-smoothing:antialiased}
@@ -14,14 +23,42 @@ a{color:inherit}
 .wrap{max-width:1220px;margin:0 auto;padding-inline:var(--gut)}
 .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--steel);display:flex;align-items:center;gap:10px;margin:0 0 14px}
 .eyebrow::before{content:"";width:26px;height:1px;background:var(--gold);flex:none}
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;font-family:var(--disp);font-size:13px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;text-decoration:none;padding:12px 22px;border-radius:999px;border:1.5px solid var(--gold);background:linear-gradient(180deg,var(--gold-soft),var(--gold));color:var(--ink-deep);cursor:pointer;transition:transform .16s,box-shadow .16s,filter .16s}
-.btn:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(212,175,55,.4);filter:brightness(1.03)}
-.btn.ghost{background:transparent;color:var(--gold)}
-.btn.ghost:hover{background:rgba(212,175,55,.12);box-shadow:none}
-.btn.dark{border-color:rgba(15,61,92,.35);background:#fff;color:var(--ink)}
-.btn.dark:hover{background:var(--paper);box-shadow:var(--shadow-1)}
-.btn[disabled]{opacity:.45;pointer-events:none}
+/* A button is a piece cut from a sheet: flat face, a burnished bend line 1px below the
+   top edge, a hemmed bottom edge folded into shadow. No outer shadow anywhere in the
+   family — nothing floats, because metal doesn't. The press goes DOWN. */
+.btn{--chf:10px;--face:var(--gold);--face-hi:var(--gold-soft);--edge:var(--gold-edge);--txt:var(--ink-deep);
+display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:44px;padding:0 20px;
+font-family:var(--disp);font-size:13.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:600;
+text-decoration:none;color:var(--txt);cursor:pointer;border:0;border-radius:0;
+background-color:var(--face);
+background-image:linear-gradient(var(--bend),var(--bend)),linear-gradient(var(--hem),var(--hem));
+background-size:100% 1px,100% var(--hem-h);background-position:0 1px,0 100%;background-repeat:no-repeat;
+box-shadow:inset 0 0 0 1px var(--edge);clip-path:var(--shear);
+transition:background-color var(--press) linear,background-size var(--press) linear,box-shadow var(--press) linear,color var(--press) linear,transform 50ms linear}
+.btn:hover{--face:var(--face-hi);--bend:rgba(255,255,255,.9)}
+.btn:active{--bend:transparent;--hem-h:1px;transform:translateY(1px);
+box-shadow:inset 0 0 0 1px var(--edge),inset 0 2px 3px rgba(10,43,65,.35)}
+@media(max-width:680px){.btn{--chf:7px;padding:0 16px}}
+/* The secondary tier is told apart by voice, not by size: Inter sentence case, no fill. */
+.btn.ghost{--face:transparent;--edge:color-mix(in srgb,currentColor 42%,transparent);--bend:transparent;--hem:transparent;
+color:var(--gold);font-family:var(--body);font-size:14.5px;letter-spacing:0;text-transform:none}
+.btn.ghost:hover{--face:color-mix(in srgb,currentColor 13%,transparent);--edge:color-mix(in srgb,currentColor 78%,transparent);--hem:color-mix(in srgb,currentColor 55%,transparent);--hem-h:2px}
+.btn.ghost:active{--face:color-mix(in srgb,currentColor 19%,transparent);--hem-h:1px}
+.btn.dark{--face:#fff;--face-hi:var(--paper);--edge:rgba(15,61,92,.30);--txt:var(--ink);
+--bend:rgba(15,61,92,.10);--hem:rgba(15,61,92,.26);font-family:var(--body);font-size:14.5px;letter-spacing:0;text-transform:none}
+.btn.dark:hover{--face:var(--face-hi);--edge:rgba(15,61,92,.55)}
+/* Disabled is mill stock: scribed but not cut yet, and still readable at 4.9:1. */
+.btn[disabled],.btn[aria-disabled="true"]{--face:var(--blank);--face-hi:var(--blank);--edge:var(--blank-edge);
+--txt:var(--blank-ink);--bend:transparent;--hem:transparent;opacity:1;cursor:not-allowed}
+.btn[disabled]:active,.btn[aria-disabled="true"]:active{transform:none;box-shadow:inset 0 0 0 1px var(--edge)}
+a.btn[disabled],a.btn[aria-disabled="true"]{pointer-events:none}
 :focus-visible{outline:2.5px solid var(--gold);outline-offset:3px}
+/* clip-path clips outlines and outer shadows, so cut controls scribe the ring inward —
+   two-tone so it reads on a gold face as well as on navy. */
+.btn:focus-visible,.locpill:focus-visible,.nav-phone:focus-visible,.seg:focus-visible,.nav-links a:focus-visible{
+outline:none;box-shadow:inset 0 0 0 2px var(--scribe),inset 0 0 0 4px var(--gold)}
+.btn:focus-visible:active,.seg:focus-visible:active,.locpill:focus-visible:active{
+box-shadow:inset 0 0 0 2px var(--scribe),inset 0 0 0 4px var(--gold),inset 0 6px 4px -4px rgba(10,43,65,.4)}
 .seam{--c:#26262A;position:relative;overflow:hidden;background:
 linear-gradient(105deg,rgba(255,255,255,0) 38%,rgba(255,255,255,.14) 46%,rgba(255,255,255,0) 55%),
 linear-gradient(180deg,rgba(255,255,255,.22),rgba(255,255,255,.04) 34%,rgba(0,0,0,.16) 78%,rgba(0,0,0,.3)),
@@ -33,21 +70,43 @@ repeating-linear-gradient(90deg,
  color-mix(in srgb,var(--c),#000 22%) 72px 76px);
 transition:--c .3s, background .3s}
 .seam::after{content:"";position:absolute;inset:0;background:radial-gradient(120% 90% at 18% 0%,rgba(255,255,255,.16),transparent 52%)}
-header.nav{position:sticky;top:0;z-index:50;background:rgba(11,30,44,.9);backdrop-filter:blur(14px);border-bottom:1px solid rgba(212,175,55,.18)}
-.nav-in{display:flex;align-items:center;justify-content:space-between;gap:18px;padding-block:13px;max-width:1220px;margin:0 auto;padding-inline:var(--gut)}
+header.nav{position:sticky;top:0;z-index:50;background:rgba(11,30,44,.93);backdrop-filter:blur(14px) saturate(112%);border-bottom:0;
+box-shadow:inset 0 1px 0 rgba(255,255,255,.08),inset 0 -2px 0 rgba(212,175,55,.7),0 2px 0 rgba(11,30,44,.55)}
+.nav-in{display:flex;align-items:stretch;justify-content:flex-start;gap:12px;min-height:60px;padding-block:0;max-width:1220px;margin:0 auto;padding-inline:var(--gut)}
+.nav-in>*{align-self:center}
+.nav-in>.nav-links{align-self:stretch}
+.nav-in>[data-auth-slot]{min-width:0}
+.nav-in .brand{margin-right:14px}
+@media(max-width:900px){.nav-in{min-height:56px;gap:10px}.nav-in .brand{margin-right:auto}}
 .brand{display:flex;align-items:baseline;gap:10px;text-decoration:none;flex:none}
 .brand b{font-family:var(--disp);font-size:21px;color:#fff;letter-spacing:.04em;font-weight:700;text-transform:uppercase}
 .brand b i{font-style:normal;color:var(--gold)}
 .brand span{font-family:var(--mono);font-size:9.5px;color:var(--steel);letter-spacing:.13em;text-transform:uppercase}
-.nav-links{display:flex;align-items:center;gap:6px}
-.nav-links a{font-size:13px;font-weight:600;color:#CFE0EC;text-decoration:none;padding:8px 14px;border-radius:999px;transition:color .15s,background .15s;cursor:pointer}
-.nav-links a:hover{color:#fff;background:rgba(255,255,255,.08)}
-.nav-links a.on{color:var(--ink-deep);background:var(--gold)}
+/* Links are full-height cells butted together and separated by a scribe tick, like
+   marks on a tape. The current page is cleated to the bar's own gold drip edge. */
+.nav-links{display:flex;align-items:stretch;gap:0;margin-right:auto}
+.nav-links a{display:inline-flex;align-items:center;white-space:nowrap;padding:0 15px;border-radius:0;
+font-family:var(--body);font-size:13.5px;font-weight:600;letter-spacing:0;color:#BCD2E0;
+text-decoration:none;cursor:pointer;background-color:transparent;
+transition:color var(--press) linear,background-color var(--press) linear,box-shadow var(--press) linear}
+.nav-links a+a{background-image:linear-gradient(var(--tick),var(--tick));background-size:1px 16px;background-position:left center;background-repeat:no-repeat}
+.nav-links a:hover{color:#fff;background-color:rgba(255,255,255,.09);box-shadow:inset 0 -2px 0 rgba(212,175,55,.5)}
+.nav-links a:active{background-color:rgba(0,0,0,.18);box-shadow:inset 0 -2px 0 rgba(212,175,55,.5),inset 0 2px 3px rgba(0,0,0,.3)}
+.nav-links a.on{color:#fff;background-color:rgba(212,175,55,.1);box-shadow:inset 0 -3px 0 var(--gold),inset 0 1px 0 rgba(255,255,255,.1)}
 @media(max-width:900px){.nav-links{display:none}}
-.locpill{display:inline-flex;align-items:center;gap:8px;font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;color:#CFE0EC;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:8px 14px;cursor:pointer;transition:background .15s,color .15s}
-.locpill:hover{background:rgba(255,255,255,.13);color:#fff}
-.locpill .dot{width:7px;height:7px;border-radius:50%;background:var(--steel);flex:none}
-.locpill.found .dot{background:var(--patina);box-shadow:0 0 8px rgba(78,140,116,.9)}
+/* Raised means press it; recessed means read it. This is the only inverted control. */
+.locpill{--chf:7px;display:inline-flex;align-items:center;gap:9px;min-height:40px;padding:0 13px;
+font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.11em;text-transform:uppercase;
+color:#C2D4E2;background-color:rgba(255,255,255,.05);border:0;border-radius:0;cursor:pointer;
+box-shadow:inset 0 0 0 1px rgba(207,224,236,.22),inset 0 2px 3px rgba(0,0,0,.42),inset 0 -1px 0 rgba(255,255,255,.1);
+clip-path:var(--shear);transition:background-color var(--press) linear,color var(--press) linear,box-shadow var(--press) linear}
+.locpill:hover{color:#fff;background-color:rgba(255,255,255,.11);box-shadow:inset 0 0 0 1px rgba(207,224,236,.42),inset 0 2px 3px rgba(0,0,0,.42),inset 0 -1px 0 rgba(255,255,255,.14)}
+.locpill:active{background-color:rgba(0,0,0,.22);box-shadow:inset 0 0 0 1px rgba(207,224,236,.3),inset 0 3px 5px rgba(0,0,0,.55)}
+/* a center-punch mark, not a glowing bubble */
+.locpill .dot{width:7px;height:7px;border-radius:0;transform:rotate(45deg);background:var(--steel);flex:none}
+.locpill.found .dot{background:var(--patina);box-shadow:inset 1px 1px 0 rgba(255,255,255,.45)}
+.locpill.found{box-shadow:inset 0 0 0 1px rgba(78,140,116,.55),inset 0 2px 3px rgba(0,0,0,.42),inset 0 -2px 0 var(--patina)}
+@media(pointer:coarse){.locpill{min-height:44px}}
 .locpill select{background:transparent;border:none;color:inherit;font:inherit;cursor:pointer}
 .locpill select option{color:var(--ink-deep)}
 @media(max-width:640px){.locpill .lbl{display:none}}
@@ -67,9 +126,9 @@ header.nav{position:sticky;top:0;z-index:50;background:rgba(11,30,44,.9);backdro
 .lab h4{display:flex;justify-content:space-between;align-items:baseline;margin:14px 2px 10px;font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--steel)}
 .lab h4 b{color:#fff;font-weight:600;font-family:var(--disp);font-size:14px;letter-spacing:.05em}
 .lab-chips{display:flex;flex-wrap:wrap;gap:7px}
-.lab-chips button{width:30px;height:30px;border-radius:8px;border:2px solid rgba(255,255,255,.25);cursor:pointer;transition:transform .15s,border-color .15s;padding:0}
-.lab-chips button:hover{transform:scale(1.15)}
-.lab-chips button.sel{border-color:var(--gold);transform:scale(1.15);box-shadow:0 0 0 3px rgba(212,175,55,.3)}
+.lab-chips button{width:30px;height:30px;border-radius:0;border:2px solid rgba(255,255,255,.25);cursor:pointer;transition:border-color .12s linear,box-shadow .12s linear;padding:0}
+.lab-chips button:hover{transform:none;box-shadow:inset 0 0 0 2px rgba(255,255,255,.6)}
+.lab-chips button.sel{border-color:var(--gold);transform:none;box-shadow:0 0 0 2px var(--gold)}
 .dhero{position:relative;color:#fff;overflow:hidden}
 .dhero .dseam{position:absolute;inset:0}
 .dhero .scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(11,30,44,.72),rgba(11,30,44,.35) 45%,rgba(11,30,44,.82))}
@@ -83,26 +142,39 @@ h2.sec{font-family:var(--disp);font-weight:600;font-size:clamp(21px,2.8vw,30px);
 .pcard h3{font-family:var(--disp);font-size:16px;margin:0 0 3px;text-transform:uppercase;font-weight:600}
 .pcard p{margin:0;font-family:var(--mono);font-size:11px;color:#65788A;letter-spacing:.04em;line-height:1.7}
 .chips{display:grid;grid-template-columns:repeat(5,1fr);gap:9px}
-.chip{aspect-ratio:1.4;border-radius:9px;position:relative;cursor:pointer;transition:transform .18s,box-shadow .18s;border:none;padding:0;box-shadow:var(--shadow-1)}
-.chip:hover{transform:scale(1.09);z-index:3;box-shadow:var(--shadow-2)}
-.chip.sel{outline:3px solid var(--gold);outline-offset:2px}
-.chip span{position:absolute;left:0;right:0;bottom:0;padding:4px 3px;font-family:var(--mono);font-size:8px;letter-spacing:.02em;text-transform:uppercase;opacity:0;transition:opacity .15s;background:rgba(10,43,65,.9);color:#fff;text-align:center;border-radius:0 0 9px 9px}
+.chip{aspect-ratio:1.4;border-radius:0;position:relative;cursor:pointer;transition:box-shadow .12s linear;border:none;padding:0;box-shadow:var(--shadow-1)}
+.chip:hover{transform:none;z-index:3;box-shadow:var(--shadow-2),inset 0 0 0 2px rgba(255,255,255,.55)}
+.chip.sel{outline:3px solid var(--gold);outline-offset:0}
+.chip span{position:absolute;left:0;right:0;bottom:0;padding:4px 3px;font-family:var(--mono);font-size:8px;letter-spacing:.02em;text-transform:uppercase;opacity:0;transition:opacity .15s;background:rgba(10,43,65,.9);color:#fff;text-align:center;border-radius:0}
 .chip:hover span,.chip.sel span{opacity:1}
 .cfg{display:grid;grid-template-columns:1.05fr .95fr;gap:clamp(24px,4vw,52px);padding-block:clamp(34px,5vw,56px);align-items:start}
 @media(max-width:960px){.cfg{grid-template-columns:1fr}}
 .step{background:var(--card);border:1px solid rgba(15,61,92,.08);border-radius:var(--r);padding:22px 22px 24px;margin-bottom:16px;box-shadow:var(--shadow-1)}
 .step h3{font-family:var(--disp);font-size:16px;text-transform:uppercase;margin:0 0 16px;font-weight:600;display:flex;gap:10px;align-items:center}
-.step h3 .sn{font-family:var(--mono);font-size:10px;color:var(--ink-deep);letter-spacing:.05em;background:linear-gradient(180deg,var(--gold-soft),var(--gold));width:24px;height:24px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;font-weight:600}
+.step h3 .sn{font-family:var(--mono);font-size:10px;color:var(--ink-deep);letter-spacing:.05em;background:var(--gold);
+width:26px;height:26px;border-radius:0;clip-path:polygon(5px 0,100% 0,100% calc(100% - 5px),calc(100% - 5px) 100%,0 100%,0 5px);
+box-shadow:inset 0 1px 0 rgba(255,255,255,.55),inset 0 -2px 0 rgba(10,43,65,.35);
+display:inline-flex;align-items:center;justify-content:center;font-weight:600}
 .frow{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:520px){.frow{grid-template-columns:1fr}}
 .fld{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
 .fld label{font-family:var(--mono);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--steel)}
 .fld input,.fld select,.fld textarea{font-family:var(--body);font-size:14px;padding:11px 13px;border:1px solid rgba(15,61,92,.16);border-radius:var(--r-sm);background:var(--paper);color:var(--ink-deep);transition:border-color .15s,box-shadow .15s}
 .fld input:focus,.fld select:focus,.fld textarea:focus{border-color:var(--gold);box-shadow:0 0 0 3px rgba(212,175,55,.18);outline:none}
-.segs{display:flex;flex-wrap:wrap;gap:8px}
-.seg{font-family:var(--body);font-weight:600;font-size:12.5px;padding:9px 16px;border:1px solid rgba(15,61,92,.16);border-radius:999px;background:var(--paper);cursor:pointer;transition:all .15s;color:#3B4E5E}
-.seg:hover{border-color:var(--ink)}
-.seg.sel{background:var(--ink);border-color:var(--ink);color:#fff;box-shadow:0 4px 12px rgba(15,61,92,.3)}
+.segs{display:flex;flex-wrap:wrap;gap:0}
+.seg{--chf:6px;display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:0 17px;
+font-family:var(--body);font-weight:600;font-size:13px;letter-spacing:0;
+border:1px solid rgba(15,61,92,.22);border-radius:0;background:var(--card);color:#3B4E5E;cursor:pointer;
+box-shadow:inset 0 1px 0 rgba(255,255,255,.9),inset 0 -2px 0 rgba(15,61,92,.07);
+clip-path:var(--shear);transition:background-color var(--press) linear,color var(--press) linear,box-shadow var(--press) linear,border-color var(--press) linear}
+.segs .seg+.seg{margin-left:-1px}
+.segs .seg:first-child{margin-left:0}
+.seg:hover{background:#EFEDE6;border-color:rgba(15,61,92,.42);color:var(--ink-deep)}
+.seg:active{box-shadow:inset 0 2px 3px rgba(15,61,92,.22)}
+.seg.sel{position:relative;z-index:1;background:var(--ink);border-color:var(--ink-deep);color:#fff;
+box-shadow:inset 0 2px 4px rgba(0,0,0,.35),inset 0 -3px 0 var(--gold)}
+.seg.sel:hover{background:var(--ink-deep)}
+@media(pointer:coarse){.seg{min-height:44px}}
 .ticket{position:sticky;top:120px;background:var(--card);border-radius:var(--r);box-shadow:var(--shadow-2);overflow:hidden;border:1px solid rgba(15,61,92,.08)}
 .tk-vis{height:86px}
 .tk-h{padding:14px 20px 12px;border-bottom:1.5px dashed rgba(15,61,92,.2);display:flex;justify-content:space-between;align-items:baseline}
@@ -117,8 +189,8 @@ h2.sec{font-family:var(--disp);font-weight:600;font-size:clamp(21px,2.8vw,30px);
 .tk-route{margin:14px 16px 18px;padding:16px 18px;border-radius:var(--r-sm);position:relative;background:var(--paper);border:1.5px solid rgba(15,61,92,.14)}
 .tk-route.flip{border-color:var(--gold);background:linear-gradient(180deg,#FDF8E7,#FAF1D2)}
 .tk-route.pass{border-color:rgba(15,61,92,.4);background:#EFF4F8}
-.tk-route .stamp{position:absolute;top:-11px;right:14px;font-family:var(--disp);font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;padding:4px 12px;border-radius:999px;transform:rotate(-2deg);box-shadow:0 3px 10px rgba(0,0,0,.18)}
-.tk-route.flip .stamp{background:linear-gradient(180deg,var(--gold-soft),var(--gold));color:var(--ink-deep)}
+.tk-route .stamp{position:absolute;top:-11px;right:14px;font-family:var(--disp);font-size:11px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;padding:4px 12px;border-radius:0;transform:rotate(-1.5deg);box-shadow:none;border:1px solid rgba(10,43,65,.35)}
+.tk-route.flip .stamp{background:var(--gold);color:var(--ink-deep)}
 .tk-route.pass .stamp{background:var(--ink);color:#fff}
 .tk-route.wait .stamp{background:var(--steel);color:#fff}
 .tk-route h4{font-family:var(--disp);font-size:15px;text-transform:uppercase;margin:0 0 6px;font-weight:600}
@@ -132,8 +204,8 @@ table.ltab{width:100%;border-collapse:collapse;font-size:12.5px}
 .ltab th{font-family:var(--mono);font-size:9px;letter-spacing:.13em;text-transform:uppercase;color:var(--steel);text-align:left;padding:12px 14px;border-bottom:1px solid rgba(255,255,255,.12);font-weight:500}
 .ltab td{padding:11px 14px;color:#C4CFD8;border-bottom:1px solid rgba(255,255,255,.05)}
 .ltab tr:hover td{background:rgba(255,255,255,.03)}
-.pill{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:4px 10px;border-radius:999px;font-weight:600;white-space:nowrap}
-.pill.flip{background:linear-gradient(180deg,var(--gold-soft),var(--gold));color:var(--ink-deep)}
+.pill{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;padding:5px 10px;border-radius:0;font-weight:600;white-space:nowrap}
+.pill.flip{background:var(--gold);color:var(--ink-deep)}
 .pill.pass{background:rgba(143,169,188,.25);color:#BCD3E4}
 .pill.new{background:var(--patina);color:#fff}
 .confirm{max-width:680px;margin:0 auto;padding-block:clamp(48px,7vw,90px);text-align:center}
@@ -145,11 +217,17 @@ footer{background:var(--night);color:#8B98A3;padding-block:30px;font-size:13px}
 @media(prefers-reduced-motion:reduce){*{transition-duration:.001ms!important;animation-duration:.001ms!important}}
 /* nav: keep one line on laptop widths (added 2026-08-21) */
 .nav-links>a{white-space:nowrap}
-@media(max-width:1240px){.brand span{display:none}.nav-links{gap:2px}.nav-links a{padding:8px 10px}}
+@media(max-width:1240px){.brand span{display:none}.nav-links a{padding:0 11px}}
 
 /* nav phone (added 2026-08-27) */
-.nav-phone{display:inline-flex;align-items:center;font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--gold);background:rgba(212,175,55,.08);border:1px solid rgba(212,175,55,.4);border-radius:999px;padding:8px 14px;text-decoration:none;white-space:nowrap;flex:none;transition:background .15s,color .15s}
-.nav-phone:hover{background:rgba(212,175,55,.16);color:var(--gold-soft)}
+.nav-phone{display:inline-flex;align-items:center;min-height:40px;padding:0 14px 0 18px;
+font-family:var(--mono);font-size:12.5px;font-weight:500;letter-spacing:.06em;color:var(--gold);
+background-color:rgba(212,175,55,.1);border:0;border-radius:0;text-decoration:none;white-space:nowrap;flex:none;
+box-shadow:inset 0 0 0 1px rgba(212,175,55,.42);clip-path:var(--tag);
+transition:background-color var(--press) linear,color var(--press) linear,box-shadow var(--press) linear}
+.nav-phone:hover{background-color:rgba(212,175,55,.2);color:var(--gold-soft);box-shadow:inset 0 0 0 1px rgba(212,175,55,.75)}
+.nav-phone:active{background-color:rgba(212,175,55,.3)}
+@media(pointer:coarse){.nav-phone{min-height:44px}}
 @media(max-width:680px){.nav-phone{display:none}}
 
 /* slim top ribbon — the "get listed" call-to-action (added 2026-09-01) */
@@ -164,14 +242,19 @@ footer{background:var(--night);color:#8B98A3;padding-block:30px;font-size:13px}
 
 /* app tiles — the icon buttons the heroes use as doors into the apps.
    Lifted out of home.html (added 2026-09-04) so every page shares one component. */
-.apptile{display:flex;gap:16px;align-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:var(--r);padding:12px 18px;margin-bottom:10px;text-decoration:none;color:#EAF1F6;box-shadow:var(--shadow-2);transition:transform .16s,border-color .16s,background .16s}
-.apptile:hover{transform:translateY(-2px);border-color:var(--gold);background:rgba(255,255,255,.08)}
-.apptile img{flex:none;display:block;border-radius:12px}
+.apptile{display:flex;gap:16px;align-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);
+border-radius:0;clip-path:polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px);
+padding:12px 18px;margin-bottom:10px;text-decoration:none;color:#EAF1F6;box-shadow:none;
+transition:background-color var(--press) linear,border-color var(--press) linear,box-shadow var(--press) linear}
+/* a tile lights its bottom hem under the hand instead of levitating */
+.apptile:hover{transform:none;border-color:var(--gold);background:rgba(255,255,255,.1);box-shadow:inset 0 -3px 0 var(--gold)}
+.apptile img{flex:none;display:block;border-radius:0}
 .apptile-txt{display:flex;flex-direction:column;gap:2px;min-width:0}
 .apptile-txt b{font-family:var(--disp);font-size:18px;font-weight:600;text-transform:uppercase;letter-spacing:.02em;color:#fff;line-height:1.1}
 .apptile-sub{font-size:13px;color:#C7D6E2;line-height:1.45}
 .apptile-go{font-size:12.5px;font-weight:600;color:var(--gold-soft);margin-top:3px}
-.apptile-go i{font-style:normal;display:inline-block;transition:transform .16s}
+.apptile-go i{font-style:normal;display:inline-block}
+@media(prefers-reduced-motion:no-preference){.apptile-go i{transition:transform 90ms steps(2,end)}}
 .apptile:hover .apptile-go i{transform:translateX(5px)}
 .apptile:last-of-type{margin-bottom:14px}
 .apptile.cta,.apptile.cta:last-of-type{flex:1 1 250px;margin-bottom:0}
@@ -180,19 +263,29 @@ footer{background:var(--night);color:#8B98A3;padding-block:30px;font-size:13px}
 
 /* "Start an order" — the loud door into the shop apps, same shining gold as the
    ribbon with the app's own icon on it (added 2026-09-04) */
-.btn.go{padding:7px 18px 7px 8px;gap:10px;border-color:#B8942C;background:linear-gradient(100deg,#B8942C,var(--gold) 32%,var(--gold-soft) 50%,var(--gold) 68%,#B8942C);background-size:200% 100%;animation:ribshine 8s linear infinite}
-.btn.go img{width:22px;height:22px;border-radius:7px;flex:none;box-shadow:0 1px 4px rgba(10,43,65,.4)}
-.btn.go i{font-style:normal;font-weight:700;transition:transform .16s}
-.btn.go:hover i{transform:translateX(5px)}
-/* on a phone the header has no room for the badge — the pill alone still shines */
-@media(max-width:680px){.btn.go{padding:10px 16px;font-size:12px}.btn.go img,.btn.go i{display:none}}
+/* The primary CTA earns its rank with a deeper shear and a copper cleat down its
+   leading edge that widens under the hand — not with an animated gradient. */
+.btn.go{--chf:14px;--hem:rgba(10,43,65,.45);--hem-h:4px;animation:none;
+min-height:46px;padding:0 20px 0 9px;gap:11px;
+background-image:linear-gradient(var(--copper),var(--copper)),linear-gradient(var(--bend),var(--bend)),linear-gradient(var(--hem),var(--hem));
+background-size:var(--cleat,3px) 100%,100% 1px,100% var(--hem-h);
+background-position:0 0,0 1px,0 100%;background-repeat:no-repeat}
+.btn.go img{width:24px;height:24px;border-radius:0;flex:none;box-shadow:0 0 0 1px rgba(10,43,65,.35)}
+.btn.go i{font-style:normal;font-weight:700}
+.btn.go:hover{--cleat:6px}
+.btn.go:active{--cleat:2px}
+@media(prefers-reduced-motion:no-preference){.btn.go i{transition:transform 90ms steps(2,end)}.btn.go:hover i{transform:translateX(4px)}}
+@media(max-width:680px){.btn.go{--chf:9px;padding:0 16px;font-size:12.5px;min-height:44px}.btn.go img,.btn.go i{display:none}}
 
 /* "Shop apps" reads as the doorway it is, not one more nav word (added 2026-09-04) */
-.nav-links a.app{display:inline-flex;align-items:center;gap:7px;padding-left:8px;border:1px solid rgba(212,175,55,.35);background:rgba(212,175,55,.08);color:var(--gold-soft)}
-.nav-links a.app img{width:20px;height:20px;border-radius:6px;display:block;flex:none}
-.nav-links a.app:hover{background:rgba(212,175,55,.16);color:#fff}
-.nav-links a.app.on{background:var(--gold);border-color:var(--gold);color:var(--ink-deep)}
+.nav-links a.app{gap:7px;padding-left:9px;background-color:rgba(212,175,55,.09);color:var(--gold-soft);
+box-shadow:inset 1px 0 0 rgba(212,175,55,.35),inset -1px 0 0 rgba(212,175,55,.35)}
+.nav-links a.app img{width:20px;height:20px;border-radius:0;display:block;flex:none}
+.nav-links a.app:hover{background-color:rgba(212,175,55,.18);color:#fff;
+box-shadow:inset 1px 0 0 rgba(212,175,55,.5),inset -1px 0 0 rgba(212,175,55,.5),inset 0 -2px 0 var(--gold)}
+.nav-links a.app.on{background-color:rgba(212,175,55,.18);color:#fff;
+box-shadow:inset 1px 0 0 rgba(212,175,55,.5),inset -1px 0 0 rgba(212,175,55,.5),inset 0 -3px 0 var(--gold)}
 
 /* the shining gold sweeps are decoration — hold them still rather than let the
    global reduced-motion rule replay them every .001ms (added 2026-09-04) */
-@media(prefers-reduced-motion:reduce){.ribbon,.btn.go{animation:none;background-position:0 0}}
+@media(prefers-reduced-motion:reduce){.ribbon{animation:none;background-position:0 0}}
