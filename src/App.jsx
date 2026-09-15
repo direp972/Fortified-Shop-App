@@ -742,22 +742,49 @@ const CAP_STYLES = [
 ];
 const CAP_STYLE_LABELS = Object.fromEntries(CAP_STYLES.map((s) => [s.id, s.label]));
 
+// One resolved set of scupper numbers, shared by the model, the blank, the price and the
+// ticket. They used to be defaulted and clamped separately in each, so a plate typed
+// narrower than its own opening was drawn at one size, priced at a second and printed at a
+// third — and the shop builds from the printed one.
+function scupperSpec(o) {
+  const n = (v, d) => (Number.isFinite(+v) ? +v : d);
+  const W = Math.max(1, n(o.partW, 12)), H = Math.max(1, n(o.partH, 4)), WT = Math.max(1, n(o.partD, 8));
+  const proj = Math.max(0.25, n(o.scupProj, 2));
+  const flange = Math.max(0, n(o.scupFlange, 4));
+  const dsRaw = String(o.scupDsSize || "4×5").split("×").map(Number);
+  return {
+    W, H, WT, proj, flange,
+    collector: o.scupOutlet === "collector",
+    // a termination narrower than the hole it covers is not a thing, so the opening floors it
+    plateW: Math.max(W + 1, n(o.scupPlateW, W + 4)),
+    plateH: Math.max(H + 1, n(o.scupPlateH, H + 4)),
+    boxW: Math.max(W + 1, n(o.scupBoxW, W + 4)),
+    boxD: Math.max(1, n(o.scupBoxD, proj + 4)),
+    boxH: Math.max(2, n(o.scupBoxH, 12)),
+    dsSize: o.scupDsSize || "4×5",
+    dsOut: Math.max(1, dsRaw[0] || 4), dsAcross: Math.max(1, dsRaw[1] || 5),
+    dsLen: Math.max(0, n(o.scupDsLen, 0)),
+    gap: 1.5, // free fall under the spout, so a hard rain can't dam back into the wall
+  };
+}
+
 // The one line describing a 3D part wherever it is listed. A scupper reads differently from
 // a box: its three shared numbers are a clear opening and a wall thickness, not W×D×H, and
 // the shop cannot build it without knowing what hangs on the outside of the wall.
 function part3dSummary(o) {
   const name = PART3D_LABELS[o.partType] || o.partType;
   if (o.partType === "scupper") {
+    const k = scupperSpec(o);
     const bits = [
-      `${name} — ${o.partW}"W × ${o.partH}"H clear opening, ${o.partD}" thru-wall`,
-      `${o.scupFlange ?? 4}" roof flange`,
-      `spout ${o.scupProj ?? 2}" past the face`,
+      `${name} — ${formatDim(k.W)}"W × ${formatDim(k.H)}"H clear opening, ${formatDim(k.WT)}" thru-wall`,
+      `${formatDim(k.flange)}" roof flange`,
+      `spout ${formatDim(k.proj)}" past the face`,
     ];
-    if (o.scupOutlet === "collector") {
-      bits.push(`collector box ${o.scupBoxW ?? 16}"W × ${o.scupBoxD ?? 8}" out × ${o.scupBoxH ?? 12}"H`);
-      bits.push(`${o.scupDsSize || "4×5"}" downspout, ${o.scupDsLen ?? 10} ft`);
+    if (k.collector) {
+      bits.push(`collector box ${formatDim(k.boxW)}"W × ${formatDim(k.boxD)}" out × ${formatDim(k.boxH)}"H`);
+      bits.push(`${k.dsSize}" downspout, ${formatDim(k.dsLen)} ft`);
     } else {
-      bits.push(`face plate ${o.scupPlateW ?? 16}" × ${o.scupPlateH ?? 10}"`);
+      bits.push(`face plate ${formatDim(k.plateW)}" × ${formatDim(k.plateH)}"`);
     }
     return bits.join(" · ");
   }
@@ -1243,16 +1270,16 @@ function computePrice(order, priceList, coilWidthScale) {
       // the sleeve's girth over its run, plus the roof flange collar, plus whatever the
       // spout runs into. Without this a face-plate scupper and a scupper with a head and
       // ten feet of downspout under it quote to exactly the same number.
-      const PROJ = Math.max(0.25, +order.scupProj || 2), FL = Math.max(0, +order.scupFlange || 4);
-      sqin = 2 * (W + H) * (D + PROJ) + ((W + 2 * FL) * (H + 2 * FL) - W * H);
-      if (order.scupOutlet === "collector") {
-        const BW = Math.max(W + 1, +order.scupBoxW || W + 4), BD = Math.max(1, +order.scupBoxD || 8), BH = Math.max(2, +order.scupBoxH || 12);
-        sqin += BW * BD + BW * BH + 2 * BD * BH + (BW * (H + 3.5 + BH) - W * H); // bottom, front, sides, and the back the sleeve passes through
-        const [dsOut, dsAcross] = String(order.scupDsSize || "4×5").split("×").map(Number);
-        sqin += 2 * ((dsOut || 4) + (dsAcross || 5)) * Math.max(0, (+order.scupDsLen || 0) * 12);
+      const k = scupperSpec(order);
+      sqin = 2 * (k.W + k.H) * (k.WT + k.proj)
+        + ((k.W + 2 * k.flange) * (k.H + 2 * k.flange) - k.W * k.H);
+      if (k.collector) {
+        // bottom, front, two sides, and the back the sleeve passes through
+        sqin += k.boxW * k.boxD + k.boxW * k.boxH + 2 * k.boxD * k.boxH
+          + (k.boxW * (k.H + k.gap + 2 + k.boxH) - k.W * k.H);
+        sqin += 2 * (k.dsOut + k.dsAcross) * k.dsLen * 12;
       } else {
-        const PW = Math.max(W + 1, +order.scupPlateW || W + 4), PH = Math.max(H + 1, +order.scupPlateH || H + 4);
-        sqin += PW * PH - W * H;
+        sqin += k.plateW * k.plateH - k.W * k.H;
       }
     } else {
       sqin = 2 * (W + D) * H + W * D; // walls + bottom
@@ -3160,26 +3187,23 @@ function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, colorHe
         [front, back, left, right].forEach((m) => { addEdges(m.geometry, m); group.add(m); });
       }
     } else if (partType === "scupper") {
-      // A through-wall scupper: a closed sleeve lining a hole cut through the parapet.
-      // W x H is the clear opening, D is the wall it runs through. The roof end opens into a
-      // solid flange the membrane laps onto; the wall end either takes a face plate or spouts
-      // into a collector box. The two ends are deliberately not alike — a roofer should be
-      // able to see which way the water runs without reading a label.
-      const T = 0.12;                                        // drawn metal thickness
-      const WT = D;                                          // the wall it passes through
-      const PROJ = Math.max(0.25, +scupProj || 2);           // how far the spout clears the wall face
-      const FL = Math.max(0, +scupFlange || 4);              // roof-side flange
-      const zRoof = -WT / 2, zFace = WT / 2, zTip = zFace + PROJ;
+      // A through-wall scupper: a closed sleeve lining a hole cut through the parapet. The
+      // roof end opens into a solid flange the membrane laps onto; the wall end either takes
+      // a face plate or spouts into a collector box. The two ends are deliberately not alike
+      // — a roofer should see which way the water runs without reading a label.
+      const T = 0.12; // drawn metal thickness
+      const k = scupperSpec({
+        partW: w, partH: h, partD: d, scupOutlet, scupFlange, scupProj,
+        scupPlateW, scupPlateH, scupBoxW, scupBoxD, scupBoxH, scupDsSize,
+      });
+      const zRoof = -k.WT / 2, zFace = k.WT / 2, zTip = zFace + k.proj;
 
       // the parapet, ghosted. Nothing else in the frame says there is a wall involved, and
       // without it the sleeve just reads as a length of duct. Where a collector box hangs,
       // the patch runs down far enough that the box reads as fastened to the wall.
-      const isBox = scupOutlet === "collector";
-      const boxH0 = Math.max(2, +scupBoxH || 12), gap0 = 1.5;
-      const wallTop = H / 2 + FL + 4;
-      const wallBot = isBox ? -H / 2 - gap0 - boxH0 - 3 : -(H / 2 + FL + 4);
-      const wallW = W + FL * 2 + 8, wallH = wallTop - wallBot;
-      const wallGeo = new THREE.BoxGeometry(wallW, wallH, WT);
+      const wallTop = k.H / 2 + k.flange + 4;
+      const wallBot = k.collector ? -k.H / 2 - k.gap - k.boxH - 3 : -(k.H / 2 + k.flange + 4);
+      const wallGeo = new THREE.BoxGeometry(k.W + k.flange * 2 + 8, wallTop - wallBot, k.WT);
       const wallMesh = new THREE.Mesh(wallGeo, new THREE.MeshStandardMaterial({
         color: 0x9FB6C8, transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false,
       }));
@@ -3191,28 +3215,11 @@ function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, colorHe
       group.add(wallEdges);
 
       // the sleeve — closed on all four sides, open only at the two ends
-      const sleeveGeo = makeSleeveGeometry(W, H, WT + PROJ);
+      const sleeveGeo = makeSleeveGeometry(k.W, k.H, k.WT + k.proj);
       const sleeveMesh = new THREE.Mesh(sleeveGeo, mat.clone());
       sleeveMesh.position.z = (zRoof + zTip) / 2;
       addEdges(sleeveGeo, sleeveMesh);
       group.add(sleeveMesh);
-
-      // A solid collar with the opening through it — four plates, not four sticks. This is
-      // continuous metal, which is the whole reason the part is sheet metal and not a hole.
-      const collar = (z, outW, outH) => {
-        const side = (outW - W) / 2, cap = (outH - H) / 2;
-        const bits = [];
-        if (cap > 0.01) { bits.push([outW, cap, 0, H / 2 + cap / 2]); bits.push([outW, cap, 0, -H / 2 - cap / 2]); }
-        if (side > 0.01) { bits.push([side, H, -W / 2 - side / 2, 0]); bits.push([side, H, W / 2 + side / 2, 0]); }
-        bits.forEach(([bw, bh, bx, by]) => {
-          const g = new THREE.BoxGeometry(bw, bh, T);
-          const m = new THREE.Mesh(g, mat.clone());
-          m.position.set(bx, by, z);
-          addEdges(g, m);
-          group.add(m);
-        });
-      };
-      if (FL > 0.01) collar(zRoof, W + FL * 2, H + FL * 2);
 
       const plate = (bw, bh, bd, x, y, z) => {
         const g = new THREE.BoxGeometry(bw, bh, bd);
@@ -3221,40 +3228,50 @@ function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, colorHe
         addEdges(g, m);
         group.add(m);
       };
+      // A solid collar with the opening through it — four plates, not four sticks. This is
+      // continuous metal, which is the whole reason the part is sheet metal and not a hole.
+      const collar = (z, outW, outH) => {
+        const side = (outW - k.W) / 2, cap = (outH - k.H) / 2;
+        if (cap > 0.01) {
+          plate(outW, cap, T, 0, k.H / 2 + cap / 2, z);
+          plate(outW, cap, T, 0, -k.H / 2 - cap / 2, z);
+        }
+        if (side > 0.01) {
+          plate(side, k.H, T, -k.W / 2 - side / 2, 0, z);
+          plate(side, k.H, T, k.W / 2 + side / 2, 0, z);
+        }
+      };
+      if (k.flange > 0.01) collar(zRoof, k.W + k.flange * 2, k.H + k.flange * 2);
 
-      if (scupOutlet === "collector") {
-        const BW = Math.max(W + 1, +scupBoxW || W + 4);
-        const BD = Math.max(1, +scupBoxD || PROJ + 4);
-        const BH = Math.max(2, +scupBoxH || 12);
+      if (k.collector) {
         // The rim sits below the scupper invert. If the front came up past it, a hard rain
         // would dam at the spout and back water into the wall.
-        const GAP = 1.5;
-        const rimY = -H / 2 - GAP, botY = rimY - BH;
-        plate(BW, T, BD, 0, botY, zFace + BD / 2);              // bottom
-        plate(BW, BH, T, 0, rimY - BH / 2, zFace + BD);         // front
-        plate(T, BH, BD, -BW / 2, rimY - BH / 2, zFace + BD / 2); // left
-        plate(T, BH, BD, BW / 2, rimY - BH / 2, zFace + BD / 2);  // right
+        const rimY = -k.H / 2 - k.gap, botY = rimY - k.boxH;
+        plate(k.boxW, T, k.boxD, 0, botY, zFace + k.boxD / 2);                  // bottom
+        plate(k.boxW, k.boxH, T, 0, rimY - k.boxH / 2, zFace + k.boxD);         // front
+        plate(T, k.boxH, k.boxD, -k.boxW / 2, rimY - k.boxH / 2, zFace + k.boxD / 2); // left
+        plate(T, k.boxH, k.boxD, k.boxW / 2, rimY - k.boxH / 2, zFace + k.boxD / 2);  // right
         // The back runs up behind the spout so splash hits metal instead of the wall, with
         // the sleeve passing through it — a solid plate there would dam the scupper shut.
-        const topY = H / 2 + 2, belowH = -H / 2 - botY, sideW = (BW - W) / 2;
-        if (belowH > 0.01) plate(BW, belowH, T, 0, botY + belowH / 2, zFace);
-        plate(BW, topY - H / 2, T, 0, (topY + H / 2) / 2, zFace);
+        const topY = k.H / 2 + 2, belowH = -k.H / 2 - botY, sideW = (k.boxW - k.W) / 2;
+        if (belowH > 0.01) plate(k.boxW, belowH, T, 0, botY + belowH / 2, zFace);
+        plate(k.boxW, topY - k.H / 2, T, 0, (topY + k.H / 2) / 2, zFace);
         if (sideW > 0.01) {
-          plate(sideW, H, T, -W / 2 - sideW / 2, 0, zFace);
-          plate(sideW, H, T, W / 2 + sideW / 2, 0, zFace);
+          plate(sideW, k.H, T, -k.W / 2 - sideW / 2, 0, zFace);
+          plate(sideW, k.H, T, k.W / 2 + sideW / 2, 0, zFace);
         }
         // The downspout is drawn as a stub. At its real length it would be ten times the
         // rest of the part and there would be nothing to look at; the ticket carries the run.
-        const [dsOut, dsAcross] = String(scupDsSize || "4×4").split("×").map(Number);
-        const dsGeo = makeSleeveGeometry(dsAcross || 4, dsOut || 4, Math.max(5, BH));
+        const stub = Math.max(5, k.boxH);
+        const dsGeo = makeSleeveGeometry(k.dsAcross, k.dsOut, stub);
         const dsMesh = new THREE.Mesh(dsGeo, mat.clone());
-        dsMesh.rotation.x = Math.PI / 2;                        // the tube runs down, not through
-        dsMesh.position.set(0, botY - Math.max(5, BH) / 2, zFace + BD / 2);
+        dsMesh.rotation.x = Math.PI / 2; // the tube runs down, not through
+        dsMesh.position.set(0, botY - stub / 2, zFace + k.boxD / 2);
         addEdges(dsGeo, dsMesh);
         group.add(dsMesh);
       } else {
         // one flat plate on the wall face with the opening cut through it
-        collar(zFace, Math.max(W + 1, +scupPlateW || W + 4), Math.max(H + 1, +scupPlateH || H + 4));
+        collar(zFace, k.plateW, k.plateH);
       }
     } else {
       buildChimneyCap(group, {
@@ -3553,28 +3570,27 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
     // and the sleeve run goes across it, so it folds into a tube closed on four sides and
     // open at both ends. A pan closed at the ends, which is what this used to draw, is the
     // one shape a scupper can never be: the water could not get in or out.
+    const k = scupperSpec({ partW: w, partH: h, partD: d, scupOutlet, scupFlange, scupProj, scupPlateW, scupPlateH });
     const pad = 4;
-    const FL = Math.max(0, +scupFlange || 4);
-    const RUN = Math.max(0.5, D) + Math.max(0.25, +scupProj || 2); // through the wall, plus the spout past the face
-    const girth = [H, W, H, W]; // side · bottom · side · top
+    const RUN = k.WT + k.proj; // through the wall, plus the spout past the face
+    const girth = [k.H, k.W, k.H, k.W]; // side · bottom · side · top
     let gy = pad;
     girth.forEach((seg, i) => {
       // the roof-end flange is a leg turned out off each panel, notched apart at the corners
-      if (FL > 0.01) panel(pad, gy, FL, seg, ["right"]);
-      panel(pad + FL, gy, RUN, seg, i === girth.length - 1 ? [] : ["bottom"]);
+      if (k.flange > 0.01) panel(pad, gy, k.flange, seg, ["right"]);
+      panel(pad + k.flange, gy, RUN, seg, i === girth.length - 1 ? [] : ["bottom"]);
       gy += seg;
     });
-    panel(pad + FL, gy, RUN, TAB, ["top"]); // seam tab — laps the first side to close the tube
-    vbW = pad * 2 + FL + RUN;
-    vbH = pad * 2 + H * 2 + W * 2 + TAB + 5; // the last 5 is headroom for the footer line
-    if (scupOutlet !== "collector") {
+    panel(pad + k.flange, gy, RUN, TAB, ["top"]); // seam tab — laps the first side to close the tube
+    vbW = pad * 2 + k.flange + RUN;
+    vbH = pad * 2 + k.H * 2 + k.W * 2 + TAB + 5; // the last 5 is headroom for the footer line
+    if (!k.collector) {
       // the face plate is its own flat blank with the opening cut out of the middle
-      const PW = Math.max(W + 1, +scupPlateW || W + 4), PH = Math.max(H + 1, +scupPlateH || H + 4);
-      const px = pad + FL + RUN + pad;
-      panel(px, pad, PW, PH, []);
-      panels.push({ cutout: true, x: px + (PW - W) / 2, y: pad + (PH - H) / 2, w: W, h: H });
-      vbW = px + PW + pad;
-      vbH = Math.max(vbH, pad * 2 + PH + 5);
+      const px = pad + k.flange + RUN + pad;
+      panel(px, pad, k.plateW, k.plateH, []);
+      panels.push({ cutout: true, x: px + (k.plateW - k.W) / 2, y: pad + (k.plateH - k.H) / 2, w: k.W, h: k.H });
+      vbW = px + k.plateW + pad;
+      vbH = Math.max(vbH, pad * 2 + k.plateH + 5);
     }
   } else {
     // Chimney cap: 4 side panels around a base rectangle, plus 4 triangular cap panels above.
