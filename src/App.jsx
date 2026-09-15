@@ -759,13 +759,21 @@ function scupperSpec(o) {
     plateW: Math.max(W + 1, n(o.scupPlateW, W + 4)),
     plateH: Math.max(H + 1, n(o.scupPlateH, H + 4)),
     boxW: Math.max(W + 1, n(o.scupBoxW, W + 4)),
-    boxD: Math.max(1, n(o.scupBoxD, proj + 4)),
+    // the box has to reach past the spout or the stream lands in front of it
+    boxD: Math.max(1, proj + 2, n(o.scupBoxD, proj + 4)),
     boxH: Math.max(2, n(o.scupBoxH, 12)),
     dsSize: o.scupDsSize || "4×5",
     dsOut: Math.max(1, dsRaw[0] || 4), dsAcross: Math.max(1, dsRaw[1] || 5),
     dsLen: Math.max(0, n(o.scupDsLen, 0)),
     gap: 1.5, // free fall under the spout, so a hard rain can't dam back into the wall
   };
+}
+
+// The back plate of the collector box, derived from the spec so the model, the price and the
+// ticket describe the same piece of metal. It runs from the box bottom up past the spout,
+// with the sleeve pierced through it.
+function scupperBack(k) {
+  return { h: k.H + 2 + k.gap + k.boxH, pierceW: k.W, pierceH: k.H };
 }
 
 // The one line describing a 3D part wherever it is listed. A scupper reads differently from
@@ -781,7 +789,10 @@ function part3dSummary(o) {
       `spout ${formatDim(k.proj)}" past the face`,
     ];
     if (k.collector) {
+      const b = scupperBack(k);
       bits.push(`collector box ${formatDim(k.boxW)}"W × ${formatDim(k.boxD)}" out × ${formatDim(k.boxH)}"H`);
+      bits.push(`back plate ${formatDim(k.boxW)} × ${formatDim(b.h)}" pierced ${formatDim(b.pierceW)} × ${formatDim(b.pierceH)}"`);
+      bits.push(`rim ${formatDim(k.gap)}" below the invert`);
       bits.push(`${k.dsSize}" downspout, ${formatDim(k.dsLen)} ft`);
     } else {
       bits.push(`face plate ${formatDim(k.plateW)}" × ${formatDim(k.plateH)}"`);
@@ -1276,7 +1287,7 @@ function computePrice(order, priceList, coilWidthScale) {
       if (k.collector) {
         // bottom, front, two sides, and the back the sleeve passes through
         sqin += k.boxW * k.boxD + k.boxW * k.boxH + 2 * k.boxD * k.boxH
-          + (k.boxW * (k.H + k.gap + 2 + k.boxH) - k.W * k.H);
+          + (k.boxW * scupperBack(k).h - k.W * k.H);
         sqin += 2 * (k.dsOut + k.dsAcross) * k.dsLen * 12;
       } else {
         sqin += k.plateW * k.plateH - k.W * k.H;
@@ -1286,8 +1297,15 @@ function computePrice(order, priceList, coilWidthScale) {
     }
     const sqft = sqin / 144;
     const fabItemName = order.partType === "collector" ? "collector box" : order.partType === "scupper" ? "scupper" : "chimney cap";
-    const fabItem = priceList?.find((p) => p.category === "3D Parts" && p.name.toLowerCase().includes(fabItemName) && typeof p.greenleaf === "number");
-    const formingFee = fabItem ? fabItem.greenleaf : 12; // per-piece fee for the extra seams/folds vs a flat panel
+    const feeFor = (name) => {
+      const it = priceList?.find((p) => p.category === "3D Parts" && p.name.toLowerCase().includes(name) && typeof p.greenleaf === "number");
+      return it ? it.greenleaf : 12; // per-piece fee for the extra seams/folds vs a flat panel
+    };
+    // A scupper with a head under it is two fabricated pieces on one line. The head's seams
+    // and its outlet are the same work the standalone Collector Box part is billed for, so
+    // without this the box and its downspout go out as raw coil with no labor on them.
+    let formingFee = feeFor(fabItemName);
+    if (order.partType === "scupper" && order.scupOutlet === "collector") formingFee += feeFor("collector box");
     const base = sqft * rates.coilSqft * paint.mult * order.quantity + formingFee * order.quantity;
     return Math.max(20, base * premiumMult + 20);
   } else if (order.type === "panel") {
@@ -3263,10 +3281,11 @@ function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, colorHe
         // The downspout is drawn as a stub. At its real length it would be ten times the
         // rest of the part and there would be nothing to look at; the ticket carries the run.
         const stub = Math.max(5, k.boxH);
-        const dsGeo = makeSleeveGeometry(k.dsAcross, k.dsOut, stub);
+        const dsW = Math.min(k.dsAcross, k.boxW - 1), dsD = Math.min(k.dsOut, k.boxD - 0.5);
+        const dsGeo = makeSleeveGeometry(dsW, dsD, stub);
         const dsMesh = new THREE.Mesh(dsGeo, mat.clone());
         dsMesh.rotation.x = Math.PI / 2; // the tube runs down, not through
-        dsMesh.position.set(0, botY - stub / 2, zFace + k.boxD / 2);
+        dsMesh.position.set(0, botY - stub / 2, zFace + dsD / 2 + 0.25); // strapped tight to the wall
         addEdges(dsGeo, dsMesh);
         group.add(dsMesh);
       } else {
@@ -3561,7 +3580,7 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
 
   const TAB = 0.75; // seam tab width, schematic only
   const panels = []; // {x,y,w,h,fold:[edges]}
-  let vbW = 100, vbH = 100;
+  let vbW = 100, vbH = 100, patternNote = "";
 
   const panel = (x, y, pw, ph, foldEdges) => panels.push({ x, y, w: pw, h: ph, foldEdges: foldEdges || [] });
 
@@ -3576,18 +3595,25 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
     const girth = [k.H, k.W, k.H, k.W]; // side · bottom · side · top
     let gy = pad;
     girth.forEach((seg, i) => {
-      // the roof-end flange is a leg turned out off each panel, notched apart at the corners
-      if (k.flange > 0.01) panel(pad, gy, k.flange, seg, ["right"]);
+      // The roof-end flange is a leg turned out off each panel. The legs are notched apart at
+      // the corners — folded out square they would otherwise collide — and the corners get
+      // mitered on the bench.
+      const relief = Math.min(0.4, k.flange / 6, seg / 6);
+      if (k.flange > 0.01) panel(pad, gy + relief, k.flange, Math.max(0.1, seg - relief * 2), ["right"]);
       panel(pad + k.flange, gy, RUN, seg, i === girth.length - 1 ? [] : ["bottom"]);
       gy += seg;
     });
     panel(pad + k.flange, gy, RUN, TAB, ["top"]); // seam tab — laps the first side to close the tube
     vbW = pad * 2 + k.flange + RUN;
     vbH = pad * 2 + k.H * 2 + k.W * 2 + TAB + 5; // the last 5 is headroom for the footer line
+    if (k.collector) {
+      // the head and its leader are their own blanks — this sheet is the sleeve
+      patternNote = "Sleeve blank only — the collector box and its downspout are bent separately";
+    }
     if (!k.collector) {
       // the face plate is its own flat blank with the opening cut out of the middle
       const px = pad + k.flange + RUN + pad;
-      panel(px, pad, k.plateW, k.plateH, []);
+      panels.push({ x: px, y: pad, w: k.plateW, h: k.plateH, foldEdges: [], labelTop: true });
       panels.push({ cutout: true, x: px + (k.plateW - k.W) / 2, y: pad + (k.plateH - k.H) / 2, w: k.W, h: k.H });
       vbW = px + k.plateW + pad;
       vbH = Math.max(vbH, pad * 2 + k.plateH + 5);
@@ -3616,7 +3642,7 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
           {p.foldEdges.includes("bottom") && <line x1={p.x} y1={p.y + p.h} x2={p.x + p.w} y2={p.y + p.h} stroke="#0A2B41" strokeWidth={0.5} strokeDasharray="1.5 1" />}
           {p.foldEdges.includes("left") && <line x1={p.x} y1={p.y} x2={p.x} y2={p.y + p.h} stroke="#0A2B41" strokeWidth={0.5} strokeDasharray="1.5 1" />}
           {p.foldEdges.includes("right") && <line x1={p.x + p.w} y1={p.y} x2={p.x + p.w} y2={p.y + p.h} stroke="#0A2B41" strokeWidth={0.5} strokeDasharray="1.5 1" />}
-          <text x={p.x + p.w / 2} y={p.y + p.h / 2} fill="#fff" fontSize={Math.min(p.w, p.h) * 0.18} fontFamily="'IBM Plex Mono', monospace" textAnchor="middle" dominantBaseline="central">
+          <text x={p.x + p.w / 2} y={p.labelTop ? p.y + Math.min(p.w, p.h) * 0.16 : p.y + p.h / 2} fill="#fff" fontSize={Math.min(p.w, p.h) * 0.18} fontFamily="'IBM Plex Mono', monospace" textAnchor="middle" dominantBaseline="central">
             {p.w.toFixed(0)}×{p.h.toFixed(0)}
           </text>
         </g>
@@ -3629,6 +3655,11 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
           <polygon points={p.tri.map((pt) => pt.join(",")).join(" ")} fill={colorHex} fillOpacity={0.85} stroke="#fff" strokeWidth={0.4} />
         </g>
       ))}
+      {patternNote && (
+        <text x={vbW / 2} y={vbH - 3 - Math.min(3.2, vbW / 34) * 1.4} fill="#8FB4C9" fontSize={Math.min(3.2, vbW / 34)} textAnchor="middle" fontFamily="Inter, sans-serif">
+          {patternNote}
+        </text>
+      )}
       <text x={vbW / 2} y={vbH - 3} fill="#8FB4C9" fontSize={Math.min(3.2, vbW / 34)} textAnchor="middle" fontFamily="Inter, sans-serif">
         Nominal flat pattern — schematic only, not bend-allowance corrected
       </text>
@@ -6027,7 +6058,7 @@ export default function ShopOrderApp() {
                     {partType === "scupper" ? "Opening height (in)" : "Height (in)"}{partType === "collector" && <span style={{ color: theme.textSecondary, fontWeight: 400 }}> (max 150)</span>}
                     <input type="number" min={0.1} max={partType === "collector" ? 150 : undefined} step="0.1" value={partH}
                       onChange={(e) => setPartH(e.target.value === "" ? "" : Math.max(0, partType === "collector" ? Math.min(150, +e.target.value) : +e.target.value))}
-                      onBlur={(e) => { if (e.target.value === "") setPartH(10); }}
+                      onBlur={(e) => { if (e.target.value === "") setPartH(partType === "scupper" ? 4 : 10); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
                   </label>
                 </div>
@@ -6117,10 +6148,14 @@ export default function ShopOrderApp() {
                             {[{ id: "faceplate", label: "Face Plate" }, { id: "collector", label: "Collector Box" }].map((o) => (
                               <button key={o.id} type="button" data-testid={`scup-out-${o.id}`}
                                 onClick={() => {
-                                  // size the termination off the opening it has to cover, the way
-                                  // Tapered Sides already derives its taper from the body height
-                                  if (o.id === "faceplate") { setScupPlateW((+partW || 12) + 4); setScupPlateH((+partH || 4) + 4); }
-                                  else { setScupBoxW((+partW || 12) + 4); setScupBoxD(Math.max(6, (+scupProj || 2) + 4)); }
+                                  // Size the termination off the opening it has to cover, the way
+                                  // Tapered Sides derives its taper from the body height — but only
+                                  // on a real change, or re-tapping the chip you are already on
+                                  // throws away the sizes you just typed.
+                                  if (o.id !== scupOutlet) {
+                                    if (o.id === "faceplate") { setScupPlateW((+partW || 12) + 4); setScupPlateH((+partH || 4) + 4); }
+                                    else { setScupBoxW((+partW || 12) + 4); setScupBoxD(Math.max(6, (+scupProj || 2) + 4)); }
+                                  }
                                   setScupOutlet(o.id);
                                 }}
                                 style={{
