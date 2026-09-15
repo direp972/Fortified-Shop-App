@@ -561,7 +561,7 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
   return [
     { id: "eave", name: "Eave / Drip Edge", dims: '3" × 2" · ½" 45° kick', per: "eave", on: false,
       where: "Bottom edge of the roof — deck flange under the panels, face down the fascia, kicked out 45° at the bottom to throw the water clear, and hemmed. The panels hook an Offset Cleat over the flange; tick it in place of the D-Style Drip Edge below when the job runs a cleat.",
-      points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 2), kitPt(3 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "left" },
+      points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 2), kitPt(3 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
     { id: "dstyle", name: "D-Style Drip Edge", dims: '3¾" × 2" · 1¼" lip hemmed flat · ½" 45° kick', per: "eave", on: true,
       where: "The eave the kit starts with — for panels that hook the trim itself (the T-style): 2½\" on the deck, then a 1¼\" lip past the fascia, hemmed flat back under, that the panel's hemmed edge hooks and squeezes shut on: no cleat. Face down the fascia, kicked at the bottom with a closed hem.",
       points: [kitPt(0, 0), kitPt(3.75, 0), kitFold(2.5, 0, "left"), kitPt(2.5, 2), kitPt(2.5 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
@@ -3629,7 +3629,7 @@ export default function ShopOrderApp() {
   const [drawnPitch, setDrawnPitch] = useState(4); // the roof pitch the profile on the canvas was drawn at — the box's, or 4:12 for a preset
   const [hemStart, setHemStart] = useState("none");
   const [hemEnd, setHemEnd] = useState("none");
-  const [paintSide, setPaintSide] = useState("left");
+  const [paintSide, setPaintSide] = useState("right");
   const [partName, setPartName] = useState("");
   const [partPhoto, setPartPhoto] = useState(null); // base64 data URL of an attached reference photo
   const [scanningSketch, setScanningSketch] = useState(false);
@@ -4580,7 +4580,7 @@ export default function ShopOrderApp() {
     setFlangeLength(4); setOutletRoundTapered(false);
     setTopTrim(false); setBodyTaper(false); setTaperStart(0); setTaperLength(6);
     setPoints(TRIM_PRESETS["Eave / Drip Edge"]); setPreset("Eave / Drip Edge");
-    setHemStart("none"); setHemEnd("none"); setPaintSide("left");
+    setHemStart("none"); setHemEnd("none"); setPaintSide("right");
     setGaugeId(GAUGE_OPTIONS[0].id); setPaintId(PAINT_OPTIONS[0].id); setBrand(BRANDS[0]); setColorName(COLORS_BY_BRAND[BRANDS[0]][0].name);
     setQuantity(4); setLengthPerPiece(10); setSheetWidth(48); setPartName("");
     setEditingId(null); setBoxReturn(null); editSnapshot.current = null; setRoofBoxOpen(false); setBox3dReturn(false);
