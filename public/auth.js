@@ -182,11 +182,11 @@
   /* ---------- UI: header chip + modal ---------- */
   const css = document.createElement("style");
   css.textContent = `
-  .rc-chip{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono,monospace);font-size:10.5px;letter-spacing:.06em;color:#EAF1F6;background:rgba(212,175,55,.14);border:1px solid rgba(212,175,55,.5);border-radius:999px;padding:7px 8px 7px 13px;max-width:230px}
+  .rc-chip{display:inline-flex;align-items:center;gap:9px;font-family:var(--mono,monospace);font-size:10.5px;letter-spacing:.11em;text-transform:uppercase;color:#EAF1F6;background:rgba(212,175,55,.14);border:1px solid rgba(212,175,55,.5);border-radius:0;clip-path:polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px);padding:7px 8px 7px 13px;max-width:230px}
   .rc-chip .rc-who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-transform:none}
-  .rc-chip button{font-family:inherit;font-size:9px;letter-spacing:.1em;text-transform:uppercase;border:none;border-radius:999px;background:rgba(255,255,255,.14);color:#EAF1F6;padding:4px 9px;cursor:pointer}
+  .rc-chip button{font-family:inherit;font-size:9px;letter-spacing:.1em;text-transform:uppercase;border:none;border-radius:0;background:rgba(255,255,255,.14);color:#EAF1F6;padding:5px 9px;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),inset 0 -2px 0 rgba(0,0,0,.28)}
   .rc-chip button:hover{background:rgba(255,255,255,.25)}
-  .rc-chip a.rc-admin{font-family:inherit;font-size:9px;letter-spacing:.1em;text-transform:uppercase;border-radius:999px;background:#D4AF37;color:#0B1E2C;padding:4px 9px;text-decoration:none;font-weight:700}
+  .rc-chip a.rc-admin{font-family:inherit;font-size:9px;letter-spacing:.1em;text-transform:uppercase;border-radius:0;background:#D4AF37;color:#0B1E2C;padding:5px 9px;text-decoration:none;font-weight:700;box-shadow:inset 0 1px 0 rgba(255,255,255,.5),inset 0 -2px 0 rgba(10,43,65,.35)}
   .rc-chip a.rc-admin:hover{background:#EFC94C}
   #rc-auth{position:fixed;inset:0;z-index:300;background:linear-gradient(180deg,rgba(11,30,44,.92),rgba(15,61,92,.92));display:none;align-items:center;justify-content:center;padding:20px}
   #rc-auth.on{display:flex}
