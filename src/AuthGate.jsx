@@ -18,6 +18,11 @@ const GoogleG = () => (
 
 export default function AuthGate({ children }) {
   const { user, loading, signUp, signIn, signInWithGoogle, resendConfirmation } = useAuth();
+  // Signed out, the tools still open — in demo mode, with pricing and ordering
+  // locked (see isDemo in App.jsx). This card comes up over the top when a demo
+  // visitor asks for something that needs an account, so whatever they have drawn
+  // stays mounted underneath and is still there if they dismiss it.
+  const [authOpen, setAuthOpen] = useState(false);
   const [mode, setMode] = useState("signin"); // "signin" | "signup"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -32,6 +37,15 @@ export default function AuthGate({ children }) {
   const [submitting, setSubmitting] = useState(false);
   const [signupDone, setSignupDone] = useState(false);
 
+  useEffect(() => {
+    const open = (e) => { setMode(e?.detail === "signup" ? "signup" : "signin"); setAuthOpen(true); };
+    window.addEventListener("rc:open-auth", open);
+    return () => window.removeEventListener("rc:open-auth", open);
+  }, []);
+
+  // A finished sign-in closes the card and drops the visitor back where they were.
+  useEffect(() => { if (user) setAuthOpen(false); }, [user]);
+
   // If Google (or Supabase) bounced us back with an error, it arrives in the URL hash
   // (#error=...&error_description=...). Surface it once and clean the address bar.
   useEffect(() => {
@@ -40,6 +54,7 @@ export default function AuthGate({ children }) {
     const p = new URLSearchParams(h.replace(/^#/, ""));
     if (p.get("error")) {
       setError(p.get("error_description") || p.get("error"));
+      setAuthOpen(true);
       try { window.history.replaceState(null, "", window.location.pathname + window.location.search); } catch (e) { /* ignore */ }
     }
   }, []);
@@ -53,6 +68,10 @@ export default function AuthGate({ children }) {
   }
 
   if (user) return children;
+  // Demo: the tools are open, the card is not up.
+  if (!authOpen && !signupDone) return children;
+
+  const dismiss = () => { setAuthOpen(false); setError(""); setPending(null); };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -113,6 +132,10 @@ export default function AuthGate({ children }) {
             style={{ marginTop: 18, width: "100%", padding: "10px", borderRadius: 8, border: `1px solid ${INK}`, background: "transparent", color: INK, fontWeight: 600, cursor: "pointer" }}>
             Back to Sign In
           </button>
+          <button onClick={() => { setSignupDone(false); dismiss(); }}
+            style={{ marginTop: 8, width: "100%", padding: "10px", borderRadius: 8, border: "none", background: "transparent", color: "#777", fontWeight: 600, fontSize: 12.5, cursor: "pointer" }}>
+            Keep using the tools
+          </button>
         </div>
       </div>
     );
@@ -123,7 +146,7 @@ export default function AuthGate({ children }) {
       <form onSubmit={handleSubmit} style={{ width: "100%", maxWidth: 380, background: "#fff", borderRadius: 16, padding: 28, boxShadow: "0 30px 80px rgba(0,0,0,0.5)" }}>
         <div style={{ fontFamily: "'Oswald', sans-serif", textTransform: "uppercase", letterSpacing: "0.03em", fontSize: 22, fontWeight: 700, marginBottom: 4, color: "#0A2B41", textAlign: "center" }}>{ON_FORTIFIED ? "Fortified Metals" : "RoofCoil.com Tools"}</div>
         <div style={{ fontSize: 12.5, color: "#777", marginBottom: 22, textAlign: "center" }}>
-          {mode === "signin" ? "Sign in to place or view orders" : "Create an account to get started"}
+          {mode === "signin" ? "Sign in to see pricing and send orders to a shop" : "Free account — unlocks pricing, ordering and saved jobs"}
         </div>
 
         <button type="button" onClick={handleGoogle} disabled={submitting}
@@ -187,6 +210,11 @@ export default function AuthGate({ children }) {
             </>
           )}
         </div>
+
+        <button type="button" onClick={dismiss}
+          style={{ width: "100%", marginTop: 14, padding: "10px", borderRadius: 8, border: "none", background: "transparent", color: "#777", fontWeight: 600, fontSize: 12.5, cursor: "pointer" }}>
+          ← Keep using the tools without an account
+        </button>
 
         {ON_FORTIFIED && (
           <div style={{ textAlign: "center", marginTop: 14, fontSize: 11, color: "#98A2AC" }}>
