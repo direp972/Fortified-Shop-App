@@ -768,7 +768,7 @@ function scupperSpec(o) {
   const n = (v, d) => (Number.isFinite(+v) ? +v : d);
   const W = Math.max(1, n(o.partW, 12)), H = Math.max(1, n(o.partH, 4)), WT = Math.max(1, n(o.partD, 8));
   const proj = Math.max(0.25, n(o.scupProj, 2));
-  const flange = Math.max(0, n(o.scupFlange, 4));
+  const flange = Math.max(0, n(o.scupFlange, 6));
   const dsRaw = String(o.scupDsSize || "4×5").split("×").map(Number);
   return {
     W, H, WT, proj, flange,
@@ -803,7 +803,7 @@ function part3dSummary(o) {
     const k = scupperSpec(o);
     const bits = [
       `${name} — ${formatDim(k.W)}"W × ${formatDim(k.H)}"H clear opening, ${formatDim(k.WT)}" thru-wall`,
-      `${formatDim(k.flange)}" roof flange`,
+      `TPO roof plate ${formatDim(k.W + k.flange * 2)} × ${formatDim(k.H + k.flange * 2)}" (clad stock, ${formatDim(k.flange)}" past the opening)`,
       `spout ${formatDim(k.proj)}" past the face`,
     ];
     if (k.collector) {
@@ -813,7 +813,7 @@ function part3dSummary(o) {
       bits.push(`rim ${formatDim(k.gap)}" below the invert`);
       bits.push(`${k.dsSize}" downspout, ${formatDim(k.dsLen)} ft`);
     } else {
-      bits.push(`face plate ${formatDim(k.plateW)}" × ${formatDim(k.plateH)}"`);
+      bits.push(`face plate ${formatDim(k.plateW)} × ${formatDim(k.plateH)}" outside, in the order's color`);
     }
     return bits.join(" · ");
   }
@@ -3257,27 +3257,30 @@ function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, colorHe
       addEdges(sleeveGeo, sleeveMesh);
       group.add(sleeveMesh);
 
-      const plate = (bw, bh, bd, x, y, z) => {
+      // The roof-side plate is TPO-clad so the membrane welds straight to it — it is white
+      // stock, not the order's colour, and it reads as a different piece because it is one.
+      const tpoMat = new THREE.MeshStandardMaterial({ color: 0xF4F4F0, metalness: 0.04, roughness: 0.78, side: THREE.DoubleSide });
+      const plate = (bw, bh, bd, x, y, z, useMat) => {
         const g = new THREE.BoxGeometry(bw, bh, bd);
-        const m = new THREE.Mesh(g, mat.clone());
+        const m = new THREE.Mesh(g, (useMat || mat).clone());
         m.position.set(x, y, z);
         addEdges(g, m);
         group.add(m);
       };
       // A solid collar with the opening through it — four plates, not four sticks. This is
       // continuous metal, which is the whole reason the part is sheet metal and not a hole.
-      const collar = (z, outW, outH) => {
+      const collar = (z, outW, outH, useMat) => {
         const side = (outW - k.W) / 2, cap = (outH - k.H) / 2;
         if (cap > 0.01) {
-          plate(outW, cap, T, 0, k.H / 2 + cap / 2, z);
-          plate(outW, cap, T, 0, -k.H / 2 - cap / 2, z);
+          plate(outW, cap, T, 0, k.H / 2 + cap / 2, z, useMat);
+          plate(outW, cap, T, 0, -k.H / 2 - cap / 2, z, useMat);
         }
         if (side > 0.01) {
-          plate(side, k.H, T, -k.W / 2 - side / 2, 0, z);
-          plate(side, k.H, T, k.W / 2 + side / 2, 0, z);
+          plate(side, k.H, T, -k.W / 2 - side / 2, 0, z, useMat);
+          plate(side, k.H, T, k.W / 2 + side / 2, 0, z, useMat);
         }
       };
-      if (k.flange > 0.01) collar(zRoof, k.W + k.flange * 2, k.H + k.flange * 2);
+      if (k.flange > 0.01) collar(zRoof, k.W + k.flange * 2, k.H + k.flange * 2, tpoMat);
 
       if (k.collector) {
         // The rim sits below the scupper invert. If the front came up past it, a hard rain
@@ -3603,39 +3606,36 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
   const panel = (x, y, pw, ph, foldEdges) => panels.push({ x, y, w: pw, h: ph, foldEdges: foldEdges || [] });
 
   if (partType === "scupper") {
-    // One wrapped blank, not a pan. The girth runs down the page — side, bottom, side, top —
-    // and the sleeve run goes across it, so it folds into a tube closed on four sides and
-    // open at both ends. A pan closed at the ends, which is what this used to draw, is the
-    // one shape a scupper can never be: the water could not get in or out.
+    // Three blanks, not one. The sleeve is the girth laid flat — side, bottom, side, top —
+    // wrapped into a tube closed on four sides and open at both ends. A pan closed at the ends,
+    // which is what this used to draw, is the one shape a scupper can never be. The roof plate
+    // is separate because it is TPO-clad stock, and the face plate is separate because it goes
+    // on from the other side of the wall.
     const k = scupperSpec({ partW: w, partH: h, partD: d, scupOutlet, scupFlange, scupProj, scupPlateW, scupPlateH });
     const pad = 4;
     const RUN = k.WT + k.proj; // through the wall, plus the spout past the face
     const girth = [k.H, k.W, k.H, k.W]; // side · bottom · side · top
     let gy = pad;
-    girth.forEach((seg, i) => {
-      // The roof-end flange is a leg turned out off each panel. The legs are notched apart at
-      // the corners — folded out square they would otherwise collide — and the corners get
-      // mitered on the bench.
-      const relief = Math.min(0.4, k.flange / 6, seg / 6);
-      if (k.flange > 0.01) panel(pad, gy + relief, k.flange, Math.max(0.1, seg - relief * 2), ["right"]);
-      panel(pad + k.flange, gy, RUN, seg, i === girth.length - 1 ? [] : ["bottom"]);
+    girth.forEach((seg, i2) => {
+      panel(pad, gy, RUN, seg, i2 === girth.length - 1 ? [] : ["bottom"]);
       gy += seg;
     });
-    panel(pad + k.flange, gy, RUN, TAB, ["top"]); // seam tab — laps the first side to close the tube
-    vbW = pad * 2 + k.flange + RUN;
+    panel(pad, gy, RUN, TAB, ["top"]); // seam tab — laps the first side to close the tube
+    vbW = pad * 2 + RUN;
     vbH = pad * 2 + k.H * 2 + k.W * 2 + TAB + 5; // the last 5 is headroom for the footer line
-    if (k.collector) {
-      // the head and its leader are their own blanks — this sheet is the sleeve
-      patternNote = "Sleeve blank only — the collector box and its downspout are bent separately";
-    }
-    if (!k.collector) {
-      // the face plate is its own flat blank with the opening cut out of the middle
-      const px = pad + k.flange + RUN + pad;
-      panels.push({ x: px, y: pad, w: k.plateW, h: k.plateH, foldEdges: [], labelTop: true });
-      panels.push({ cutout: true, x: px + (k.plateW - k.W) / 2, y: pad + (k.plateH - k.H) / 2, w: k.W, h: k.H });
-      vbW = px + k.plateW + pad;
-      vbH = Math.max(vbH, pad * 2 + k.plateH + 5);
-    }
+
+    // the plates, each with the opening cut out of the middle
+    const plateBlank = (px, pw, ph) => {
+      panels.push({ x: px, y: pad, w: pw, h: ph, foldEdges: [], labelTop: true });
+      panels.push({ cutout: true, x: px + (pw - k.W) / 2, y: pad + (ph - k.H) / 2, w: k.W, h: k.H });
+      vbW = px + pw + pad;
+      vbH = Math.max(vbH, pad * 2 + ph + 5);
+    };
+    if (k.flange > 0.01) plateBlank(pad + RUN + pad, k.W + k.flange * 2, k.H + k.flange * 2);
+    if (!k.collector) plateBlank(vbW, k.plateW, k.plateH);
+    patternNote = k.collector
+      ? "Sleeve and TPO roof plate — the collector box and its downspout are bent separately"
+      : "Sleeve · TPO roof plate · face plate — the roof plate is clad stock, not the order's color";
   } else {
     // Chimney cap: 4 side panels around a base rectangle, plus 4 triangular cap panels above.
     const pad = 4;
@@ -3651,6 +3651,8 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
     vbH = D + H * 2 + CH + pad * 2 + TAB * 2;
   }
 
+  const FOOTER_TEXT = "Nominal flat pattern — schematic only, not bend-allowance corrected";
+  const captionFs = (txt) => Math.min(3.2, (vbW * 0.94) / Math.max(1, String(txt).length * 0.5));
   return (
     <svg viewBox={`0 0 ${vbW} ${vbH}`} style={{ width: "100%", height: "auto", background: INK, borderRadius: 4 }}>
       {panels.filter((p) => !p.tri && !p.cutout).map((p, i) => (
@@ -3674,12 +3676,12 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
         </g>
       ))}
       {patternNote && (
-        <text x={vbW / 2} y={vbH - 3 - Math.min(3.2, vbW / 34) * 1.4} fill="#8FB4C9" fontSize={Math.min(3.2, vbW / 34)} textAnchor="middle" fontFamily="Inter, sans-serif">
+        <text x={vbW / 2} y={vbH - 3 - captionFs(FOOTER_TEXT) * 1.5} fill="#8FB4C9" fontSize={captionFs(patternNote)} textAnchor="middle" fontFamily="Inter, sans-serif">
           {patternNote}
         </text>
       )}
-      <text x={vbW / 2} y={vbH - 3} fill="#8FB4C9" fontSize={Math.min(3.2, vbW / 34)} textAnchor="middle" fontFamily="Inter, sans-serif">
-        Nominal flat pattern — schematic only, not bend-allowance corrected
+      <text x={vbW / 2} y={vbH - 3} fill="#8FB4C9" fontSize={captionFs(FOOTER_TEXT)} textAnchor="middle" fontFamily="Inter, sans-serif">
+        {FOOTER_TEXT}
       </text>
     </svg>
   );
@@ -3788,7 +3790,7 @@ export default function ShopOrderApp() {
   // Scupper: the sleeve is partW x partH clear opening through partD of wall. Everything
   // below is what happens at the two ends of it.
   const [scupOutlet, setScupOutlet] = useState("faceplate"); // "faceplate" | "collector" — what the spout runs into
-  const [scupFlange, setScupFlange] = useState(4);  // roof-side flange the membrane laps onto; 3" min, 4" standard
+  const [scupFlange, setScupFlange] = useState(6);  // TPO-clad roof plate the membrane welds to
   const [scupProj, setScupProj] = useState(2);      // how far the spout clears the wall face so water doesn't streak it
   const [scupPlateW, setScupPlateW] = useState(16); // face plate, overall
   const [scupPlateH, setScupPlateH] = useState(10);
@@ -4781,7 +4783,7 @@ export default function ShopOrderApp() {
     setOutletShape("box"); setFlangeW(4); setFlangeD(4); setOutletDiameter(4); setOutletLength(6); setFlangeTapered(true);
     setFlangeLength(4); setOutletRoundTapered(false);
     setTopTrim(false); setBodyTaper(false); setTaperStart(0); setTaperLength(6);
-    setScupOutlet("faceplate"); setScupFlange(4); setScupProj(2);
+    setScupOutlet("faceplate"); setScupFlange(6); setScupProj(2);
     setScupPlateW(16); setScupPlateH(10); setScupBoxW(16); setScupBoxD(8); setScupBoxH(12);
     setScupDsSize("4×5"); setScupDsLen(10);
     setPoints(TRIM_PRESETS["Eave / Drip Edge"]); setPreset("Eave / Drip Edge");
@@ -5426,7 +5428,7 @@ export default function ShopOrderApp() {
       if (p.taperStart != null) setTaperStart(p.taperStart);
       if (p.taperLength != null) setTaperLength(p.taperLength);
       setScupOutlet(p.scupOutlet || "faceplate");
-      setScupFlange(p.scupFlange ?? 4); setScupProj(p.scupProj ?? 2);
+      setScupFlange(p.scupFlange ?? 6); setScupProj(p.scupProj ?? 2);
       setScupPlateW(p.scupPlateW ?? 16); setScupPlateH(p.scupPlateH ?? 10);
       setScupBoxW(p.scupBoxW ?? 16); setScupBoxD(p.scupBoxD ?? 8); setScupBoxH(p.scupBoxH ?? 12);
       setScupDsSize(p.scupDsSize || "4×5"); setScupDsLen(p.scupDsLen ?? 10);
@@ -6203,14 +6205,14 @@ export default function ShopOrderApp() {
                   return (
                     <>
                       <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>
-                        Opening width × height is the clear hole through the parapet. Wall thickness is how far the sleeve runs through it — measure it, don't take the nominal. The rough opening gets cut about ½" bigger all round than the sleeve.
+                        Opening width × height is the clear hole through the parapet. Wall thickness is how far the sleeve runs through it — measure it, don't take the nominal. The rough opening gets cut about ½" bigger all round than the sleeve. TPO plate on the roof side, the face plate or a collector box outside.
                       </div>
                       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-                        {num("Roof flange (in)", scupFlange, setScupFlange, 4, "scup-flange")}
+                        {num("TPO roof plate — metal past the opening (in)", scupFlange, setScupFlange, 6, "scup-flange")}
                         {num("Spout past the wall (in)", scupProj, setScupProj, 2, "scup-proj")}
                       </div>
                       <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>
-                        The flange is the collar on the roof side the membrane laps onto — 3" is the minimum worth asking for. The spout has to clear the wall face or the water runs back down it and streaks the building.
+                        The roof plate is TPO-clad so the membrane welds straight to it, white stock rather than the order's color, and it is its own blank. The spout has to clear the wall face or the water runs back down it and streaks the building.
                       </div>
                       <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
                         <div style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
