@@ -4935,8 +4935,17 @@ export default function ShopOrderApp() {
     ? row.members.some((m) => (sel[m.it.id] || 0) > 0)
     : row.kind === "item" && (sel[row.it.id] || 0) > 0);
   const boxOrderNow = Object.keys(boxOrder).length ? boxOrder : seedBoxSel(roofBoxSel, roofKit);
-  const pickedRows = kitRows.filter((r) => r.kind !== "tool" && rowIsPicked(r, boxOrderNow));
-  const restRows = kitRows.filter((r) => r.kind !== "tool" && !rowIsPicked(r, boxOrderNow));
+  // A family that has taken more than one answer gets an extra row per additional piece, right
+  // under its own, so each has a quantity of its own instead of hiding behind a chip. They stay
+  // in their family's section rather than floating off on their own.
+  const withExtras = (rows) => rows.flatMap((row) => {
+    if (row.kind !== "family") return [row];
+    const shownId = famShownIt(row).id;
+    const extras = row.members.filter((m) => m.it.id !== shownId && (roofBoxSel[m.it.id] || 0) > 0);
+    return [row, ...extras.map((m) => ({ key: `also-${m.it.id}`, kind: "item", it: m.it, alsoOf: row.fam }))];
+  });
+  const pickedRows = withExtras(kitRows.filter((r) => r.kind !== "tool" && rowIsPicked(r, boxOrderNow)));
+  const restRows = withExtras(kitRows.filter((r) => r.kind !== "tool" && !rowIsPicked(r, boxOrderNow)));
   const toolRows = kitRows.filter((r) => r.kind === "tool");
   // how many rows have drifted out of the section they opened in — what Tidy would move
   const outOfPlace = kitRows.filter((r) => r.kind !== "tool" && rowIsPicked(r, roofBoxSel) !== rowIsPicked(r, boxOrderNow)).length;
@@ -6970,7 +6979,9 @@ export default function ShopOrderApp() {
                                   <ShapeThumb order={{ type: "trim", points: it.points, hemStart: it.hemStart, hemEnd: it.hemEnd, colorHex: colorObj.hex }} size={48} />
                                 </div>
                                 <div style={{ minWidth: 0 }}>
-                                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{it.name} <span className="mono" style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 500 }}>{it.dims}</span>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>
+                                    {row.alsoOf && <span className="mono" title="A second answer to the same question as the row above" style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.07em", color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: 999, padding: "1px 6px", marginRight: 6 }}>ALSO</span>}
+                                    {it.name} <span className="mono" style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 500 }}>{it.dims}</span>
                                     {inOrder.length > 0 && <span className="mono" data-testid="box-row-in-order" style={{ marginLeft: 8, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.06em", color: SAFETY, border: `1px solid ${SAFETY}`, borderRadius: 999, padding: "1px 7px" }}>IN ORDER · {inOrderPcs} pc{inOrderPcs === 1 ? "" : "s"}</span>}
                                   </div>
                                   <div style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 1.4 }}>{it.where}</div>
@@ -6979,17 +6990,16 @@ export default function ShopOrderApp() {
                                       {row.members.map((m) => {
                                         const showing = m.it.id === it.id, mOn = (roofBoxSel[m.it.id] || 0) > 0;
                                         return (
-                                          <button key={m.it.id} type="button" data-testid={`box-var-${m.it.id}`} title={m.it.name}
+                                          <button key={m.it.id} type="button" data-testid={`box-var-${m.it.id}`} title={mOn ? `${m.it.name} — already in the box` : `${m.it.name} — tap to take this one as well`}
                                             onClick={() => {
                                               setFamShow((f) => ({ ...f, [row.fam.key]: m.it.id }));
                                               // The chips are the row's answer to one question, so picking a different
                                               // answer carries the tick with it. Without this, tapping a chip flips the
                                               // checkbox to unticked and reads as though you just lost the piece.
                                               setRoofBoxSel((sel) => {
-                                                const held = row.members.filter((x) => (sel[x.it.id] || 0) > 0);
-                                                if (!held.length || held.some((x) => x.it.id === m.it.id)) return sel;
-                                                const next = { ...sel, [m.it.id]: held[0] && sel[held[0].it.id] ? sel[held[0].it.id] : 1 };
-                                                for (const x of held) next[x.it.id] = 0;
+                                                if ((sel[m.it.id] || 0) > 0) return sel; // already in — this is just a look at it
+                                                const next = { ...sel, [m.it.id]: 1 };
+                                                if (row.fam.exclusive) for (const x of row.members) if (x.it.id !== m.it.id) next[x.it.id] = 0;
                                                 return next;
                                               });
                                             }}
