@@ -94,6 +94,15 @@
   }
   // A sign-in that failed with "not confirmed" can ask for a fresh link with just the email
   // and password it already has; the function keeps the name and phone from the sign-up.
+  // "Forgot password": the function emails a link to reset.html for a confirmed account, a
+  // fresh confirmation link for a pending one, and a "no account" note otherwise — the same
+  // answer either way, so the form can't be used to find out who is registered.
+  async function requestReset(email) {
+    const fn = await callSignupEmail({ email, reset: true });
+    if (!fn) return { error: "Couldn't reach the server — check your connection and try again." };
+    if (!fn.ok) return { error: friendly(fn.j.error) || "Couldn't send a reset link — please try again." };
+    return { confirm: true };
+  }
   async function resendLink(email, password) {
     const fn = await callSignupEmail({ email, password, resend: true });
     if (!fn) return { error: "Couldn't reach the server — check your connection and try again." };
@@ -228,20 +237,27 @@
       <label>Phone</label><input id="rc-ph" type="tel" autocomplete="tel" inputmode="tel" placeholder="(555) 555-5555">
     </div>
     <label>Email</label><input id="rc-em" type="email" autocomplete="email" placeholder="you@company.com">
-    <label>Password</label><input id="rc-pw" type="password" autocomplete="current-password" placeholder="••••••••">
+    <div id="rc-pw-wrap"><label>Password</label><input id="rc-pw" type="password" autocomplete="current-password" placeholder="••••••••"></div>
     <div class="err" id="rc-err" role="alert"></div>
     <button class="btn" style="width:100%" id="rc-go">Sign in</button>
-    <div class="swap" id="rc-swap">New here? <button type="button" data-mode="up">Create a free account</button></div>
+    <div class="swap" id="rc-swap">New here? <button type="button" data-mode="up">Create a free account</button> · <button type="button" data-mode="reset">Forgot password?</button></div>
   </div>`;
 
   let mode = "in";
   function setMode(m) {
     mode = m;
-    modal.querySelector("#rc-title").textContent = m === "in" ? "Sign in" : "Create your free account";
-    modal.querySelector("#rc-name-co").style.display = m === "in" ? "none" : "block";
-    modal.querySelector("#rc-go").textContent = m === "in" ? "Sign in" : "Create account";
+    modal.querySelector("#rc-title").textContent = m === "in" ? "Sign in" : m === "reset" ? "Reset your password" : "Create your free account";
+    modal.querySelector("#rc-sub").textContent = m === "reset"
+      ? "Enter the email on your account and we'll send you a link to choose a new password."
+      : "One sign-in for the whole site — colors, the finder, the Panel & Trim apps, and your order history.";
+    modal.querySelector("#rc-social").style.display = m === "reset" ? "none" : "";
+    modal.querySelector("#rc-name-co").style.display = m === "up" ? "block" : "none";
+    modal.querySelector("#rc-pw-wrap").style.display = m === "reset" ? "none" : "";
+    modal.querySelector("#rc-go").textContent = m === "in" ? "Sign in" : m === "reset" ? "Send reset link" : "Create account";
     modal.querySelector("#rc-swap").innerHTML = m === "in"
-      ? 'New here? <button type="button" data-mode="up">Create a free account</button>'
+      ? 'New here? <button type="button" data-mode="up">Create a free account</button> · <button type="button" data-mode="reset">Forgot password?</button>'
+      : m === "reset"
+      ? 'Remembered it? <button type="button" data-mode="in">Sign in</button>'
       : 'Already have an account? <button type="button" data-mode="in">Sign in</button>';
     modal.querySelector("#rc-pw").autocomplete = m === "in" ? "current-password" : "new-password";
     hideErr();
@@ -276,10 +292,11 @@
     const em = modal.querySelector("#rc-em").value.trim();
     const pw = modal.querySelector("#rc-pw").value;
     if (!/.+@.+\..+/.test(em)) { showErr("Enter a valid email."); return; }
-    if (pw.length < 6) { showErr("Password needs at least 6 characters."); return; }
+    if (mode !== "reset" && pw.length < 6) { showErr("Password needs at least 6 characters."); return; }
     const btn = this; btn.disabled = true; btn.textContent = "One moment…";
     let res;
     if (mode === "in") res = await signIn(em, pw);
+    else if (mode === "reset") res = await requestReset(em);
     else {
       const name = modal.querySelector("#rc-name").value.trim();
       const ph = modal.querySelector("#rc-ph").value.trim();
@@ -293,14 +310,16 @@
       if (mode === "in" && /not confirmed/i.test(res.error)) offerResend(em, pw);
       return;
     }
-    if (res.confirm) { showConfirmSent(em); return; }
+    if (res.confirm) { showConfirmSent(em, mode === "reset"); return; }
     localStorage.removeItem("rc-member");
     location.reload();
   };
-  function showConfirmSent(em) {
+  function showConfirmSent(em, isReset) {
     var title = modal.querySelector("#rc-title");
     title.textContent = "Check your email";
-    modal.querySelector("#rc-sub").textContent = "We sent an email to " + em + ". If you're new, it has a link that confirms your account and signs you in right here. If you already have an account, it tells you how to sign in. Check your spam folder if it doesn't show up in a minute.";
+    modal.querySelector("#rc-sub").textContent = isReset
+      ? "We sent an email to " + em + ". If that address has an account, it has a link to choose a new password. If it doesn't, it tells you how to create one. Check your spam folder if it doesn't show up in a minute."
+      : "We sent an email to " + em + ". If you're new, it has a link that confirms your account and signs you in right here. If you already have an account, it tells you how to sign in. Check your spam folder if it doesn't show up in a minute.";
     hideErr();
     setModeAfterConfirm();
     title.setAttribute("tabindex", "-1");
@@ -308,6 +327,9 @@
   }
   function setModeAfterConfirm() {
     modal.querySelector("#rc-name-co").style.display = "none";
+    modal.querySelector("#rc-pw-wrap").style.display = "";
+    modal.querySelector("#rc-social").style.display = "";
+    modal.querySelector("#rc-swap").innerHTML = 'New here? <button type="button" data-mode="up">Create a free account</button> · <button type="button" data-mode="reset">Forgot password?</button>';
     modal.querySelector("#rc-go").textContent = "Sign in";
     mode = "in";
   }

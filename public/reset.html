@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Set a new password — RoofCoil.com</title>
+<link rel="icon" type="image/svg+xml" href="/trim-app-icon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@600;700&family=Inter:wght@400;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; min-height: 100%; }
+  body { font-family: 'Inter', system-ui, sans-serif; background: linear-gradient(180deg, #0B1E2C, #0F3D5C); color: #0A2B41; display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; box-sizing: border-box; }
+  .card { background: #fff; border-radius: 16px; max-width: 430px; width: 100%; padding: 30px 28px; box-shadow: 0 30px 80px rgba(0,0,0,.5); }
+  .kicker { font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; color: #8A94A6; margin: 0 0 10px; }
+  h1 { font-family: 'Oswald', sans-serif; font-size: 24px; margin: 0 0 8px; text-transform: uppercase; font-weight: 700; }
+  p { font-size: 14px; line-height: 1.55; color: #4E6273; margin: 0 0 18px; }
+  label { display: block; font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: .13em; text-transform: uppercase; color: #8A94A6; margin: 0 0 4px; }
+  input { width: 100%; box-sizing: border-box; font-size: 14px; padding: 11px 13px; border: 1px solid rgba(15,61,92,.16); border-radius: 10px; background: #F6F4EE; color: #0A2B41; margin-bottom: 12px; font-family: inherit; }
+  input:focus { border-color: #D4AF37; box-shadow: 0 0 0 3px rgba(212,175,55,.18); outline: none; }
+  .btn { display: block; width: 100%; box-sizing: border-box; border: none; border-radius: 10px; background: #D4AF37; color: #0B1E2C; font-weight: 700; font-size: 15px; padding: 13px; cursor: pointer; font-family: inherit; text-align: center; text-decoration: none; }
+  .btn[disabled] { opacity: .7; cursor: default; }
+  .btn.alt { background: #0F3D5C; color: #fff; }
+  .err { color: #B3261E; background: #FDECEA; border-radius: 8px; padding: 9px 13px; font-size: 12.5px; margin: 0 0 14px; display: none; }
+  .foot { text-align: center; margin-top: 16px; font-size: 11px; color: #98A2AC; }
+  .foot a { color: #0F3D5C; font-weight: 700; text-decoration: none; }
+</style>
+</head>
+<body>
+<main class="card">
+  <p class="kicker" id="kicker">RoofCoil.com</p>
+  <h1 id="title">Set a new password</h1>
+  <p id="sub">Choose a new password for your account. You'll be signed in and sent straight back to where you started.</p>
+  <form id="form" autocomplete="on">
+    <label for="pw">New password</label><input id="pw" type="password" autocomplete="new-password" placeholder="At least 6 characters" minlength="6" required>
+    <label for="pw2">New password again</label><input id="pw2" type="password" autocomplete="new-password" placeholder="Type it once more" minlength="6" required>
+    <div class="err" id="err" role="alert"></div>
+    <button class="btn" id="go" type="submit">Save password &amp; sign in</button>
+  </form>
+  <p class="foot" id="foot"></p>
+</main>
+<script>
+// The password-reset email links here with a one-time code. Like confirm.html, nothing is
+// exchanged until the person presses the button, so mail scanners that open every link
+// can't burn the code. On submit: the code becomes a session, the new password is saved
+// on that session, and the person is sent on to `next` signed in (session in the URL hash,
+// the same shape Supabase's own redirect uses and every page here already handles).
+// type=recovery is the normal reset. type=signup is the same link for an account that was
+// never confirmed: the code confirms it and the new password replaces the forgotten one.
+(function () {
+  var SUPA = "https://znueitseoqijhkkvdomc.supabase.co";
+  var KEY = "sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
+  var HOSTS = ["roofcoil.com", "www.roofcoil.com", "shop.roofcoil.com", "fortifiedmetals.com", "www.fortifiedmetals.com", "localhost"];
+  var PHONE = "972-944-7963";
+  var HOME = "https://www.roofcoil.com/";
+
+  var q = new URLSearchParams(location.search);
+  var tokenHash = q.get("token_hash") || "";
+  var type = q.get("type") === "signup" ? "signup" : "recovery";
+  var next = safeNext(q.get("next"));
+  var onFortified = /fortifiedmetals\.com/.test(next);
+  var brand = onFortified ? "Fortified Metals" : "RoofCoil.com";
+
+  var $ = function (id) { return document.getElementById(id); };
+  $("kicker").textContent = brand + " · One account, every tool";
+  document.title = "Set a new password — " + brand;
+  if (onFortified) $("foot").innerHTML = 'Powered by <a href="https://www.roofcoil.com">RoofCoil.com</a>';
+
+  function safeNext(raw) {
+    try {
+      if (!raw) return HOME;
+      var u = new URL(raw, location.href);
+      var local = u.protocol === "http:" && u.hostname === "localhost";
+      if ((u.protocol === "https:" || local) && HOSTS.indexOf(u.hostname) !== -1 && !/\/(confirm|reset)\.html$/i.test(u.pathname)) { u.hash = ""; return u.toString(); }
+    } catch (e) {}
+    return HOME;
+  }
+  function showErr(m) { var e = $("err"); e.textContent = m; e.style.display = "block"; }
+  function done(title, sub) { $("title").textContent = title; $("sub").textContent = sub; $("form").style.display = "none"; }
+  function offerSignIn(label) {
+    var a = document.createElement("a");
+    a.className = "btn alt"; a.href = next + "#signin"; a.textContent = label || "Go to sign in";
+    $("form").parentNode.insertBefore(a, $("foot"));
+  }
+  function goOn(j) {
+    var hash = "#access_token=" + encodeURIComponent(j.access_token) +
+      "&expires_in=" + encodeURIComponent(j.expires_in || 3600) +
+      (j.expires_at ? "&expires_at=" + encodeURIComponent(j.expires_at) : "") +
+      "&refresh_token=" + encodeURIComponent(j.refresh_token) +
+      "&token_type=" + encodeURIComponent(j.token_type || "bearer") +
+      "&type=recovery";
+    location.replace(next + hash);
+  }
+
+  if (!tokenHash) {
+    done("This link is incomplete", "Open the link from your email again, or go back to sign in and choose Forgot password to get a fresh one.");
+    offerSignIn();
+    return;
+  }
+
+  var session = null; // kept once the code is exchanged, so a failed save can be retried
+  $("form").onsubmit = async function (ev) {
+    ev.preventDefault();
+    $("err").style.display = "none";
+    var pw = $("pw").value, pw2 = $("pw2").value;
+    if (pw.length < 6) { showErr("Password needs at least 6 characters."); return; }
+    if (pw !== pw2) { showErr("The two passwords don't match."); return; }
+    var btn = $("go");
+    btn.disabled = true; btn.textContent = "Saving…";
+    try {
+      if (!session) {
+        var r = await fetch(SUPA + "/auth/v1/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", apikey: KEY },
+          body: JSON.stringify({ type: type, token_hash: tokenHash }),
+        });
+        var j = await r.json();
+        if (!r.ok || !j.access_token || !j.refresh_token) {
+          var code = j.error_code || j.code || "";
+          var msg = j.msg || j.error_description || j.message || "";
+          if (code === "otp_expired" || /expired|invalid/i.test(msg)) {
+            done("This link has expired or was already used", "Go back to sign in and choose Forgot password to get a fresh link. Questions? Call " + PHONE + ".");
+          } else {
+            done("Something went wrong", msg || "Please try again in a minute, or call " + PHONE + ".");
+          }
+          offerSignIn();
+          return;
+        }
+        session = j;
+      }
+      var u = await fetch(SUPA + "/auth/v1/user", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", apikey: KEY, Authorization: "Bearer " + session.access_token },
+        body: JSON.stringify({ password: pw }),
+      });
+      if (!u.ok) {
+        var uj = await u.json().catch(function () { return {}; });
+        showErr(uj.msg || uj.error_description || uj.message || "Couldn't save that password — try a different one.");
+        btn.disabled = false; btn.textContent = "Save password & sign in";
+        return;
+      }
+      btn.textContent = "Saved — signing you in…";
+      goOn(session);
+    } catch (e) {
+      showErr("Couldn't reach the server — check your connection and try again.");
+      btn.disabled = false; btn.textContent = "Save password & sign in";
+    }
+  };
+})();
+</script>
+</body>
+</html>
