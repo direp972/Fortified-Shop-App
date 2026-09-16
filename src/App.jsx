@@ -700,6 +700,24 @@ function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4"
 const COM_KIT = buildCommercialKit();
 // Every box row's starting tick, both kits, by kit id — what a row goes back to when the last
 // of that piece leaves the order.
+// Pieces that answer the same question on a roof, collapsed into one row so the list reads as
+// decisions rather than parts. Only the valley is a true either/or: hemmed and cleated pans are
+// the same choice made once for the whole roof. The rest a job can legitimately need two of —
+// gutters on the front elevation and open eaves on the back, saw-cut reglet into the masonry and
+// surface mount on the stucco beside it, a drip edge at the edge the roof drains over with gravel
+// stop holding the water back on the other three sides.
+// Deliberately NOT families: the two coping cleats (a two-cleat cap needs both, one per face),
+// the hook strip (every edge cover hangs on it), and the offset cleat (it is what makes the
+// cleated eave and the cleated valley work).
+const KIT_FAMILIES = [
+  { key: "f-eave", exclusive: false, members: [["dstyle", "D-style"], ["eave", "Drip edge + cleat"], ["apron", "Gutter apron"]] },
+  { key: "f-valley", exclusive: true, members: [["valley", "Hemmed"], ["valleyc", "Cleated"]] },
+  { key: "f-counter", exclusive: false, members: [["counter", "Saw-cut reglet"], ["counter2", "Surface mount"]] },
+  { key: "f-coping", exclusive: false, members: [["coping1", "One cleat"], ["coping0", "Face-fastened"], ["coping2", "Two cleats"]] },
+  { key: "f-edge", exclusive: false, members: [["dripedge", "Drip edge"], ["gravelstop", "Gravel stop"], ["snapfascia", "Snap-on fascia"]] },
+];
+const KIT_FAMILY_OF = Object.fromEntries(KIT_FAMILIES.flatMap((f) => f.members.map(([id]) => [id, f])));
+
 const KIT_DEFAULT_SEL = { ...ROOF_KIT_DEFAULT_SEL, ...Object.fromEntries(COM_KIT.filter((it) => !it.tool3d).map((it) => [it.id, it.on ? 1 : 0])) };
 // Quick presets on the trim canvas: every piece of the roof kit at a 4:12 roof and every drawn
 // piece of the commercial kit at its stock sizes, under the names the boxes give them (the boxes
@@ -3859,6 +3877,11 @@ export default function ShopOrderApp() {
   const [roofBoxSeam, setRoofBoxSeam] = useState(1.5);
   const [roofBoxLower, setRoofBoxLower] = useState(3);
   const [roofBoxSel, setRoofBoxSel] = useState({}); // id -> qty (0 = not in the box)
+  // Who was in the box when it opened. The list sorts picked-first off THIS, not off the live
+  // selection, so ticking a row never slides it out from under the finger and the next row you
+  // meant to tick never moves. It re-freezes on open and when Tidy is pressed.
+  const [boxOrder, setBoxOrder] = useState({});
+  const [famShow, setFamShow] = useState({}); // family key -> which member's row is showing
   const [roofBoxRowPitch, setRoofBoxRowPitch] = useState({}); // id -> the pitch that one piece is bent to, when it differs from the roof's
   const [boxNote, setBoxNote] = useState(""); // one line the box shows after a round trip — "Added Ridge Cap ×4 — pick the next piece."
   const [boxStripAll, setBoxStripAll] = useState(false); // the "In the order now" strip shows eight parts until asked for all
@@ -4865,6 +4888,11 @@ export default function ShopOrderApp() {
 
   /* ---------- The boxes: Residential Standing Seam and Commercial in a Box ---------- */
   const boxKind = BOX_KINDS[roofBoxKind];
+  const seedBoxSel = (sel, kit) => {
+    let next = sel;
+    for (const it of kit) if (!it.tool3d && !(it.id in next)) { if (next === sel) next = { ...sel }; next[it.id] = it.on ? 1 : 0; }
+    return next;
+  };
   const boxNoun = roofBoxKind === "com" ? "part" : "trim"; // what the box calls its rows — a gutter is not a trim
   // The roof kit: every piece at the roof's pitch, carrying the pitch it was bent to — except a piece
   // the roofer gave its own pitch, which is bent from a kit built at that pitch instead. The commercial
@@ -4881,17 +4909,50 @@ export default function ShopOrderApp() {
       return { ...kitsAt[own].find((k) => k.id === it.id), pitch: own };
     });
   })();
+  // One row per decision. A family of alternatives collapses into a single row carrying whichever
+  // member is showing; everything else is its own row. Built by walking the kit in its own order, so
+  // the water path it is written in survives the grouping.
+  const kitRows = (() => {
+    const seen = new Set(), rows = [];
+    for (const it of roofKit) {
+      const fam = KIT_FAMILY_OF[it.id];
+      if (fam && !seen.has(fam.key)) {
+        const members = fam.members.map(([id, short]) => { const m = roofKit.find((x) => x.id === id); return m ? { short, it: m } : null; }).filter(Boolean);
+        if (members.length > 1) { seen.add(fam.key); rows.push({ key: fam.key, kind: "family", fam, members }); continue; }
+      }
+      if (fam && seen.has(fam.key)) continue;
+      rows.push({ key: it.id, kind: it.tool3d ? "tool" : "item", it });
+    }
+    return rows;
+  })();
+  // which member of a family the row is showing: what the roofer last tapped, else whatever is
+  // already in the box, else the kit's own default
+  const famShownIt = (row) => {
+    const tapped = row.members.find((m) => m.it.id === famShow[row.fam.key]);
+    return (tapped || row.members.find((m) => (roofBoxSel[m.it.id] || 0) > 0) || row.members[0]).it;
+  };
+  const rowIsPicked = (row, sel) => (row.kind === "family"
+    ? row.members.some((m) => (sel[m.it.id] || 0) > 0)
+    : row.kind === "item" && (sel[row.it.id] || 0) > 0);
+  const pickedRows = kitRows.filter((r) => r.kind !== "tool" && rowIsPicked(r, boxOrder));
+  const restRows = kitRows.filter((r) => r.kind !== "tool" && !rowIsPicked(r, boxOrder));
+  const toolRows = kitRows.filter((r) => r.kind === "tool");
+  // how many rows have drifted out of the section they opened in — what Tidy would move
+  const outOfPlace = kitRows.filter((r) => r.kind !== "tool" && rowIsPicked(r, roofBoxSel) !== rowIsPicked(r, boxOrder)).length;
+  const kitEntries = [];
+  kitEntries.push({ head: `In this box · ${pickedRows.length}`, tidy: true }, ...pickedRows.map((row) => ({ row })));
+  if (restRows.length) kitEntries.push({ head: `Everything else · ${restRows.length}` }, ...restRows.map((row) => ({ row })));
+  if (toolRows.length) kitEntries.push({ head: "Built to size in the 3D tool" }, ...toolRows.map((row) => ({ row })));
+
   // Opening a box (tile, button or ?view=box / ?view=commercial) starts its rows ticked the way the
   // kit ships them — rows the roofer already set keep their tick — and prices its parts as 24 gauge,
   // which is what the kits are drawn for.
   const roofBoxPitchRef = useRef(null);
   useEffect(() => {
     if (!roofBoxOpen) { setBoxNote(""); setBoxStripAll(false); return; }
-    setRoofBoxSel((sel) => {
-      let next = sel;
-      for (const it of roofBoxKind === "com" ? COM_KIT : buildRoofKit()) if (!it.tool3d && !(it.id in next)) { if (next === sel) next = { ...sel }; next[it.id] = it.on ? 1 : 0; }
-      return next;
-    });
+    const seedKit = roofBoxKind === "com" ? COM_KIT : buildRoofKit();
+    setRoofBoxSel((sel) => seedBoxSel(sel, seedKit));
+    setBoxOrder(seedBoxSel(roofBoxSel, seedKit)); // same computation, so the order matches what seeds
     const onKey = (e) => { if (e.key === "Escape") setRoofBoxOpen(false); };
     window.addEventListener("keydown", onKey);
     const focusTimer = setTimeout(() => roofBoxPitchRef.current?.focus(), 0);
@@ -6854,7 +6915,20 @@ export default function ShopOrderApp() {
                           </div>
                         )}
                         <div style={{ marginTop: 10 }}>
-                          {roofKit.map((it) => {
+                          {kitEntries.map((entry) => {
+                            if (entry.head) return (
+                              <div key={entry.head} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "16px 0 3px" }}>
+                                <span className="mono" style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: theme.textSecondary }}>{entry.head}</span>
+                                {entry.tidy && outOfPlace > 0 && (
+                                  <button type="button" onClick={() => setBoxOrder(roofBoxSel)} data-testid="box-tidy" title="Re-sort the list around what you have ticked — nothing moves until you ask, so a row never slides out from under you mid-tick"
+                                    style={{ fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 999, border: `1px solid ${SAFETY}`, background: "transparent", color: SAFETY, cursor: "pointer" }}>
+                                    ↑ Tidy {outOfPlace}
+                                  </button>
+                                )}
+                              </div>
+                            );
+                            const row = entry.row;
+                            const it = row.kind === "family" ? famShownIt(row) : row.it;
                             if (it.tool3d) return ( // built in the 3D tool — the row is the way there
                               <div key={it.id} data-testid={`box-row-${it.id}`} className="box-row" style={{ padding: "8px 0", borderTop: `1px solid ${theme.border}` }}>
                                 <span aria-hidden="true" />
@@ -6881,9 +6955,13 @@ export default function ShopOrderApp() {
                             const g = profileGirth(it.points, it.hemStart, it.hemEnd);
                             const pps = piecesPerSheet(sheetWidthNum, g);
                             return (
-                              <div key={it.id} data-testid={`box-row-${it.id}`} className="box-row" style={{ padding: "8px 0", borderTop: `1px solid ${theme.border}`, opacity: on ? 1 : 0.72 }}>
+                              <div key={row.key} data-testid={`box-row-${it.id}`} className="box-row" style={{ padding: "8px 0", borderTop: `1px solid ${theme.border}`, opacity: on ? 1 : 0.72 }}>
                                 <input type="checkbox" checked={on} aria-label={`Include ${it.name}`}
-                                  onChange={(e) => setRoofBoxSel((sel) => ({ ...sel, [it.id]: e.target.checked ? 1 : 0 }))} style={{ width: 16, height: 16, cursor: "pointer" }} />
+                                  onChange={(e) => setRoofBoxSel((sel) => {
+                                    const next = { ...sel, [it.id]: e.target.checked ? 1 : 0 };
+                                    if (e.target.checked && row.kind === "family" && row.fam.exclusive) for (const m of row.members) if (m.it.id !== it.id) next[m.it.id] = 0;
+                                    return next;
+                                  })} style={{ width: 16, height: 16, cursor: "pointer" }} />
                                 <div style={{ background: INK, borderRadius: 6, padding: 3, display: "flex" }}>
                                   <ShapeThumb order={{ type: "trim", points: it.points, hemStart: it.hemStart, hemEnd: it.hemEnd, colorHex: colorObj.hex }} size={48} />
                                 </div>
@@ -6892,9 +6970,29 @@ export default function ShopOrderApp() {
                                     {inOrder.length > 0 && <span className="mono" data-testid="box-row-in-order" style={{ marginLeft: 8, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.06em", color: SAFETY, border: `1px solid ${SAFETY}`, borderRadius: 999, padding: "1px 7px" }}>IN ORDER · {inOrderPcs} pc{inOrderPcs === 1 ? "" : "s"}</span>}
                                   </div>
                                   <div style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 1.4 }}>{it.where}</div>
+                                  {row.kind === "family" && (
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
+                                      {row.members.map((m) => {
+                                        const showing = m.it.id === it.id, mOn = (roofBoxSel[m.it.id] || 0) > 0;
+                                        return (
+                                          <button key={m.it.id} type="button" data-testid={`box-var-${m.it.id}`} title={m.it.name}
+                                            onClick={() => setFamShow((f) => ({ ...f, [row.fam.key]: m.it.id }))}
+                                            style={{
+                                              padding: "2px 9px", borderRadius: 999, fontSize: 10.5, fontWeight: showing ? 700 : 600, cursor: "pointer",
+                                              border: `1px solid ${showing ? INK : mOn ? SAFETY : theme.border}`,
+                                              background: showing ? INK : theme.inputBg, color: showing ? "#fff" : theme.text,
+                                            }}>
+                                            {mOn && <span style={{ color: SAFETY, fontWeight: 700 }}>✓ </span>}{m.short}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                  {on && (
                                   <div className="mono" style={{ fontSize: 10, color: theme.textSecondary, marginTop: 2 }}>
                                     Girth {fmtIn(g)}" · {Math.max(0, it.points.length - 2)} bend{it.points.length === 3 ? "" : "s"} · {pps} pcs/sheet · one {lengthPerPiece} ft piece per {lengthPerPiece} ft of {it.per}
                                   </div>
+                                  )}
                                 </div>
                                 <div className="box-controls">
                                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
