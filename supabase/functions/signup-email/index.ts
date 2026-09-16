@@ -19,6 +19,11 @@
 // its password and details are never changed by a request that hasn't proven it owns the
 // inbox, so nobody can take over a pending account by asking for a link.
 //
+// {reset:true, email} is "Forgot password": a confirmed account gets a recovery code, a
+// pending one gets a fresh confirmation code, and either links to public/reset.html, where
+// the person types a new password and lands back signed in. An address with no account is
+// told so by email, like a resend. Same limits, same {sent:true} answer.
+//
 // Settings (environment first, then Vault through public.get_secret):
 //   RESEND_API_KEY     — required
 //   SIGNUP_EMAIL_FROM  — default "<brand> <no-reply@roofcoil.com>"
@@ -26,7 +31,8 @@
 // Limits: every request, accepted or not, takes a slot in public.signup_requests inside one
 // locked statement before anything else happens, so bursts can't slip under them and a
 // caller that keeps asking locks itself out. Per hour: 3 requests for one inbox (plus-tags
-// and Gmail dots count as the same inbox), 5 from one connection, 30 overall; 80 a day
+// and Gmail dots count as the same inbox), 10 from one connection (a shop office behind
+// one router signing up its crew), 30 overall; 80 a day
 // overall, well under the Resend quota that order alerts share. Over a limit answers 429
 // with a message that carries the shop's phone number. A CAPTCHA in front of the forms
 // would stop a distributed bot at the source; these limits only bound the damage.
@@ -42,13 +48,16 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 
 const PHONE = "972-944-7963";
-const LIMITS = { perInbox: 3, perIp: 5, perHour: 30, perDay: 80 };
+const LIMITS = { perInbox: 3, perIp: 10, perHour: 30, perDay: 80 };
 // Pages the person may be sent back to after confirming. Anything else lands on the home page.
 const ALLOWED_HOSTS = ["roofcoil.com", "www.roofcoil.com", "shop.roofcoil.com", "fortifiedmetals.com", "www.fortifiedmetals.com", "localhost"];
 // public/confirm.html in this repo, on the domain Vercel deploys straight from main. It
 // exchanges the hashed code for a session on a button press, then sends the person on to
 // whichever page they signed up from. Ship the page before pointing emails at it.
 const CONFIRM_PAGE = "https://shop.roofcoil.com/confirm.html";
+// public/reset.html: exchanges a recovery (or, for a pending account, confirmation) code on
+// a button press, saves the password typed on the page, then sends the person on signed in.
+const RESET_PAGE = "https://shop.roofcoil.com/reset.html";
 const BUSY = `We're getting a lot of sign-ups right now — try again in a few minutes, or call ${PHONE} and we'll set you up.`;
 const INBOX_BUSY = `We've already sent ${LIMITS.perInbox} emails to that address in the last hour — check your spam folder, or call ${PHONE} and we'll set you up.`;
 
@@ -78,7 +87,7 @@ function safeRedirect(raw: unknown): string | undefined {
     const local = u.protocol === "http:" && u.hostname === "localhost";
     if (u.protocol !== "https:" && !local) return undefined;
     if (!ALLOWED_HOSTS.includes(u.hostname)) return undefined;
-    if (/\/confirm\.html$/i.test(u.pathname)) return undefined;
+    if (/\/(confirm|reset)\.html$/i.test(u.pathname)) return undefined;
     u.hash = "";
     return u.toString();
   } catch { return undefined; }
@@ -165,6 +174,23 @@ function noAccountMail(brand: string, signUp: string): Mail {
   };
 }
 
+function resetMail(name: string, link: string, brand: string, note: string): Mail {
+  const hi = greeting(name);
+  const tail = `The link expires in about an hour. If you didn't ask to reset your password, you can ignore this email — nothing changes until the link is used.`;
+  return {
+    subject: `Reset your ${brand} password`,
+    text: `${hi}\n\nClick the link below to choose a new password for your ${brand} account:\n\n${link}\n\n${note ? note + "\n\n" : ""}${tail}\n\n${footer(brand)}`,
+    html: shell(brand, `
+    <h1 style="font-size:22px;margin:0 0 10px;color:#0A2B41">${esc(hi)}</h1>
+    <p style="font-size:15px;line-height:1.55;margin:0 0 20px">Click the button below to choose a new password for your ${esc(brand)} account.</p>
+    ${button(link, "Set a new password", "#D4AF37", "#0B1E2C")}
+    ${small("If the button doesn't work, copy this link into your browser:")}
+    <p style="font-size:12px;line-height:1.5;word-break:break-all;margin:0 0 18px"><a href="${esc(link)}" style="color:#0F3D5C">${esc(link)}</a></p>
+    ${note ? small(note) : ""}
+    ${small(tail)}`),
+  };
+}
+
 async function sendMail(to: string, mail: Mail, brand: string): Promise<void> {
   const key = await setting("RESEND_API_KEY");
   if (!key) throw new Error("RESEND_API_KEY not set");
@@ -211,12 +237,13 @@ Deno.serve(async (req: Request) => {
   const company = String(body.company || "").trim().slice(0, 160);
   const phone = String(body.phone || "").trim().slice(0, 40);
   const resend = body.resend === true;
+  const reset = body.reset === true;
   const redirectTo = safeRedirect(body.redirectTo);
 
   // Same rules the sign-up form enforces, re-checked here because the form can be bypassed.
   if (!/.+@.+\..+/.test(email) || email.length > 254) return json({ error: "Enter a valid email." }, 400);
-  if (password.length < 6 || password.length > 200) return json({ error: "Password needs at least 6 characters." }, 400);
-  if (!resend) {
+  if (!reset && (password.length < 6 || password.length > 200)) return json({ error: "Password needs at least 6 characters." }, 400);
+  if (!resend && !reset) {
     if (!name) return json({ error: "Name is required." }, 400);
     if (digits(phone) < 10) return json({ error: "A phone number is required so the shop can reach you about orders." }, 400);
   }
@@ -235,9 +262,31 @@ Deno.serve(async (req: Request) => {
   const signIn = (redirectTo || home) + "#signin";
   const signUp = (redirectTo || home) + "#signup";
 
-  let kind: "confirm" | "existing" | "none" = "confirm";
+  let kind: "confirm" | "existing" | "none" | "reset" = "confirm";
   try {
-    if (state?.state === "confirmed") {
+    if (reset) {
+      kind = "reset";
+      if (state?.state === "none") {
+        await sendMail(email, noAccountMail(brand, signUp), brand);
+      } else {
+        const { data: old } = await admin.auth.admin.getUserById(state.id);
+        const m = (old?.user?.user_metadata ?? {}) as Record<string, string>;
+        const pending = state?.state === "unconfirmed";
+        // A pending account has no recovery flow to speak of: a fresh confirmation code does
+        // the same job. Supabase Auth ignores the password here for an existing user (see
+        // the sign-up branch below), so a throwaway one is passed only because the API
+        // requires the field.
+        const { data: gen, error: genErr } = pending
+          ? await admin.auth.admin.generateLink({ type: "signup", email, password: crypto.randomUUID() + "Aa1!", options: { data: { name: m.name || "", company: m.company || "", phone: m.phone || "" }, redirectTo } })
+          : await admin.auth.admin.generateLink({ type: "recovery", email, options: { redirectTo } });
+        if (genErr) throw genErr;
+        const tokenHash = gen?.properties?.hashed_token;
+        if (!tokenHash) throw new Error("no hashed_token in generateLink response");
+        const link = `${RESET_PAGE}?token_hash=${encodeURIComponent(tokenHash)}&type=${pending ? "signup" : "recovery"}&next=${encodeURIComponent(redirectTo || home)}`;
+        const note = pending ? "This account was never confirmed. The link confirms it and saves the new password you choose." : "";
+        await sendMail(email, resetMail(m.name || "", link, brand, note), brand);
+      }
+    } else if (state?.state === "confirmed") {
       await sendMail(email, existingAccountMail(brand, signIn), brand);
       kind = "existing";
     } else if (state?.state !== "unconfirmed" && resend) {

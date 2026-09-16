@@ -776,6 +776,19 @@ const FAB_COMPANIES = [
     bases: [{ name: "Weatherford", lat: 32.7593, lng: -97.7972 }],
   },
 ];
+// A listing's roll-forming bases for the mileage lookup: every location with coordinates,
+// else the listing's own pin. Null when it has neither, so the caller can fall back.
+function shopBases(shop) {
+  if (!shop) return null;
+  const locs = Array.isArray(shop.locations) ? shop.locations : [];
+  const label = (city) => String(city || shop.name || "").split(",")[0].trim() || shop.name;
+  const pts = locs.filter((l) => l && isFinite(+l.lat) && isFinite(+l.lng) && l.lat !== null && l.lng !== null)
+    .map((l) => ({ name: label(l.city), lat: +l.lat, lng: +l.lng }));
+  if (pts.length === 0 && shop.lat !== null && shop.lng !== null && isFinite(+shop.lat) && isFinite(+shop.lng)) {
+    pts.push({ name: label(shop.city), lat: +shop.lat, lng: +shop.lng });
+  }
+  return pts.length ? pts : null;
+}
 const MILEAGE_FREE = 40, MILEAGE_RATE = 2;
 const havMiles = (a, b, c, d) => {
   const r = (x) => (x * Math.PI) / 180;
@@ -3153,7 +3166,7 @@ function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, shelf, 
     } else {
       buildChimneyCap(group, {
         W, D, shelf: Math.max(0.5, +shelf || 3), leg: Math.max(0.5, +leg || 3), postH: Math.max(0.5, +postH || 6), CH: Math.max(0.5, +capH || 6),
-        oh: Math.max(0, +overhang ?? 2), style: capStyle || "hip", ribs: ribs !== false,
+        oh: Math.max(0, Number.isFinite(+overhang) ? +overhang : 2), style: capStyle || "hip", ribs: ribs !== false,
       }, mat, addEdges);
     }
 
@@ -3495,7 +3508,7 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
 
 /* ---------------------------------- main app ---------------------------------- */
 export default function ShopOrderApp() {
-  const { user, customer, isStaff, signOut } = useAuth();
+  const { user, customer, isStaff, ownedShops, signOut } = useAuth();
   // Signed out, the tools are open to anyone as a demo: draw trim, size a panel
   // run, try colours. What an account is for — pricing, sending an order to a
   // shop, and the saved-job tabs — stays locked, and every locked control raises
@@ -3513,6 +3526,13 @@ export default function ShopOrderApp() {
   const [mfrApps, setMfrApps] = useState([]); // staff-only: manufacturer "get listed" applications from the site
   const [mfrAppsLoaded, setMfrAppsLoaded] = useState(false);
   const [tab, setTab] = useState("order");
+  // Shops that take orders through RoofCoil: directory listings with ordering switched on.
+  // The one picked rides on every order as shop_id; the order-alert function emails that
+  // shop and its owner account sees the job on its own Shop Floor.
+  const [shops, setShops] = useState([]);
+  const [shopId, setShopId] = useState(null);
+  const ownedShopIds = (ownedShops || []).map((s) => s.id);
+  const canRunShopFloor = isStaff || (ownedShops || []).some((s) => s.accepts_orders);
   const [orderStep, setOrderStep] = useState("type"); // "color" | "type" | "details"
   const [showColorMatch, setShowColorMatch] = useState(false);
   const [materialCategory, setMaterialCategory] = useState("painted"); // "painted" | "unpainted"
@@ -3616,7 +3636,9 @@ export default function ShopOrderApp() {
   const [jobSiteAddress, setJobSiteAddress] = useState("");
   const [jobSiteMiles, setJobSiteMiles] = useState("");
   const [supplierCo, setSupplierCo] = useState("Fortified Metal");
-  const [fabricatorCo, setFabricatorCo] = useState("Fortified Metal");
+  const selectedShop = shops.find((s) => s.id === shopId) || null;
+  const fabricatorCo = selectedShop ? selectedShop.name : "Fortified Metal";
+  const shopIsFortified = !selectedShop || /fortified/i.test(selectedShop.name);
   const [milesLookupBusy, setMilesLookupBusy] = useState(false);
   const [milesLookupNote, setMilesLookupNote] = useState("");
   const [ribStyle, setRibStyle] = useState(null);
@@ -3752,12 +3774,16 @@ export default function ShopOrderApp() {
     storage.set("last-tab", tab, false).catch((e) => console.error("storage error", e));
   }, [tab, tabLoaded]);
 
-  // Shop Floor is staff-only — if a customer's saved "last tab" happens to point there
-  // (or they try to navigate there directly), bounce them back to New Order.
+  // Shop Floor is for staff and for shops that take orders here — if anyone else's saved
+  // "last tab" points there (or they navigate there directly), bounce them back to New Order.
+  // The Master Materials List is the Fortified shop's own board, so it stays staff-only.
   useEffect(() => {
-    if (tab === "dashboard" && !isStaff) setTab("order");
+    if (tab === "dashboard" && !canRunShopFloor) setTab("order");
     if (isDemo && tab !== "order") setTab("order");
-  }, [tab, isStaff, isDemo]);
+  }, [tab, canRunShopFloor, isDemo]);
+  useEffect(() => {
+    if (shopFloorView === "materials" && !isStaff) setShopFloorView("jobs");
+  }, [shopFloorView, isStaff]);
 
   useEffect(() => {
     if (priceListView === "backend" && !isStaff) setPriceListView("customer");
@@ -3768,17 +3794,33 @@ export default function ShopOrderApp() {
   useEffect(() => {
     (async () => {
       try {
-        const { data, error } = await supabase.from("orders").select("id, user_id, data").order("created_at", { ascending: false });
-        if (!error && data) setOrders(data.map((r) => ({ ...r.data, userId: r.user_id })));
+        const { data, error } = await supabase.from("orders").select("id, user_id, shop_id, data").order("created_at", { ascending: false });
+        if (!error && data) setOrders(data.map((r) => ({ ...r.data, userId: r.user_id, shopId: r.shop_id || r.data?.shopId || null })));
       } catch (e) { /* no orders yet */ }
       setLoaded(true);
+    })();
+  }, []);
+
+  // Shops that take orders through RoofCoil. ?shop=<listing id> (a shop's own site linking
+  // to the app) preselects that shop; otherwise Fortified, else the first one listed.
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase.from("directory_listings")
+        .select("id, name, phone, city, lat, lng, locations")
+        .eq("status", "live").eq("accepts_orders", true)
+        .order("featured", { ascending: false }).order("name", { ascending: true });
+      if (error || !data) { console.error("shops load error", error); return; }
+      setShops(data);
+      const want = new URLSearchParams(window.location.search).get("shop");
+      const pick = data.find((s) => s.id === want) || data.find((s) => /fortified/i.test(s.name)) || data[0] || null;
+      setShopId((cur) => (cur && data.some((s) => s.id === cur) ? cur : (pick ? pick.id : null)));
     })();
   }, []);
 
   const insertOrders = async (newOrders) => {
     // attach userId locally so a just-submitted order shows in Past Orders without a reload
     setOrders((prev) => [...newOrders.map((o) => ({ ...o, userId: user?.id || null })), ...prev]);
-    const rows = newOrders.map((o) => ({ id: o.id, user_id: user?.id || null, data: o, created_at: o.createdAt }));
+    const rows = newOrders.map((o) => ({ id: o.id, user_id: user?.id || null, shop_id: o.shopId || null, data: o, created_at: o.createdAt }));
     const { error } = await supabase.from("orders").insert(rows);
     if (error) {
       console.error("orders insert error", error);
@@ -3835,7 +3877,8 @@ export default function ShopOrderApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coilWidth, paintId, brand, coilWidthScale]);
 
-  const fabBases = (FAB_COMPANIES.find((c) => c.name === fabricatorCo) || FAB_COMPANIES[0]).bases;
+  const fabBases = shopBases(selectedShop)
+    || (FAB_COMPANIES.find((c) => c.name.split(" ")[0].toLowerCase() === fabricatorCo.split(" ")[0].toLowerCase()) || FAB_COMPANIES[0]).bases;
 
   // Look up one-way driving miles from the chosen fabricator's NEAREST base to the
   // job site — geocode via OpenStreetMap, route via OSRM, straight-line ×1.25 fallback.
@@ -3942,19 +3985,25 @@ export default function ShopOrderApp() {
     { id: "p17", category: "3D Parts", name: 'Chimney Cap (base fabrication fee)', cost: 0, tier1: 50.00, tier2: 62.00, greenleaf: 47.00 },
   ];
 
+  // Staff read the price list as stored. Everyone else gets it through customer_price_list(),
+  // which strips the cost column; the tier prices stay because estimates are computed here.
   useEffect(() => {
     (async () => {
       try {
-        const res = await storage.get("shop-price-list", true);
-        if (res?.value) {
-          const parsed = JSON.parse(res.value);
-          setPriceList(parsed.map((p) => ({ cost: 0, ...p })));
+        let parsed = null;
+        if (isStaff) {
+          const res = await storage.get("shop-price-list", true);
+          if (res?.value) parsed = JSON.parse(res.value);
+        } else {
+          const { data, error } = await supabase.rpc("customer_price_list");
+          if (error) throw error;
+          parsed = Array.isArray(data) ? data : null;
         }
-        else setPriceList(DEFAULT_PRICE_LIST);
+        setPriceList(parsed ? parsed.map((p) => ({ cost: 0, ...p })) : DEFAULT_PRICE_LIST);
       } catch (e) { setPriceList(DEFAULT_PRICE_LIST); }
       setPriceListLoaded(true);
     })();
-  }, []);
+  }, [isStaff]);
 
   const savePriceList = async (next) => {
     setPriceList(next);
@@ -4160,6 +4209,7 @@ export default function ShopOrderApp() {
   ];
 
   useEffect(() => {
+    if (!isStaff) { setMaterialCosts(DEFAULT_MATERIAL_COSTS); setMaterialCostsLoaded(true); return; }
     (async () => {
       try {
         const res = await storage.get("shop-material-costs", true);
@@ -4170,7 +4220,7 @@ export default function ShopOrderApp() {
       } catch (e) { setMaterialCosts(DEFAULT_MATERIAL_COSTS); }
       setMaterialCostsLoaded(true);
     })();
-  }, []);
+  }, [isStaff]);
 
   const saveMaterialCosts = async (next) => {
     setMaterialCosts(next);
@@ -4190,6 +4240,7 @@ export default function ShopOrderApp() {
   ];
 
   useEffect(() => {
+    if (!isStaff) { setProductionCosts(DEFAULT_PRODUCTION_COSTS); setProductionCostsLoaded(true); return; }
     (async () => {
       try {
         const res = await storage.get("shop-production-costs", true);
@@ -4198,7 +4249,7 @@ export default function ShopOrderApp() {
       } catch (e) { setProductionCosts(DEFAULT_PRODUCTION_COSTS); }
       setProductionCostsLoaded(true);
     })();
-  }, []);
+  }, [isStaff]);
 
   const saveProductionCosts = async (next) => {
     setProductionCosts(next);
@@ -4582,7 +4633,7 @@ export default function ShopOrderApp() {
 
   const resetForm = () => {
     setOrderStep("type");
-    setShapeType("panel"); setWidth(16.88); setHeight(853.08); setCoilWidth(21); setProfile(PROFILES[0]); setRunLocation("Shop"); setJobSiteAddress(""); setJobSiteMiles(""); setMilesLookupNote(""); setSupplierCo("Fortified Metal"); setFabricatorCo("Fortified Metal"); setRibStyle(null); setClipRelief(null);
+    setShapeType("panel"); setWidth(16.88); setHeight(853.08); setCoilWidth(21); setProfile(PROFILES[0]); setRunLocation("Shop"); setJobSiteAddress(""); setJobSiteMiles(""); setMilesLookupNote(""); setSupplierCo("Fortified Metal"); setRibStyle(null); setClipRelief(null);
     setFlatWidth(48); setFlatLength(120); setMetalCoilWidth(21); setMetalCoilLength(12000);
     setAccessories([]); setAccType("Screws"); setAccSpec(ACCESSORY_SPECS.Screws[0]); setAccProfile(PROFILES[0]); setAccQty(1);
     setPartType("collector"); setPartW(12); setPartD(8); setPartH(10); setPartCapH(6); setPartView("3d"); setCapStyle("pyramid");
@@ -4853,6 +4904,8 @@ export default function ShopOrderApp() {
           id: uid(),
           jobId,
           poNumber,
+          shopId: shopId || undefined,
+          shopName: selectedShop ? selectedShop.name : undefined,
           type: "trim",
           // accessories ride on the job's first part only, so quantities aren't duplicated per part
           accessories: idx === 0 && accessories.length > 0 ? accessories : undefined,
@@ -4902,6 +4955,8 @@ export default function ShopOrderApp() {
       id: uid(),
       jobId: uid(),
       poNumber: await nextPoNumber(),
+      shopId: shopId || undefined,
+      shopName: selectedShop ? selectedShop.name : undefined,
       type: shapeType,
       customerName: customerName.trim(),
       phone: phone.trim(),
@@ -5130,7 +5185,7 @@ export default function ShopOrderApp() {
       setJobSiteAddress(p.jobSiteAddress || "");
       setJobSiteMiles(p.jobSiteMiles ?? "");
       setSupplierCo(p.metalSupplier || "Fortified Metal");
-      setFabricatorCo(p.fabricator || "Fortified Metal");
+      if (p.shopId && shops.some((s) => s.id === p.shopId)) setShopId(p.shopId);
     } else if (kind === "metal") {
       if (p.flatWidth != null) setFlatWidth(p.flatWidth);
       if (p.flatLength != null) setFlatLength(p.flatLength);
@@ -5213,7 +5268,33 @@ export default function ShopOrderApp() {
       .catch((e) => console.error("storage error", e));
   };
 
-  const visibleOrders = statusFilter === "All" ? orders : orders.filter((o) => o.status === statusFilter);
+  // Staff see every order; a shop owner's Shop Floor shows only the orders sent to their shop.
+  const floorOrders = isStaff ? orders : orders.filter((o) => o.shopId && ownedShopIds.includes(o.shopId));
+  const visibleOrders = statusFilter === "All" ? floorOrders : floorOrders.filter((o) => o.status === statusFilter);
+
+  // "Send this order to": every shop that takes orders through RoofCoil. With one shop the
+  // order still carries it; with none switched on, it goes to the Fortified desk as before.
+  const renderShopPicker = () => shops.length === 0 ? null : shops.length === 1 ? (
+    <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 4 }}>
+      Sent to <b style={{ color: theme.text }}>{shops[0].name}</b>{shops[0].city ? ` · ${shops[0].city}` : ""}
+    </div>
+  ) : (
+    <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 4 }}>
+      Send this order to
+      <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+        {shops.map((c) => (
+          <button key={c.id} type="button" onClick={() => setShopId(c.id)}
+            style={{
+              flex: "1 1 45%", padding: "7px", borderRadius: 6, fontSize: 12, cursor: "pointer",
+              border: `1px solid ${shopId === c.id ? INK : "#D9D5C7"}`,
+              background: shopId === c.id ? INK : "#fff", color: shopId === c.id ? "#fff" : INK_DEEP, fontWeight: 600,
+            }}>
+            {c.name}{c.city ? <span style={{ display: "block", fontSize: 10, fontWeight: 400, opacity: 0.8 }}>{c.city}</span> : null}
+          </button>
+        ))}
+      </div>
+    </label>
+  );
 
   return (
     <div style={{ fontFamily: "Inter, sans-serif", background: theme.pageBg, minHeight: "100vh" }}>
@@ -5315,7 +5396,7 @@ export default function ShopOrderApp() {
         {[{ id: "order", label: "New Order", icon: PenTool },
           // Job Vault, Past Orders and the Price List are all account territory.
           ...(isDemo ? [] : [{ id: "vault", label: "Job Vault", icon: Briefcase }]),
-          ...(isStaff ? [{ id: "dashboard", label: "Shop Floor", icon: ClipboardList }] : []),
+          ...(canRunShopFloor ? [{ id: "dashboard", label: "Shop Floor", icon: ClipboardList }] : []),
           ...(isDemo ? [] : [{ id: "past", label: "Past Orders", icon: Clock }, { id: "pricelist", label: "Price List", icon: DollarSign }]),
         ].map((t) => {
           const Icon = t.icon;
@@ -6127,22 +6208,8 @@ export default function ShopOrderApp() {
               </>
             ) : shapeType === "panel" ? (
               <>
-                <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 4 }}>
-                  Fabricated By
-                  <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                    {FAB_COMPANIES.map((c) => (
-                      <button key={c.name} type="button" onClick={() => setFabricatorCo(c.name)}
-                        style={{
-                          flex: 1, padding: "7px", borderRadius: 6, fontSize: 12, cursor: "pointer",
-                          border: `1px solid ${fabricatorCo === c.name ? INK : "#D9D5C7"}`,
-                          background: fabricatorCo === c.name ? INK : "#fff", color: fabricatorCo === c.name ? "#fff" : INK_DEEP, fontWeight: 600,
-                        }}>
-                        {c.name}
-                      </button>
-                    ))}
-                  </div>
-                </label>
-                {(supplierCo !== "Fortified Metal" || fabricatorCo !== "Fortified Metal") && (
+                {renderShopPicker()}
+                {(supplierCo !== "Fortified Metal" || !shopIsFortified) && (
                   <div style={{ fontSize: 10.5, fontWeight: 600, color: AMBER, marginTop: 6 }}>
                     Estimate shown at Fortified rates — final pricing confirmed by the companies you picked.
                   </div>
@@ -6975,6 +7042,7 @@ export default function ShopOrderApp() {
           {/* order details */}
           <div style={{ background: theme.card, borderRadius: 10, padding: 12, marginTop: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
             <div className="disp" style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8 }}>Order Details</div>
+            {shapeType !== "panel" && renderShopPicker()}
 
             <div style={{ position: "relative", marginTop: 10 }}>
               <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Customer name"
@@ -7710,7 +7778,7 @@ export default function ShopOrderApp() {
       ) : (
         <div style={{ padding: 16, maxWidth: 640, margin: "0 auto" }}>
           <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-            {[{ id: "jobs", label: "Jobs" }, { id: "materials", label: "Master Materials List" }].map((v) => (
+            {[{ id: "jobs", label: "Jobs" }, ...(isStaff ? [{ id: "materials", label: "Master Materials List" }] : [])].map((v) => (
               <button key={v.id} onClick={() => setShopFloorView(v.id)}
                 style={{
                   flex: 1, padding: "9px 6px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
@@ -7873,6 +7941,7 @@ export default function ShopOrderApp() {
                             <div>
                               <div style={{ fontWeight: 700, fontSize: 15, color: theme.text }}>{first.customerName}</div>
                               <div style={{ fontSize: 11, color: theme.textSecondary }}>{first.phone || "No phone provided"}</div>
+                              {first.shopName && (<div style={{ fontSize: 10.5, color: SAFETY, fontWeight: 600, marginTop: 1 }}>Sent to {first.shopName}</div>)}
                               <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 2 }}>
                                 {group.items.length} piece{group.items.length === 1 ? "" : "s"} in this job
                               </div>

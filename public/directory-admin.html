@@ -101,6 +101,10 @@
         <div class="fld"><label>Website</label><input id="e-website" placeholder="https://"></div>
         <div class="fld"><label>Phone (public)</label><input id="e-phone"></div>
       </div>
+      <div class="frow">
+        <div class="fld"><label>Orders through RoofCoil — switched on, the shop appears in the Panel &amp; Trim app's "Send this order to" picker and its owner account gets a Shop Floor</label><button type="button" class="seg" id="e-orders">Takes orders from RoofCoil.com</button></div>
+        <div class="fld"><label>Order email — every order for this shop is emailed here (blank routes to the Fortified desk)</label><input id="e-orderemail" type="email" placeholder="orders@company.com"></div>
+      </div>
       <div class="fld"><label>Owner account — the supplier email allowed to propose edits from /manage-listing.html</label><input id="e-owner" placeholder="owner@company.com"></div>
       <div class="row" style="display:flex;gap:8px;margin:-4px 0 12px;flex-wrap:wrap"><button class="mini" id="e-setowner">Link owner account</button><span class="okline" id="owner-note" style="margin:0;align-self:center"></span></div>
       <div class="fld"><label>Logo URL — shown beside the name on the listing</label><input id="e-logo"></div>
@@ -180,6 +184,7 @@ $('#e-bcoil').onclick=()=>$('#e-bcoil').classList.toggle('sel');
 $('#e-bturnkey').onclick=()=>$('#e-bturnkey').classList.toggle('sel');
 $('#e-featured').onclick=()=>$('#e-featured').classList.toggle('sel');
 $('#e-bfab').onclick=()=>$('#e-bfab').classList.toggle('sel');
+$('#e-orders').onclick=()=>$('#e-orders').classList.toggle('sel');
 
 // refresh the access token before every call so a staff tab left open past
 // token expiry (~1 hour) keeps working instead of failing with JWT errors
@@ -292,6 +297,7 @@ function prefillFromApp(a){
   $('#e-status').value='draft';
   $('#e-lic').value=(a.details&&a.details.licensed_states)||'';
   $('#e-featured').classList.remove('sel');$('#e-logobg').value='';
+  $('#e-orders').classList.remove('sel');$('#e-orderemail').value='';
   const abil=d.abilities||a.panel_types||[];
   setChips('#e-abilities',abil);
   setChips('#e-efpanels',abil);
@@ -597,6 +603,8 @@ $('#e-save').onclick=async()=>{
   const gmRaw=$('#e-gmaps').value.trim();
   const gmClean=gmRaw?mapsUrl(gmRaw):'';
   if(gmRaw&&!gmClean){note.textContent='Maps link must be a Google Maps / Business Profile address (maps.app.goo.gl, google.com/maps…).';note.classList.add('errline');return}
+  const orderEmail=$('#e-orderemail').value.trim();
+  if(orderEmail&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(orderEmail)){note.textContent='Order email must be an email address.';note.classList.add('errline');return}
   const photoLines=$('#e-photos').value.split('\n').map(s=>s.trim()).filter(Boolean);
   const photosClean=photoLines.map(u=>safeUrl(u)).filter(Boolean);
   if(photosClean.length!==photoLines.length){note.textContent='One of the photo URLs isn\'t a normal http(s) address — fix or remove it.';note.classList.add('errline');return}
@@ -616,6 +624,8 @@ $('#e-save').onclick=async()=>{
     logo_bg:logoBg||null,
     gmaps_url:gmClean||'',
     featured:$('#e-featured').classList.contains('sel'),
+    accepts_orders:$('#e-orders').classList.contains('sel'),
+    order_email:orderEmail||null,
     updated_at:new Date().toISOString(),
   };
   if(!editingId&&$('#e-save').dataset.appId)body.application_id=$('#e-save').dataset.appId;
@@ -651,7 +661,7 @@ async function loadListings(){
     const meta=document.createElement('div');meta.className='meta';
     const lls=(Array.isArray(l.locations)&&l.locations.length)?l.locations:[{lat:l.lat,lng:l.lng}];
     const nogeo=lls.filter(x=>!x||x.lat==null||x.lng==null).length;
-    meta.textContent=[l.featured?'★ featured':null,l.city,lls.length>1?lls.length+' locations':null,
+    meta.textContent=[l.featured?'★ featured':null,l.accepts_orders?'🛒 takes orders':null,l.city,lls.length>1?lls.length+' locations':null,
       (l.abilities||[]).length+' abilities',(l.colors||[]).length+' colors',
       nogeo?(lls.length>1?'no coords on '+nogeo+' of '+lls.length:'no coords'):'geo ✓',
       ownerEmails[l.id]?'owner: '+ownerEmails[l.id]:null].filter(Boolean).join(' · ');
@@ -686,6 +696,7 @@ function openListing(l){
   $('#e-lic').value=l.licensed_states||'';
   $('#e-featured').classList.toggle('sel',!!l.featured);
   $('#e-logobg').value=l.logo_bg||'';
+  $('#e-orders').classList.toggle('sel',!!l.accepts_orders);$('#e-orderemail').value=l.order_email||'';
   $('#e-area').value=l.area_keywords||'';
   $('#e-gmaps').value=l.gmaps_url||'';
   setChips('#e-abilities',l.abilities||[]);
@@ -710,8 +721,8 @@ function openListing(l){
 }
 
 /* ── supplier-proposed edits (from /manage-listing.html) ───────────────── */
-const FIELD_LABELS={name:'Company name',phone:'Phone',website:'Website',gmaps_url:'Maps link',licensed_states:'Licensed states',coil_desc:'Coil sentence',fab_desc:'Fabrication sentence',colors:'Colors',abilities:'Abilities'};
-const fmtVal=v=>Array.isArray(v)?(v.length?v.join(', '):'(none)'):(v==null||v===''?'(empty)':String(v));
+const FIELD_LABELS={name:'Company name',phone:'Phone',website:'Website',gmaps_url:'Maps link',licensed_states:'Licensed states',coil_desc:'Coil sentence',fab_desc:'Fabrication sentence',colors:'Colors',abilities:'Abilities',accepts_orders:'Takes orders through RoofCoil',order_email:'Order email'};
+const fmtVal=v=>Array.isArray(v)?(v.length?v.join(', '):'(none)'):v===true?'yes':v===false?'no':(v==null||v===''?'(empty)':String(v));
 
 async function loadOwners(){
   ownerEmails={};
@@ -789,6 +800,8 @@ async function applyEdit(e){
       if(k==='abilities'&&!v.length){alert('Their proposed abilities list is empty — nothing could find the listing. Dismiss or edit by hand.');return}
       if(k==='abilities'&&EF_PANELS.some(x=>v.includes(x))&&!v.includes('Exposed fastener'))v.push('Exposed fastener');
     }
+    else if(k==='accepts_orders'){if(typeof v!=='boolean'){alert('Malformed accepts_orders — dismiss this edit.');return}}
+    else if(k==='order_email'){v=String(v).trim();if(v&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)){alert('Their proposed order email is not an email address — open the listing in the editor and handle it by hand.');return}v=v||null}
     else v=String(v).trim();
     patch[k]=v;
   }

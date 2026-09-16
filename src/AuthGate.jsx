@@ -17,13 +17,14 @@ const GoogleG = () => (
 );
 
 export default function AuthGate({ children }) {
-  const { user, loading, signUp, signIn, signInWithGoogle, resendConfirmation } = useAuth();
+  const { user, loading, signUp, signIn, signInWithGoogle, resendConfirmation, requestPasswordReset } = useAuth();
   // Signed out, the tools still open — in demo mode, with pricing and ordering
   // locked (see isDemo in App.jsx). This card comes up over the top when a demo
   // visitor asks for something that needs an account, so whatever they have drawn
   // stays mounted underneath and is still there if they dismiss it.
   const [authOpen, setAuthOpen] = useState(false);
-  const [mode, setMode] = useState("signin"); // "signin" | "signup"
+  const [mode, setMode] = useState("signin"); // "signin" | "signup" | "reset"
+  const [doneKind, setDoneKind] = useState("signup"); // which email the "check your email" screen is about
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -85,7 +86,11 @@ export default function AuthGate({ children }) {
         if (error) { setError(error.message); return; }
         // The confirmation link in the email finishes the sign-in, so the gate shows
         // "check your email" unless a session came back (the gate then opens on its own).
-        if (!data || !data.session) setSignupDone(true);
+        if (!data || !data.session) { setDoneKind("signup"); setSignupDone(true); }
+      } else if (mode === "reset") {
+        const { error } = await requestPasswordReset(email);
+        if (error) { setError(error.message); return; }
+        setDoneKind("reset"); setSignupDone(true);
       } else {
         const { error } = await signIn(email, password);
         if (error) { setError(error.message); setNeedsResend(!!error.notConfirmed); return; }
@@ -106,7 +111,7 @@ export default function AuthGate({ children }) {
       setError("");
       setEmail(pending.email);
       setPending(null);
-      setSignupDone(true);
+      setDoneKind("signup"); setSignupDone(true);
     } finally {
       setSubmitting(false);
     }
@@ -126,7 +131,9 @@ export default function AuthGate({ children }) {
         <div style={{ maxWidth: 380, textAlign: "center", background: "#fff", borderRadius: 16, padding: 28, boxShadow: "0 30px 80px rgba(0,0,0,0.5)" }}>
           <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 10, color: INK }}>Check your email</div>
           <div style={{ fontSize: 13.5, color: "#555", lineHeight: 1.5 }}>
-            We sent an email to <strong>{email}</strong>. If you're new, it has a link that confirms your account and signs you in right here. If you already have an account, it tells you how to sign in. Check your spam folder if it doesn't show up in a minute.
+            {doneKind === "reset"
+              ? <>We sent an email to <strong>{email}</strong>. If that address has an account, it has a link to choose a new password. If it doesn't, it tells you how to create one. Check your spam folder if it doesn't show up in a minute.</>
+              : <>We sent an email to <strong>{email}</strong>. If you're new, it has a link that confirms your account and signs you in right here. If you already have an account, it tells you how to sign in. Check your spam folder if it doesn't show up in a minute.</>}
           </div>
           <button onClick={() => { setSignupDone(false); setMode("signin"); }}
             style={{ marginTop: 18, width: "100%", padding: "10px", borderRadius: 8, border: `1px solid ${INK}`, background: "transparent", color: INK, fontWeight: 600, cursor: "pointer" }}>
@@ -146,16 +153,20 @@ export default function AuthGate({ children }) {
       <form onSubmit={handleSubmit} style={{ width: "100%", maxWidth: 380, background: "#fff", borderRadius: 16, padding: 28, boxShadow: "0 30px 80px rgba(0,0,0,0.5)" }}>
         <div style={{ fontFamily: "'Oswald', sans-serif", textTransform: "uppercase", letterSpacing: "0.03em", fontSize: 22, fontWeight: 700, marginBottom: 4, color: "#0A2B41", textAlign: "center" }}>{ON_FORTIFIED ? "Fortified Metals" : "RoofCoil.com Tools"}</div>
         <div style={{ fontSize: 12.5, color: "#777", marginBottom: 22, textAlign: "center" }}>
-          {mode === "signin" ? "Sign in to see pricing and send orders to a shop" : "Free account — unlocks pricing, ordering and saved jobs"}
+          {mode === "signin" ? "Sign in to see pricing and send orders to a shop" : mode === "reset" ? "Enter your email and we'll send a link to choose a new password" : "Free account — unlocks pricing, ordering and saved jobs"}
         </div>
 
-        <button type="button" onClick={handleGoogle} disabled={submitting}
-          style={{ width: "100%", padding: "11px", borderRadius: 8, border: "1px solid #dadce0", background: "#fff", color: "#3c4043", fontWeight: 600, fontSize: 14, cursor: submitting ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 16, opacity: submitting ? 0.7 : 1 }}>
-          <GoogleG /> Continue with Google
-        </button>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 16px", color: "#98A2AC", fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em" }}>
-          <span style={{ flex: 1, height: 1, background: "#E7E2D6" }} />or use email<span style={{ flex: 1, height: 1, background: "#E7E2D6" }} />
-        </div>
+        {mode !== "reset" && (
+          <>
+            <button type="button" onClick={handleGoogle} disabled={submitting}
+              style={{ width: "100%", padding: "11px", borderRadius: 8, border: "1px solid #dadce0", background: "#fff", color: "#3c4043", fontWeight: 600, fontSize: 14, cursor: submitting ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 16, opacity: submitting ? 0.7 : 1 }}>
+              <GoogleG /> Continue with Google
+            </button>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 16px", color: "#98A2AC", fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em" }}>
+              <span style={{ flex: 1, height: 1, background: "#E7E2D6" }} />or use email<span style={{ flex: 1, height: 1, background: "#E7E2D6" }} />
+            </div>
+          </>
+        )}
 
         {mode === "signup" && (
           <>
@@ -176,11 +187,13 @@ export default function AuthGate({ children }) {
           <input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setPending(null); }} required
             style={{ width: "100%", padding: 10, marginTop: 4, border: "1px solid #ddd", borderRadius: 7, fontSize: 14, boxSizing: "border-box" }} />
         </label>
-        <label style={{ display: "block", fontSize: 12, color: "#555", marginBottom: 16 }}>
-          Password
-          <input type="password" value={password} onChange={(e) => { setPassword(e.target.value); setPending(null); }} required minLength={6}
-            style={{ width: "100%", padding: 10, marginTop: 4, border: "1px solid #ddd", borderRadius: 7, fontSize: 14, boxSizing: "border-box" }} />
-        </label>
+        {mode !== "reset" && (
+          <label style={{ display: "block", fontSize: 12, color: "#555", marginBottom: 16 }}>
+            Password
+            <input type="password" value={password} onChange={(e) => { setPassword(e.target.value); setPending(null); }} required minLength={6}
+              style={{ width: "100%", padding: 10, marginTop: 4, border: "1px solid #ddd", borderRadius: 7, fontSize: 14, boxSizing: "border-box" }} />
+          </label>
+        )}
 
         {error && (
           <div role="alert" style={{ fontSize: 12.5, color: "#B3261E", marginBottom: 14, background: "#FDECEA", padding: 8, borderRadius: 6 }}>
@@ -196,13 +209,19 @@ export default function AuthGate({ children }) {
 
         <button type="submit" disabled={submitting}
           style={{ width: "100%", padding: "12px", borderRadius: 8, border: "none", background: SAFETY, color: "#fff", fontWeight: 700, fontSize: 14, cursor: submitting ? "default" : "pointer", opacity: submitting ? 0.7 : 1 }}>
-          {submitting ? "Please wait…" : mode === "signin" ? "Sign In" : "Create Account"}
+          {submitting ? "Please wait…" : mode === "signin" ? "Sign In" : mode === "reset" ? "Send reset link" : "Create Account"}
         </button>
 
         <div style={{ textAlign: "center", marginTop: 16, fontSize: 12.5, color: "#777" }}>
           {mode === "signin" ? (
             <>Don't have an account?{" "}
               <button type="button" onClick={() => { setMode("signup"); setError(""); }} style={{ border: "none", background: "none", color: SAFETY, fontWeight: 700, cursor: "pointer", padding: 0 }}>Sign up</button>
+              {" · "}
+              <button type="button" onClick={() => { setMode("reset"); setError(""); setPending(null); }} style={{ border: "none", background: "none", color: SAFETY, fontWeight: 700, cursor: "pointer", padding: 0 }}>Forgot password?</button>
+            </>
+          ) : mode === "reset" ? (
+            <>Remembered it?{" "}
+              <button type="button" onClick={() => { setMode("signin"); setError(""); }} style={{ border: "none", background: "none", color: SAFETY, fontWeight: 700, cursor: "pointer", padding: 0 }}>Sign in</button>
             </>
           ) : (
             <>Already have an account?{" "}

@@ -1,7 +1,13 @@
 // order-alert: called by the orders_alert_on_insert trigger (pg_net) whenever a
 // row lands in public.orders. Claims the job in public.order_alerts so a
 // multi-item order sends ONE alert, waits for the batch to finish inserting,
-// then emails the desk and texts the shop.
+// then emails the shop the order was sent to and a confirmation to the customer.
+//
+// Routing: an order carries shop_id, the directory listing it was sent to. A listing
+// that takes orders through RoofCoil has an order_email; the alert goes there and its
+// owner sees the job on their own Shop Floor at shop.roofcoil.com. An order with no
+// shop, or a shop with no order email, goes to the Fortified Metals desk (ALERT_EMAIL_TO)
+// and the shop text, exactly as before.
 //
 // Auth: custom shared-secret header (x-alert-secret) matching the DB trigger —
 // verify_jwt is off because pg_net cannot mint JWTs. Worst case for a leaked
@@ -20,6 +26,8 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const BATCH_SETTLE_MS = 8000;
+const PHONE = "972-944-7963";
+const DEFAULT_SHOP = "Fortified Metals";
 
 const sb = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -36,26 +44,29 @@ async function setting(name: string): Promise<string | undefined> {
   return typeof data === "string" && data ? data : undefined;
 }
 
+const esc = (s: string) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+const money = (n: number) => `$${(Number(n) || 0).toFixed(2)}`;
+
 function describeItem(it: Record<string, unknown>): string {
   const bits: string[] = [];
   const type = (it.type as string) || "item";
   const label =
     type === "panel" ? `Panel ${it.profile ?? ""}` :
-    type === "trim" ? "Trim profile" :
+    type === "trim" ? `Trim profile${it.partName ? ` (${it.partName})` : ""}` :
     type === "metal" ? "Coil / flat sheet" :
-    type === "part3d" ? `3D part${it.partName ? ` (${it.partName})` : ""}` :
+    type === "part3d" ? `3D part${it.partName ? ` (${it.partName})` : it.partType ? ` (${it.partType})` : ""}` :
     type;
   bits.push(label.trim());
   if (it.quantity != null) bits.push(`qty ${it.quantity}`);
   if (it.height != null && type === "panel") bits.push(`${it.height}" long`);
+  if (it.lengthPerPiece != null && type === "trim") bits.push(`${it.lengthPerPiece}' each`);
   if (it.colorName) bits.push(String(it.colorName));
   if (it.brand) bits.push(String(it.brand));
-  const price = Number(it.price) || 0;
-  bits.push(`$${price.toFixed(2)}`);
+  bits.push(money(Number(it.price) || 0));
   return "- " + bits.join(" · ");
 }
 
-async function sendEmail(subject: string, body: string, toOverride?: string) {
+async function sendEmail(subject: string, body: string, toOverride?: string, html?: string) {
   const key = await setting("RESEND_API_KEY");
   if (!key) return { skipped: "RESEND_API_KEY not set" };
   const to = toOverride ?? (await setting("ALERT_EMAIL_TO")) ?? "sales@fortifiedmetals.com";
@@ -63,9 +74,9 @@ async function sendEmail(subject: string, body: string, toOverride?: string) {
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to: [to], subject, text: body }),
+    body: JSON.stringify({ from, to: [to], subject, text: body, ...(html ? { html } : {}) }),
   });
-  return { status: res.status, body: res.ok ? "sent" : await res.text() };
+  return { to, status: res.status, body: res.ok ? "sent" : await res.text() };
 }
 
 async function sendSms(shortText: string) {
@@ -92,6 +103,37 @@ async function sendSms(shortText: string) {
   return { skipped: "no TWILIO_* or SMS_GATEWAY_TO set" };
 }
 
+type Shop = { id: string; name: string; phone: string | null; order_email: string | null; accepts_orders: boolean } | null;
+
+// The customer's copy: what they ordered, who is making it, and how to reach that shop.
+function customerMail(name: string, shopName: string, shopPhone: string, po: string, items: Record<string, unknown>[], total: number) {
+  const first = (name || "").trim().split(/\s+/)[0];
+  const hi = first ? `Hi ${first},` : "Hi there,";
+  const lines = items.map(describeItem);
+  const text = [
+    hi, "",
+    `We received your order${po ? ` (${po})` : ""} and sent it to ${shopName}.`,
+    `${shopName} will confirm the final price and reach out${shopPhone ? ` — or call them at ${shopPhone}` : ""}.`,
+    "", ...lines, "",
+    `Estimated total: ${money(total)} (final pricing confirmed by the shop)`,
+    "",
+    `You can see this order any time under Past Orders: https://shop.roofcoil.com/`,
+    "",
+    `RoofCoil.com · Fortified Metals · ${PHONE}`,
+  ].join("\n");
+  const html = `<div style="background:#F6F4EE;padding:28px 12px;font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;color:#1C1C1E">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;padding:28px 26px;border:1px solid #E7E2D6">
+    <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#8A94A6;margin-bottom:14px">RoofCoil.com</div>
+    <h1 style="font-size:22px;margin:0 0 10px;color:#0A2B41">${esc(hi)}</h1>
+    <p style="font-size:15px;line-height:1.55;margin:0 0 14px">We received your order${po ? ` <b>${esc(po)}</b>` : ""} and sent it to <b>${esc(shopName)}</b>. They will confirm the final price and reach out${shopPhone ? `, or call them at <a href="tel:${esc(shopPhone.replace(/[^\d+]/g, ""))}" style="color:#0F3D5C">${esc(shopPhone)}</a>` : ""}.</p>
+    <ul style="font-size:13.5px;line-height:1.6;padding-left:18px;margin:0 0 14px">${lines.map((l) => `<li>${esc(l.replace(/^- /, ""))}</li>`).join("")}</ul>
+    <p style="font-size:14px;margin:0 0 18px"><b>Estimated total: ${esc(money(total))}</b> <span style="color:#4E6273">(final pricing confirmed by the shop)</span></p>
+    <p style="margin:0 0 20px"><a href="https://shop.roofcoil.com/" style="display:inline-block;background:#0F3D5C;color:#fff;font-weight:700;font-size:14px;text-decoration:none;padding:11px 18px;border-radius:9px">See your orders</a></p>
+    <div style="margin-top:22px;padding-top:14px;border-top:1px solid #E7E2D6;font-size:12px;color:#8A94A6;line-height:1.5">RoofCoil.com · Fortified Metals · ${PHONE}</div>
+  </div></div>`;
+  return { subject: `Order received${po ? ` — ${po}` : ""} · ${shopName}`, text, html };
+}
+
 async function process(record: Record<string, any>) {
   try {
     const data = record?.data ?? {};
@@ -108,8 +150,8 @@ async function process(record: Record<string, any>) {
 
     await new Promise((r) => setTimeout(r, BATCH_SETTLE_MS)); // let sibling rows land
 
-    const byJob = await sb.from("orders").select("id,data,created_at").eq("data->>jobId", jobId);
-    const byId = await sb.from("orders").select("id,data,created_at").eq("id", jobId);
+    const byJob = await sb.from("orders").select("id,user_id,shop_id,data,created_at").eq("data->>jobId", jobId);
+    const byId = await sb.from("orders").select("id,user_id,shop_id,data,created_at").eq("id", jobId);
     const seen = new Set<string>();
     const rows = [...(byJob.data ?? []), ...(byId.data ?? [])].filter((r) => {
       if (seen.has(r.id)) return false; seen.add(r.id); return true;
@@ -122,27 +164,55 @@ async function process(record: Record<string, any>) {
     const po = items.map((i) => i.poNumber).find(Boolean) || "";
     const total = items.reduce((s, i) => s + (Number(i.price) || 0), 0);
 
-    const subject = `New order — ${customer}${po ? ` · PO ${po}` : ""} · $${total.toFixed(2)}`;
+    // Where the order goes: the listing it was sent to, if that shop takes orders here.
+    const shopId: string | null = rows.find((r) => r.shop_id)?.shop_id || record?.shop_id || first.shopId || null;
+    let shop: Shop = null;
+    if (shopId) {
+      const { data: s, error } = await sb.from("directory_listings").select("id,name,phone,order_email,accepts_orders").eq("id", shopId).maybeSingle();
+      if (error) console.error("shop lookup", error.message);
+      shop = (s as Shop) ?? null;
+    }
+    const routed = !!(shop && shop.order_email && shop.order_email.includes("@"));
+    const shopName = shop?.name || first.shopName || DEFAULT_SHOP;
+    const shopPhone = routed ? (shop?.phone || "") : PHONE;
+    const floorUrl = routed ? "https://shop.roofcoil.com/ (Shop Floor tab)" : "https://fortifiedmetals.com/app";
+
+    const subject = `New order — ${customer}${po ? ` · PO ${po}` : ""} · ${money(total)}${shop ? ` → ${shop.name}` : ""}`;
     const body = [
-      `New order on Fortified Metals / RoofCoil`,
+      `New order on RoofCoil.com for ${shopName}`,
       ``,
       `Customer: ${customer}`,
       `Phone: ${phone}`,
       po ? `PO: ${po}` : null,
       `Items: ${items.length}`,
-      `Total: $${total.toFixed(2)}`,
+      `Total: ${money(total)}`,
+      first.notes ? `Notes: ${first.notes}` : null,
       ``,
       ...items.map(describeItem),
       ``,
-      `Open Shop Floor: https://fortifiedmetals.com/app`,
+      `Open Shop Floor: ${floorUrl}`,
     ].filter((l) => l !== null).join("\n");
-    const short = `Fortified Metals: new order from ${customer}${po ? ` (PO ${po})` : ""} — ${items.length} item(s), $${total.toFixed(2)}`;
+    const short = `${shopName}: new order from ${customer}${po ? ` (PO ${po})` : ""} — ${items.length} item(s), ${money(total)}`;
 
-    const email = await sendEmail(subject, body);
-    const sms = await sendSms(short);
-    console.log("order-alert", jobId, JSON.stringify({ email, sms }));
+    const email = await sendEmail(subject, body, routed ? shop!.order_email! : undefined);
+    const sms = routed ? { skipped: `routed to ${shop!.name}` } : await sendSms(short);
 
-    await sb.from("order_alerts").update({ status: { email, sms, items: items.length, total } }).eq("job_id", jobId);
+    // The customer's confirmation goes to the account that placed the order.
+    let confirmation: Record<string, unknown> = { skipped: "no account on the order" };
+    const userId: string | null = rows.find((r) => r.user_id)?.user_id || record?.user_id || null;
+    if (userId) {
+      const { data: u, error } = await sb.auth.admin.getUserById(userId);
+      const to = u?.user?.email;
+      if (error) confirmation = { skipped: `user lookup: ${error.message}` };
+      else if (!to) confirmation = { skipped: "account has no email" };
+      else {
+        const m = customerMail(customer, shopName, shopPhone, po, items, total);
+        confirmation = await sendEmail(m.subject, m.text, to, m.html);
+      }
+    }
+    console.log("order-alert", jobId, JSON.stringify({ shop: shop?.name ?? null, routed, email, sms, confirmation }));
+
+    await sb.from("order_alerts").update({ status: { shop: shop?.name ?? null, routed, email, sms, confirmation, items: items.length, total } }).eq("job_id", jobId);
   } catch (e) {
     console.error("order-alert failed", e);
   }
