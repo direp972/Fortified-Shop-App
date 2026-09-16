@@ -3496,6 +3496,15 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
 /* ---------------------------------- main app ---------------------------------- */
 export default function ShopOrderApp() {
   const { user, customer, isStaff, signOut } = useAuth();
+  // Signed out, the tools are open to anyone as a demo: draw trim, size a panel
+  // run, try colours. What an account is for — pricing, sending an order to a
+  // shop, and the saved-job tabs — stays locked, and every locked control raises
+  // the sign-in card instead (AuthGate listens for this event).
+  const isDemo = !user;
+  const openAuth = (mode) => window.dispatchEvent(new CustomEvent("rc:open-auth", { detail: mode || "signup" }));
+  // Money the demo visitor may not see. Kept as one helper so a price can never
+  // reach the screen by being formatted somewhere new.
+  const priceText = (n) => (isDemo ? "—" : money(n));
   const [customers, setCustomers] = useState([]); // staff-only: every registered customer, for tier assignment
   const [customersLoaded, setCustomersLoaded] = useState(false);
   const [staffIds, setStaffIds] = useState([]);
@@ -3747,7 +3756,8 @@ export default function ShopOrderApp() {
   // (or they try to navigate there directly), bounce them back to New Order.
   useEffect(() => {
     if (tab === "dashboard" && !isStaff) setTab("order");
-  }, [tab, isStaff]);
+    if (isDemo && tab !== "order") setTab("order");
+  }, [tab, isStaff, isDemo]);
 
   useEffect(() => {
     if (priceListView === "backend" && !isStaff) setPriceListView("customer");
@@ -4820,6 +4830,9 @@ export default function ShopOrderApp() {
   };
 
   const submitOrder = async () => {
+    // The button already asks a signed-out visitor to sign up; this is the backstop
+    // so no other path can put an anonymous order in front of the shop.
+    if (isDemo) { openAuth("signup"); return; }
     if (!customerName.trim()) { setToast("Add a name so the shop knows who this is for."); return; }
     if (shapeType === "panel") {
       if (ribStyle === null) { setToast("Pick a rib style (or None) before sending the order."); return; }
@@ -5277,15 +5290,16 @@ export default function ShopOrderApp() {
           <div className="mono" style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>Shop Order Portal</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-          <div style={{ textAlign: "right", marginRight: 4, maxWidth: 150, overflow: "hidden" }}>
+          {/* name and pricing tier belong to an account — a demo visitor has neither */}
+          {!isDemo && <div style={{ textAlign: "right", marginRight: 4, maxWidth: 150, overflow: "hidden" }}>
             <div style={{ color: "#fff", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{customer?.name || user?.email}</div>
             <div style={{ color: theme.textSecondary, fontSize: 9.5 }}>
               {isStaff ? "Staff" : `Tier: ${customer?.tier === "tier1" ? "Tier 1" : customer?.tier === "greenleaf" ? "Greenleaf" : "Tier 2"}`}
             </div>
-          </div>
-          <button onClick={signOutEverywhere}
-            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
-            Sign Out
+          </div>}
+          <button onClick={isDemo ? () => openAuth("signin") : signOutEverywhere}
+            style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${isDemo ? SAFETY : "rgba(255,255,255,0.3)"}`, background: isDemo ? SAFETY : "rgba(255,255,255,0.08)", color: isDemo ? "#1C1C1E" : "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+            {isDemo ? "Sign in / Sign up" : "Sign Out"}
           </button>
           <button onClick={() => setDarkMode((d) => !d)}
             style={{ width: 30, height: 30, borderRadius: 15, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
@@ -5298,7 +5312,12 @@ export default function ShopOrderApp() {
 
       {/* tabs */}
       <div style={{ display: "flex", background: CHARCOAL, paddingBottom: 0 }}>
-        {[{ id: "order", label: "New Order", icon: PenTool }, { id: "vault", label: "Job Vault", icon: Briefcase }, ...(isStaff ? [{ id: "dashboard", label: "Shop Floor", icon: ClipboardList }] : []), { id: "past", label: "Past Orders", icon: Clock }, { id: "pricelist", label: "Price List", icon: DollarSign }].map((t) => {
+        {[{ id: "order", label: "New Order", icon: PenTool },
+          // Job Vault, Past Orders and the Price List are all account territory.
+          ...(isDemo ? [] : [{ id: "vault", label: "Job Vault", icon: Briefcase }]),
+          ...(isStaff ? [{ id: "dashboard", label: "Shop Floor", icon: ClipboardList }] : []),
+          ...(isDemo ? [] : [{ id: "past", label: "Past Orders", icon: Clock }, { id: "pricelist", label: "Price List", icon: DollarSign }]),
+        ].map((t) => {
           const Icon = t.icon;
           const active = tab === t.id;
           return (
@@ -5319,6 +5338,22 @@ export default function ShopOrderApp() {
           );
         })}
       </div>
+
+      {isDemo && (
+        <div style={{
+          background: theme.card, borderBottom: `1px solid ${theme.border}`, color: theme.textSecondary,
+          padding: "9px 20px", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+        }}>
+          <span>
+            <b style={{ color: theme.text }}>You're trying the tools.</b>{" "}
+            Draw and measure as much as you like. Pricing and sending an order to a shop need a free account.
+          </span>
+          <button onClick={() => openAuth("signup")} className="tap-bounce"
+            style={{ border: `1.5px solid ${SAFETY}`, background: "transparent", color: theme.text, borderRadius: 999, padding: "5px 14px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+            Create a free account
+          </button>
+        </div>
+      )}
 
       {toast && (
         <div className="pop-in" style={{
@@ -5771,8 +5806,8 @@ export default function ShopOrderApp() {
                         </label>
                         <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                           $/Sheet
-                          <div className="mono" style={priceBox}>{money(flatSheetPrice)}</div>
-                          <div className="mono" style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3, whiteSpace: "nowrap" }}>× {quantity || 0} = {money(flatSheetPrice * (+quantity || 0))}</div>
+                          <div className="mono" style={priceBox}>{priceText(flatSheetPrice)}</div>
+                          <div className="mono" style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3, whiteSpace: "nowrap" }}>× {quantity || 0} = {priceText(flatSheetPrice * (+quantity || 0))}</div>
                         </label>
                       </div>
 
@@ -5794,8 +5829,8 @@ export default function ShopOrderApp() {
                         </label>
                         <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                           $/Linear Ft
-                          <div className="mono" style={priceBox}>{money(metalCoilPricePerFt)}</div>
-                          <div className="mono" style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3, whiteSpace: "nowrap" }}>× {Math.round(coilFeet)} ft = {money(metalCoilPricePerFt * coilFeet)}</div>
+                          <div className="mono" style={priceBox}>{priceText(metalCoilPricePerFt)}</div>
+                          <div className="mono" style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3, whiteSpace: "nowrap" }}>× {Math.round(coilFeet)} ft = {priceText(metalCoilPricePerFt * coilFeet)}</div>
                         </label>
                       </div>
                       <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 6 }}>
@@ -6335,7 +6370,7 @@ export default function ShopOrderApp() {
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Total Price
                     <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${coilOverMax ? coilGateColor : theme.border}`, borderRadius: 6, fontSize: coilOverMax ? 13 : 14, background: theme.highlight, boxSizing: "border-box", color: coilOverMax ? coilGateColor : theme.text, fontWeight: coilOverMax ? 700 : 600 }}>
-                      {coilOverMax ? coilGateText : money(((+coilPricePerFt || 0) + (+fabPricePerFt || 0)) * ((+height || 0) / 12))}
+                      {coilOverMax ? coilGateText : priceText(((+coilPricePerFt || 0) + (+fabPricePerFt || 0)) * ((+height || 0) / 12))}
                     </div>
                   </label>
                 </div>
@@ -6344,9 +6379,11 @@ export default function ShopOrderApp() {
                     {coilUnavailable ? 'Coil over 48" isn\'t available — 48" is the widest we can run.' : 'Coil over 24" — call the shop for pricing on wide panels.'}
                   </div>
                 )}
-                <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
-                  Fabrication minimum: $200 shop-rolled · $600 rolled on site — applied automatically in the order estimate.
-                </div>
+                {!isDemo && (
+                  <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
+                    Fabrication minimum: $200 shop-rolled · $600 rolled on site — applied automatically in the order estimate.
+                  </div>
+                )}
 
                 <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 10 }}>
                   Run Location
@@ -6385,7 +6422,7 @@ export default function ShopOrderApp() {
                     </div>
                     <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
                       First {MILEAGE_FREE} miles free, then ${MILEAGE_RATE}/mile one way from the nearest {fabricatorCo} shop ({fabBases.map((b) => b.name).join(" or ")})
-                      {(+jobSiteMiles || 0) > MILEAGE_FREE ? <b style={{ color: AMBER }}> — mileage charge {money(mileageCharge(jobSiteMiles))}</b> : null}
+                      {(+jobSiteMiles || 0) > MILEAGE_FREE ? <b style={{ color: AMBER }}> — mileage charge {priceText(mileageCharge(jobSiteMiles))}</b> : null}
                       {milesLookupNote ? ` · ${milesLookupNote}` : ""}
                     </div>
                   </>
@@ -6647,7 +6684,7 @@ export default function ShopOrderApp() {
                         </div>
                         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 12, paddingTop: 12, borderTop: `1px solid ${theme.border}` }}>
                           <div className="mono" style={{ fontSize: 11.5, color: theme.text, fontWeight: 600 }} data-testid="box-totals">
-                            {roofBoxPicked.length} {boxNoun}{roofBoxPicked.length === 1 ? "" : "s"} · {totalPcs} pcs · {totalSheets} sheet{totalSheets === 1 ? "" : "s"} · est. {money(totalPrice)}
+                            {roofBoxPicked.length} {boxNoun}{roofBoxPicked.length === 1 ? "" : "s"} · {totalPcs} pcs · {totalSheets} sheet{totalSheets === 1 ? "" : "s"}{isDemo ? "" : ` · est. ${money(totalPrice)}`}
                             {boxPending && <span data-testid="box-pending" style={{ display: "block", fontWeight: 500, color: theme.textSecondary }}>+ the {boxPending.name} ×{boxPending.quantity} on the canvas goes in with them</span>}
                           </div>
                           <div style={{ display: "flex", gap: 8 }}>
@@ -6792,7 +6829,7 @@ export default function ShopOrderApp() {
                               {it.colorName} · {itGauge?.label} · {itBends} bend{itBends === 1 ? "" : "s"} · Paint side: {it.paintSide === "left" ? "Left" : "Right"}{it.kit && PITCHED_KIT.has(it.kit) && it.pitch ? ` · ${fmtPitch(it.pitch)}` : ""}
                             </span>
                           </span>
-                          <span className="mono" style={{ fontSize: 11, color: theme.textSecondary }}>{money(it.price)}</span>
+                          <span className="mono" style={{ fontSize: 11, color: theme.textSecondary }}>{priceText(it.price)}</span>
                           <button onClick={(e) => { e.stopPropagation(); editBasketItem(it); }} title="Edit this part" aria-label={`Edit ${it.name}`}
                             style={{ border: "none", background: "none", color: editing ? SAFETY : theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
                             <Pencil size={13} />
@@ -6956,22 +6993,25 @@ export default function ShopOrderApp() {
             </div>
           </div>
 
-          {/* estimate + submit */}
-          <div style={{ background: INK, borderRadius: 10, padding: 14, marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          {/* estimate + submit — signed out, the price is withheld and the button
+              asks for the free account instead of sending anything */}
+          <div style={{ background: INK, borderRadius: 10, padding: 14, marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div>
               <div style={{ color: "#CFE3EF", fontSize: 11 }}>
-                {shapeType === "trim" ? `Estimated total${basket.length > 0 ? ` · ${orderParts().length} part(s)` : ""}` : "Estimated total"}
+                {isDemo ? "Pricing needs a free account" : shapeType === "trim" ? `Estimated total${basket.length > 0 ? ` · ${orderParts().length} part(s)` : ""}` : "Estimated total"}
               </div>
-              <div className="mono" style={{ color: "#fff", fontSize: 22, fontWeight: 600 }}>{shapeType === "panel" && coilOverMax ? coilGateText : money(combinedEstimate)}</div>
+              <div className="mono" style={{ color: "#fff", fontSize: isDemo ? 14 : 22, fontWeight: 600 }}>
+                {isDemo ? "Your drawing is ready to send" : shapeType === "panel" && coilOverMax ? coilGateText : money(combinedEstimate)}
+              </div>
             </div>
-            <button onClick={submitOrder} disabled={submitting}
+            <button onClick={isDemo ? () => openAuth("signup") : submitOrder} disabled={!isDemo && submitting}
               className="disp tap-bounce"
               style={{
                 background: `linear-gradient(135deg, ${SAFETY}, #F0C955)`, color: "#fff", border: "none", padding: "13px 22px", borderRadius: 10,
-                fontSize: 13.5, fontWeight: 700, cursor: submitting ? "default" : "pointer", opacity: submitting ? 0.7 : 1,
+                fontSize: 13.5, fontWeight: 700, cursor: !isDemo && submitting ? "default" : "pointer", opacity: !isDemo && submitting ? 0.7 : 1,
                 boxShadow: `0 4px 14px ${SAFETY}55`,
               }}>
-              {submitting ? "Sending…" : "🚀 Send Order"}
+              {isDemo ? "Sign up free to see pricing & send" : submitting ? "Sending…" : "🚀 Send Order"}
             </button>
           </div>
           {user && (
