@@ -6976,7 +6976,19 @@ export default function ShopOrderApp() {
                                         const showing = m.it.id === it.id, mOn = (roofBoxSel[m.it.id] || 0) > 0;
                                         return (
                                           <button key={m.it.id} type="button" data-testid={`box-var-${m.it.id}`} title={m.it.name}
-                                            onClick={() => setFamShow((f) => ({ ...f, [row.fam.key]: m.it.id }))}
+                                            onClick={() => {
+                                              setFamShow((f) => ({ ...f, [row.fam.key]: m.it.id }));
+                                              // The chips are the row's answer to one question, so picking a different
+                                              // answer carries the tick with it. Without this, tapping a chip flips the
+                                              // checkbox to unticked and reads as though you just lost the piece.
+                                              setRoofBoxSel((sel) => {
+                                                const held = row.members.filter((x) => (sel[x.it.id] || 0) > 0);
+                                                if (!held.length || held.some((x) => x.it.id === m.it.id)) return sel;
+                                                const next = { ...sel, [m.it.id]: held[0] && sel[held[0].it.id] ? sel[held[0].it.id] : 1 };
+                                                for (const x of held) next[x.it.id] = 0;
+                                                return next;
+                                              });
+                                            }}
                                             style={{
                                               padding: "2px 9px", borderRadius: 999, fontSize: 10.5, fontWeight: showing ? 700 : 600, cursor: "pointer",
                                               border: `1px solid ${showing ? INK : mOn ? SAFETY : theme.border}`,
