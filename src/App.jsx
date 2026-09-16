@@ -3823,11 +3823,11 @@ export default function ShopOrderApp() {
   const [taperLength, setTaperLength] = useState(6); // inches the taper itself spans before leveling into a straight shelf
   // Scupper: the sleeve is partW x partH clear opening through partD of wall. Everything
   // below is what happens at the two ends of it.
-  const [scupOutlet, setScupOutlet] = useState("faceplate"); // "faceplate" | "collector" — what is outside the wall under the spout, if anything is
+  const [scupOutlet, setScupOutlet] = useState("collector"); // "faceplate" | "collector" — what is outside the wall under the spout, if anything is
   const [scupFlange, setScupFlange] = useState(6);  // TPO-clad roof plate the membrane welds to
   const [scupProj, setScupProj] = useState(2);      // how far the spout clears the wall face so water doesn't streak it
   const [scupPlateW, setScupPlateW] = useState(16); // face plate, overall
-  const [scupPlateH, setScupPlateH] = useState(10);
+  const [scupPlateH, setScupPlateH] = useState(8);
   const [scupBoxW, setScupBoxW] = useState(16);     // collector box hung under the spout
   const [scupBoxD, setScupBoxD] = useState(8);
   const [scupBoxH, setScupBoxH] = useState(12);
@@ -4817,8 +4817,8 @@ export default function ShopOrderApp() {
     setOutletShape("box"); setFlangeW(4); setFlangeD(4); setOutletDiameter(4); setOutletLength(6); setFlangeTapered(true);
     setFlangeLength(4); setOutletRoundTapered(false);
     setTopTrim(false); setBodyTaper(false); setTaperStart(0); setTaperLength(6);
-    setScupOutlet("faceplate"); setScupFlange(6); setScupProj(2);
-    setScupPlateW(16); setScupPlateH(10); setScupBoxW(16); setScupBoxD(8); setScupBoxH(12);
+    setScupOutlet("collector"); setScupFlange(6); setScupProj(2);
+    setScupPlateW(16); setScupPlateH(8); setScupBoxW(16); setScupBoxD(8); setScupBoxH(12);
     setScupDsSize("4×5"); setScupDsLen(10);
     setPoints(TRIM_PRESETS["Eave / Drip Edge"]); setPreset("Eave / Drip Edge");
     setHemStart("none"); setHemEnd("none"); setPaintSide("left");
@@ -5461,11 +5461,16 @@ export default function ShopOrderApp() {
       if (p.bodyTaper != null) setBodyTaper(p.bodyTaper);
       if (p.taperStart != null) setTaperStart(p.taperStart);
       if (p.taperLength != null) setTaperLength(p.taperLength);
-      setScupOutlet(p.scupOutlet || "faceplate");
-      setScupFlange(p.scupFlange ?? 6); setScupProj(p.scupProj ?? 2);
-      setScupPlateW(p.scupPlateW ?? 16); setScupPlateH(p.scupPlateH ?? 10);
-      setScupBoxW(p.scupBoxW ?? 16); setScupBoxD(p.scupBoxD ?? 8); setScupBoxH(p.scupBoxH ?? 12);
-      setScupDsSize(p.scupDsSize || "4×5"); setScupDsLen(p.scupDsLen ?? 10);
+      // Reopening an order has to reproduce the part that was priced, not the part a new order
+      // would start at — so every size comes back through scupperSpec, which is what the stored
+      // row was quoted, drawn and ticketed as. An item saved before the outlet choice existed
+      // has no scupOutlet and was priced as a face plate; it does not pick up the new default.
+      const sk = scupperSpec(p);
+      setScupOutlet(p.scupOutlet === "collector" ? "collector" : "faceplate");
+      setScupFlange(sk.flange); setScupProj(sk.proj);
+      setScupPlateW(sk.plateW); setScupPlateH(sk.plateH);
+      setScupBoxW(sk.boxW); setScupBoxD(sk.boxD); setScupBoxH(sk.boxH);
+      setScupDsSize(sk.dsSize); setScupDsLen(sk.dsLen);
     }
     setToast(`Loaded "${vaultItemLabel(item)}" from ${sourceLabel} — adjust anything and send when ready.`);
     setTimeout(() => setToast(""), 4000);
@@ -6261,7 +6266,7 @@ export default function ShopOrderApp() {
                                   // throws away the sizes you just typed.
                                   if (o.id !== scupOutlet) {
                                     if (o.id === "faceplate") { setScupPlateW((+partW || 12) + 4); setScupPlateH((+partH || 4) + 4); }
-                                    else { setScupBoxW((+partW || 12) + 4); setScupBoxD(Math.max(6, (+scupProj || 2) + 4)); }
+                                    else { setScupBoxW((+partW || 12) + 4); setScupBoxD(Math.max(8, (+scupProj || 2) + 4)); }
                                   }
                                   setScupOutlet(o.id);
                                 }}
@@ -6282,7 +6287,7 @@ export default function ShopOrderApp() {
                         <>
                           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                             {num("Face plate width (in)", scupPlateW, setScupPlateW, 16, "scup-plate-w")}
-                            {num("Face plate height (in)", scupPlateH, setScupPlateH, 10, "scup-plate-h")}
+                            {num("Face plate height (in)", scupPlateH, setScupPlateH, 8, "scup-plate-h")}
                           </div>
                           <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>
                             Overall size of the plate, opening cut through the middle of it — about 2" of cover all round is the everyday default. It's the only part of this anyone sees from the ground, so its edges get hemmed.
