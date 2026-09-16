@@ -4934,14 +4934,15 @@ export default function ShopOrderApp() {
   const rowIsPicked = (row, sel) => (row.kind === "family"
     ? row.members.some((m) => (sel[m.it.id] || 0) > 0)
     : row.kind === "item" && (sel[row.it.id] || 0) > 0);
-  const pickedRows = kitRows.filter((r) => r.kind !== "tool" && rowIsPicked(r, boxOrder));
-  const restRows = kitRows.filter((r) => r.kind !== "tool" && !rowIsPicked(r, boxOrder));
+  const boxOrderNow = Object.keys(boxOrder).length ? boxOrder : seedBoxSel(roofBoxSel, roofKit);
+  const pickedRows = kitRows.filter((r) => r.kind !== "tool" && rowIsPicked(r, boxOrderNow));
+  const restRows = kitRows.filter((r) => r.kind !== "tool" && !rowIsPicked(r, boxOrderNow));
   const toolRows = kitRows.filter((r) => r.kind === "tool");
   // how many rows have drifted out of the section they opened in — what Tidy would move
-  const outOfPlace = kitRows.filter((r) => r.kind !== "tool" && rowIsPicked(r, roofBoxSel) !== rowIsPicked(r, boxOrder)).length;
+  const outOfPlace = kitRows.filter((r) => r.kind !== "tool" && rowIsPicked(r, roofBoxSel) !== rowIsPicked(r, boxOrderNow)).length;
   const kitEntries = [];
-  kitEntries.push({ head: `In this box · ${pickedRows.length}`, tidy: true }, ...pickedRows.map((row) => ({ row })));
-  if (restRows.length) kitEntries.push({ head: `Everything else · ${restRows.length}` }, ...restRows.map((row) => ({ row })));
+  if (pickedRows.length || outOfPlace) kitEntries.push({ head: "In this box", tidy: true }, ...pickedRows.map((row) => ({ row })));
+  if (restRows.length) kitEntries.push({ head: pickedRows.length || outOfPlace ? "Everything else" : "Nothing in this box yet", tidy: !(pickedRows.length || outOfPlace) }, ...restRows.map((row) => ({ row })));
   if (toolRows.length) kitEntries.push({ head: "Built to size in the 3D tool" }, ...toolRows.map((row) => ({ row })));
 
   // Opening a box (tile, button or ?view=box / ?view=commercial) starts its rows ticked the way the
@@ -6922,7 +6923,7 @@ export default function ShopOrderApp() {
                                 {entry.tidy && outOfPlace > 0 && (
                                   <button type="button" onClick={() => setBoxOrder(roofBoxSel)} data-testid="box-tidy" title="Re-sort the list around what you have ticked — nothing moves until you ask, so a row never slides out from under you mid-tick"
                                     style={{ fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 999, border: `1px solid ${SAFETY}`, background: "transparent", color: SAFETY, cursor: "pointer" }}>
-                                    ↑ Tidy {outOfPlace}
+                                    ↑ Move {outOfPlace} up
                                   </button>
                                 )}
                               </div>
@@ -6993,7 +6994,7 @@ export default function ShopOrderApp() {
                                               });
                                             }}
                                             style={{
-                                              padding: "2px 9px", borderRadius: 999, fontSize: 10.5, fontWeight: showing ? 700 : 600, cursor: "pointer",
+                                              padding: "6px 11px", borderRadius: 999, fontSize: 11, fontWeight: showing ? 700 : 600, cursor: "pointer", lineHeight: 1.15,
                                               border: `1px solid ${showing ? INK : mOn ? SAFETY : theme.border}`,
                                               background: showing ? INK : theme.inputBg, color: showing ? "#fff" : theme.text,
                                             }}>
