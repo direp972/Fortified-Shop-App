@@ -1,0 +1,14 @@
+-- The public directory, the build's pre-render step and the home page's
+-- listed-shop counter all read directory_listings with the publishable key,
+-- i.e. as the `anon` role. The table's own RLS policy ("public reads live
+-- listings") is written for exactly that and limits anon to status='live'
+-- rows, but the underlying table grant had been revoked, so the policy was
+-- unreachable and every anonymous read failed with 401.
+--
+-- That took the public directory down and failed `npm run build` on every
+-- branch, because scripts/prerender.mjs fetches the live rows and refuses to
+-- publish an empty directory.
+--
+-- Restore the grant. RLS still decides what anon may see: live rows only.
+-- Verified after applying: anon sees 11 live listings, 0 non-live rows.
+grant select on public.directory_listings to anon;
