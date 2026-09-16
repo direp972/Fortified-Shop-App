@@ -689,7 +689,7 @@ function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4"
       where: "Along the low edge of the roof — bottom and front the gutter's size, the back an inch taller against the fascia so an overflow spills over the front and never behind it, a 1\" return across the top of the front, hemmed under, for stiffness and for the hangers to clip. Both edges hemmed. Drops to a downspout through an outlet cut in the bottom, or into a collector box.",
       points: [kitPt(G - 1, -G), kitPt(G, -G), kitPt(G, 0), kitPt(0, 0), kitPt(0, -(G + 1))], hemStart: "closed-left", hemEnd: "closed-left", paintSide: "right" },
     { id: "scupper", name: "Scupper", tool3d: "scupper", dims: "built to size in the 3D tool", per: "outlet through the parapet",
-      where: "Through-wall outlet that lets the roof drain out through the parapet — a sleeve closed on all four sides, the clear opening and the wall thickness its size, with a solid flange on the roof side the membrane laps onto. Outside the wall it takes either a face plate or a collector box with a downspout under it." },
+      where: "Through-wall outlet that lets the roof drain out through the parapet — a sleeve closed on all four sides, the clear opening and the wall thickness its size. On the roof side it takes its own TPO-clad plate, white stock rather than the order's color, with the opening cut through it, so the membrane welds straight to it. Outside the wall it takes either a face plate in the order's color or a collector box with a downspout under it — the box's own back plate covers the opening, so a box means no face plate." },
     { id: "collector", name: "Collector Box", tool3d: "collector", dims: "built to size in the 3D tool", per: "drop",
       where: "The conductor head under a scupper or a gutter outlet — catches the water and feeds the downspout, with the outlet the downspout below fits." },
     { id: "downspout", name: `Downspout — ${downspout}"`, dims: `${D}" out × ${W}" on the wall · 1" lock flange · ½" pocket`, per: "drop", on: true,
@@ -803,7 +803,12 @@ function part3dSummary(o) {
     const k = scupperSpec(o);
     const bits = [
       `${name} — ${formatDim(k.W)}"W × ${formatDim(k.H)}"H clear opening, ${formatDim(k.WT)}" thru-wall`,
-      `TPO roof plate ${formatDim(k.W + k.flange * 2)} × ${formatDim(k.H + k.flange * 2)}" (clad stock, ${formatDim(k.flange)}" past the opening)`,
+      // At zero the model draws no collar and the pattern cuts no blank, so the ticket must not
+      // order one either — it used to name a plate the exact size of the hole, a frame with no
+      // metal in it.
+      k.flange > 0.01
+        ? `TPO roof plate ${formatDim(k.W + k.flange * 2)} × ${formatDim(k.H + k.flange * 2)}" (clad stock, ${formatDim(k.flange)}" past the opening)`
+        : `no TPO roof plate — sleeve only`,
       `spout ${formatDim(k.proj)}" past the face`,
     ];
     if (k.collector) {
@@ -3325,7 +3330,15 @@ function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, colorHe
     const box = new THREE.Box3().setFromObject(group);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
-    group.position.sub(center); // recenter the model at world origin — camera can now always look at (0,0,0), which stays correct through any rotation
+    // Recenter the model on the origin so the camera can always look at (0,0,0). The offset has
+    // to ride on a child, not on the object that gets rotated: three.js applies position after
+    // rotation, so offsetting and spinning the same group swings the part around a point that
+    // isn't its center and walks it out of frame. A collector-box scupper, whose weight hangs
+    // well below the sleeve, went half off-screen on a tilt.
+    const pivot = new THREE.Group();
+    while (group.children.length) pivot.add(group.children[0]);
+    pivot.position.sub(center);
+    group.add(pivot);
     const radius = Math.max(0.5, size.length() / 2);
     const fovRad = (camera.fov * Math.PI) / 180;
     const marginFactor = 1.25; // >1 leaves breathing room so the part never touches the frame edge
@@ -3626,16 +3639,19 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
 
     // the plates, each with the opening cut out of the middle
     const plateBlank = (px, pw, ph) => {
-      panels.push({ x: px, y: pad, w: pw, h: ph, foldEdges: [], labelTop: true });
+      panels.push({ x: px, y: pad, w: pw, h: ph, foldEdges: [], labelTop: (ph - k.H) / 2 });
       panels.push({ cutout: true, x: px + (pw - k.W) / 2, y: pad + (ph - k.H) / 2, w: k.W, h: k.H });
       vbW = px + pw + pad;
       vbH = Math.max(vbH, pad * 2 + ph + 5);
     };
-    if (k.flange > 0.01) plateBlank(pad + RUN + pad, k.W + k.flange * 2, k.H + k.flange * 2);
-    if (!k.collector) plateBlank(vbW, k.plateW, k.plateH);
-    patternNote = k.collector
-      ? "Sleeve and TPO roof plate — the collector box and its downspout are bent separately"
-      : "Sleeve · TPO roof plate · face plate — the roof plate is clad stock, not the order's color";
+    const onSheet = ["Sleeve"];
+    if (k.flange > 0.01) { plateBlank(pad + RUN + pad, k.W + k.flange * 2, k.H + k.flange * 2); onSheet.push("TPO roof plate"); }
+    if (!k.collector) { plateBlank(vbW, k.plateW, k.plateH); onSheet.push("face plate"); }
+    // Name what is on the sheet, not what usually is — a zero roof plate draws no blank, and a
+    // caption that still promised one had the shop hunting for a piece that was never there.
+    patternNote = onSheet.join(" · ")
+      + (k.flange > 0.01 ? " — the roof plate is clad stock, not the order's color" : " — no roof plate on this one")
+      + (k.collector ? ". Collector box and downspout are bent separately" : "");
   } else {
     // Chimney cap: 4 side panels around a base rectangle, plus 4 triangular cap panels above.
     const pad = 4;
@@ -3662,14 +3678,28 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
           {p.foldEdges.includes("bottom") && <line x1={p.x} y1={p.y + p.h} x2={p.x + p.w} y2={p.y + p.h} stroke="#0A2B41" strokeWidth={0.5} strokeDasharray="1.5 1" />}
           {p.foldEdges.includes("left") && <line x1={p.x} y1={p.y} x2={p.x} y2={p.y + p.h} stroke="#0A2B41" strokeWidth={0.5} strokeDasharray="1.5 1" />}
           {p.foldEdges.includes("right") && <line x1={p.x + p.w} y1={p.y} x2={p.x + p.w} y2={p.y + p.h} stroke="#0A2B41" strokeWidth={0.5} strokeDasharray="1.5 1" />}
-          <text x={p.x + p.w / 2} y={p.labelTop ? p.y + Math.min(p.w, p.h) * 0.16 : p.y + p.h / 2} fill="#fff" fontSize={Math.min(p.w, p.h) * 0.18} fontFamily="'IBM Plex Mono', monospace" textAnchor="middle" dominantBaseline="central">
-            {p.w.toFixed(0)}×{p.h.toFixed(0)}
-          </text>
         </g>
       ))}
       {panels.filter((p) => p.cutout).map((p, i) => (
         <rect key={`c${i}`} x={p.x} y={p.y} width={p.w} height={p.h} fill={INK_DEEP} stroke="#fff" strokeWidth={0.4} strokeDasharray="2 1.2" />
       ))}
+      {/* The size goes on last. A blank with a hole through it has its cutout painted opaque in
+          the pass above, and on a plate only an inch bigger than the opening that hole sat
+          right on top of the one number the shop cuts to. */}
+      {panels.filter((p) => !p.tri && !p.cutout).map((p, i) => {
+        // A blank with a hole through it wears its size in the margin above the hole. On a plate
+        // cut close to the opening there is no margin worth using, so the size goes back to the
+        // middle and rides on top of the cutout — white on the dark punch-out, still full size,
+        // because shrinking it to fit is how a number gets misread on the bench.
+        const room = typeof p.labelTop === "number" ? p.labelTop : 0;
+        const fs = Math.min(p.w, p.h) * 0.18;
+        const ly = p.labelTop && room >= fs * 1.1 ? p.y + room / 2 : p.y + p.h / 2;
+        return (
+          <text key={`l${i}`} x={p.x + p.w / 2} y={ly} fill="#fff" fontSize={fs} fontFamily="'IBM Plex Mono', monospace" textAnchor="middle" dominantBaseline="central">
+            {formatDim(p.w)}×{formatDim(p.h)}
+          </text>
+        );
+      })}
       {panels.filter((p) => p.tri).map((p, i) => (
         <g key={`t${i}`}>
           <polygon points={p.tri.map((pt) => pt.join(",")).join(" ")} fill={colorHex} fillOpacity={0.85} stroke="#fff" strokeWidth={0.4} />
@@ -6270,7 +6300,7 @@ export default function ShopOrderApp() {
                             {num("Downspout length (ft)", scupDsLen, setScupDsLen, 10, "scup-ds-len")}
                           </div>
                           <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>
-                            Box wider than the sleeve so the stream lands inside it, rim below the scupper so a hard rain can't dam back into the wall, back run up behind the spout. Downspout size is out from the wall × across it; length is the finished run in feet and the shop breaks it into sticks.
+                            Box wider than the sleeve so the stream lands inside it, rim below the scupper so a hard rain can't dam back into the wall, back run up behind the spout. That back is what covers the wall opening, so a box means no face plate. Downspout size is out from the wall × across it; length is the finished run in feet and the shop breaks it into sticks.
                           </div>
                         </>
                       )}
