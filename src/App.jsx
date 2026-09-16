@@ -686,10 +686,10 @@ function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4"
       where: "Continuous cleat the Gravel Stop, the Drip Edge and the Snap-On Fascia hook — a strip as tall as the face it holds, screwed flat to the face of the nailer 12\" o.c., the bottom ½\" kicked out 45° so the cover's kicked hem snaps over it. Top edge where the top of the face lands: flush with the nailer under the Drip Edge and the Snap-On Fascia, ¾\" above it under the Gravel Stop, inside the cant. One length per length of edge metal. Usually 24 ga bare or paint-grip; 22 ga where the spec calls for it — FM 1-49 wants the cleat a gauge heavier than the cover.",
       points: cleat(F), hemStart: "none", hemEnd: "none", paintSide: "left" },
     { id: "boxgutter", name: `Box Gutter — ${G}"`, dims: `${G}" × ${G}" · ${G + 1}" back · 1" hemmed return`, per: "gutter run", on: true,
-      where: "Along the low edge of the roof — bottom and front the gutter's size, the back an inch taller against the fascia so an overflow spills over the front and never behind it, a 1\" return across the top of the front, hemmed under, for stiffness and for the hangers to clip. Both edges hemmed. Drops to a downspout through an outlet cut in the bottom, or into a collector box.",
+      where: "Along the low edge of the roof — bottom and front the gutter's size, the back an inch taller against the fascia so a gutter running full spills over the front and never behind it, a 1\" return across the top of the front, hemmed under, for stiffness and for the hangers to clip. Both edges hemmed. Drops to a downspout through an outlet cut in the bottom, or into a collector box.",
       points: [kitPt(G - 1, -G), kitPt(G, -G), kitPt(G, 0), kitPt(0, 0), kitPt(0, -(G + 1))], hemStart: "closed-left", hemEnd: "closed-left", paintSide: "right" },
     { id: "scupper", name: "Scupper", tool3d: "scupper", dims: "built to size in the 3D tool", per: "outlet through the parapet",
-      where: "Through-wall outlet that lets the roof drain out through the parapet — a sleeve closed on all four sides, the clear opening and the wall thickness its size. On the roof side it takes its own TPO-clad plate, white stock rather than the order's color, with the opening cut through it, so the membrane welds straight to it. Outside the wall it takes either a face plate in the order's color or a collector box with a downspout under it — the box's own back plate covers the opening, so a box means no face plate." },
+      where: "Through-wall outlet that lets the roof drain out through the parapet — a sleeve closed on all four sides, the clear opening and the wall thickness its size. On the roof side it takes its own TPO-clad plate, white stock rather than the order's color, with the opening cut through it, so the membrane welds straight to it. Outside the wall it usually takes a collector box over the hole with a downspout under it, and the box's own back plate covers the opening, so a box means no face plate. A face plate in the order's color goes on instead where nothing under it is catching the water — usually an overflow, with no gutter below it, letting the water drop." },
     { id: "collector", name: "Collector Box", tool3d: "collector", dims: "built to size in the 3D tool", per: "drop",
       where: "The conductor head under a scupper or a gutter outlet — catches the water and feeds the downspout, with the outlet the downspout below fits." },
     { id: "downspout", name: `Downspout — ${downspout}"`, dims: `${D}" out × ${W}" on the wall · 1" lock flange · ½" pocket`, per: "drop", on: true,
@@ -816,7 +816,11 @@ function part3dSummary(o) {
       bits.push(`collector box ${formatDim(k.boxW)}"W × ${formatDim(k.boxD)}" out × ${formatDim(k.boxH)}"H`);
       bits.push(`back plate ${formatDim(k.boxW)} × ${formatDim(b.h)}" pierced ${formatDim(b.pierceW)} × ${formatDim(b.pierceH)}"`);
       bits.push(`rim ${formatDim(k.gap)}" below the invert`);
-      bits.push(`${k.dsSize}" downspout, ${formatDim(k.dsLen)} ft`);
+      // Same rule as the roof plate above: at zero there is no downspout on the sheet and none
+      // in the price, so the ticket does not get to promise one.
+      bits.push(k.dsLen > 0
+        ? `${k.dsSize}" downspout, ${formatDim(k.dsLen)} ft`
+        : `no downspout on this order`);
     } else {
       bits.push(`face plate ${formatDim(k.plateW)} × ${formatDim(k.plateH)}" outside, in the order's color`);
     }
@@ -3465,7 +3469,7 @@ function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, colorHe
   );
 }
 
-function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, scupOutlet, scupFlange, scupProj, scupPlateW, scupPlateH }) {
+function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, scupOutlet, scupFlange, scupProj, scupPlateW, scupPlateH, scupDsLen }) {
   const W = Math.max(1, +w || 1), D = Math.max(1, +d || 1), H = Math.max(1, +h || 1), CH = Math.max(1, +capH || 6);
 
   if (partType === "collector") {
@@ -3624,7 +3628,7 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
     // which is what this used to draw, is the one shape a scupper can never be. The roof plate
     // is separate because it is TPO-clad stock, and the face plate is separate because it goes
     // on from the other side of the wall.
-    const k = scupperSpec({ partW: w, partH: h, partD: d, scupOutlet, scupFlange, scupProj, scupPlateW, scupPlateH });
+    const k = scupperSpec({ partW: w, partH: h, partD: d, scupOutlet, scupFlange, scupProj, scupPlateW, scupPlateH, scupDsLen });
     const pad = 4;
     const RUN = k.WT + k.proj; // through the wall, plus the spout past the face
     const girth = [k.H, k.W, k.H, k.W]; // side · bottom · side · top
@@ -3651,7 +3655,7 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
     // caption that still promised one had the shop hunting for a piece that was never there.
     patternNote = onSheet.join(" · ")
       + (k.flange > 0.01 ? " — the roof plate is clad stock, not the order's color" : " — no roof plate on this one")
-      + (k.collector ? ". Collector box and downspout are bent separately" : "");
+      + (k.collector ? (k.dsLen > 0 ? ". Collector box and downspout are bent separately" : ". Collector box is bent separately; no downspout on this order") : "");
   } else {
     // Chimney cap: 4 side panels around a base rectangle, plus 4 triangular cap panels above.
     const pad = 4;
@@ -3819,7 +3823,7 @@ export default function ShopOrderApp() {
   const [taperLength, setTaperLength] = useState(6); // inches the taper itself spans before leveling into a straight shelf
   // Scupper: the sleeve is partW x partH clear opening through partD of wall. Everything
   // below is what happens at the two ends of it.
-  const [scupOutlet, setScupOutlet] = useState("faceplate"); // "faceplate" | "collector" — what the spout runs into
+  const [scupOutlet, setScupOutlet] = useState("faceplate"); // "faceplate" | "collector" — what is outside the wall under the spout, if anything is
   const [scupFlange, setScupFlange] = useState(6);  // TPO-clad roof plate the membrane welds to
   const [scupProj, setScupProj] = useState(2);      // how far the spout clears the wall face so water doesn't streak it
   const [scupPlateW, setScupPlateW] = useState(16); // face plate, overall
@@ -6271,6 +6275,9 @@ export default function ShopOrderApp() {
                           </div>
                         </div>
                       </div>
+                      <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>
+                        A face plate is usually the overflow — no gutter and no box under it, so the water just drops. A collector box usually goes over the hole itself, with a downspout under it carrying the water down.
+                      </div>
                       {scupOutlet === "faceplate" && (
                         <>
                           <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
@@ -6470,7 +6477,7 @@ export default function ShopOrderApp() {
                   {partView === "3d" ? (
                     <Part3DPreview partType={partType} w={partW} d={partD} h={partH} capH={partCapH} postH={partPostH} overhang={partOverhang} ribs={capRibs} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} flangeLength={flangeLength} outletRoundTapered={outletRoundTapered} capStyle={capStyle} scupOutlet={scupOutlet} scupFlange={scupFlange} scupProj={scupProj} scupPlateW={scupPlateW} scupPlateH={scupPlateH} scupBoxW={scupBoxW} scupBoxD={scupBoxD} scupBoxH={scupBoxH} scupDsSize={scupDsSize} />
                   ) : (
-                    <FlatPatternSVG partType={partType} w={partW} d={partD} h={partH} capH={partCapH} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} scupOutlet={scupOutlet} scupFlange={scupFlange} scupProj={scupProj} scupPlateW={scupPlateW} scupPlateH={scupPlateH} />
+                    <FlatPatternSVG partType={partType} w={partW} d={partD} h={partH} capH={partCapH} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} scupOutlet={scupOutlet} scupFlange={scupFlange} scupProj={scupProj} scupPlateW={scupPlateW} scupPlateH={scupPlateH} scupDsLen={scupDsLen} />
                   )}
                 </div>
 
