@@ -6950,7 +6950,10 @@ export default function ShopOrderApp() {
                             );
                             const qty = roofBoxSel[it.id] || 0;
                             const on = qty > 0;
-                            const inOrder = basket.filter((b) => b.kit === it.id && +b.quantity > 0);
+                            // a family row answers for all its members, so it keeps showing what is
+                            // already on the order even after the chip moves to a different answer
+                            const rowKitIds = row.kind === "family" ? row.members.map((m) => m.it.id) : [it.id];
+                            const inOrder = basket.filter((b) => rowKitIds.includes(b.kit) && +b.quantity > 0);
                             const inOrderPcs = inOrder.reduce((sum, b) => sum + (+b.quantity || 0), 0);
                             const g = profileGirth(it.points, it.hemStart, it.hemEnd);
                             const pps = piecesPerSheet(sheetWidthNum, g);
