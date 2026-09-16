@@ -4,7 +4,9 @@
 --   policies, or by signed-in users lose their anonymous execute grant.
 -- * The two pg_net trigger functions read the alert secret from Vault instead of
 --   carrying it in their bodies, and pin search_path.
-revoke execute on function public.is_staff() from anon;
+-- is_staff() keeps its anon grant on purpose: the RLS policies on public.staff call it, and
+-- the public directory read consults staff in a subquery, so anonymous directory requests
+-- evaluate it. It only ever returns false for anon.
 revoke execute on function public.next_po_number() from anon;
 revoke all on function public.set_listing_owner(uuid, text) from anon;
 revoke all on function public.staff_listing_owners() from anon;

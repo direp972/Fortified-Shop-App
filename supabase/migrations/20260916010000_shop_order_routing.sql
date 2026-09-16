@@ -31,15 +31,11 @@ create policy "shop owner updates routed orders" on public.orders
       select 1 from public.directory_listings dl
       where dl.id = orders.shop_id and dl.owner_id = auth.uid()));
 
--- Anonymous readers of the public directory never see who owns a listing, which
--- application it came from, or where its orders go. Column-level grants only work once
--- the table-level grant is gone, so anon gets an explicit column list: when a public
--- column is added to directory_listings, add it here too.
-revoke select on public.directory_listings from anon;
-grant select (id, status, name, badges, address, city, area_keywords, lat, lng, locations,
-  abilities, colors, coil_desc, fab_desc, website, phone, colorchart_url, photos, logo_url,
-  logo_bg, licensed_states, featured, gmaps_url, accepts_orders, created_at, updated_at)
-  on public.directory_listings to anon;
+-- Note: a column-level anon grant on directory_listings (to hide owner_id, application_id
+-- and order_email from anonymous readers) was tried here and reverted in
+-- 20260916013500_directory_listings_anon_select_restored.sql: PostgREST answers 401 to a
+-- role with no table-level privilege, which broke the public directory and every build's
+-- prerender step. Hiding those columns needs a view, not a grant.
 
 -- A shop may propose switching ordering on or off and its order email, like any other field.
 create or replace function public.validate_listing_edit()

@@ -179,6 +179,10 @@ orders keep going to `ALERT_EMAIL_TO` and the shop text exactly as before.
   admin access from the **Customer Pricing Tiers** panel; nobody can grant it to themselves.
 - Every confirmed account gets its `customers` row from a database trigger the moment it
   is confirmed, so it shows up in the tiers panel whether or not it has opened the app.
+- The public directory API still exposes each listing's `owner_id`, `application_id` and
+  `order_email` to anonymous readers (a user id, an application id and a business email).
+  A column-level grant was tried and reverted: PostgREST returns 401 to a role without a
+  table-level grant. Hiding them properly needs a public view.
 - The public forms are throttled in the database: Get Listed applications stop at 3 an hour
   from one address and 20 an hour overall, leads at 10 and 60, uploads at 60 an hour, and
   sign-ups at 3 an hour per inbox and 10 per connection.
