@@ -183,7 +183,9 @@ orders keep going to `ALERT_EMAIL_TO` and the shop text exactly as before.
   is confirmed, so it shows up in the tiers panel whether or not it has opened the app.
 - Anonymous readers (the directory page, the home-page counter, the prerender step and
   the app's shop picker) read the `directory_public` view, which lists live rows without
-  `owner_id`, `application_id` or `order_email`. Signed-in admin pages read the table.
+  `owner_id`, `application_id` or `order_email`. The anon role's grant on the table itself
+  is limited to those same columns, so a hand-written request can't read them either.
+  Signed-in admin pages read the table.
 - Every push and pull request runs the real build, prerender included, in GitHub Actions
   (`.github/workflows/build.yml`). Make it a required check on `main` so a red build can't
   be merged.
