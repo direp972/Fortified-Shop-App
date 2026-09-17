@@ -13,6 +13,7 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [customer, setCustomer] = useState(null); // row from `customers` table (name, tier, etc.)
   const [isStaff, setIsStaff] = useState(false);
+  const [ownedShops, setOwnedShops] = useState([]); // directory listings this account owns (a shop's Shop Floor)
   const [loading, setLoading] = useState(true);
 
   // Loads the customer/staff rows for a signed-in user, and self-heals by creating the
@@ -25,13 +26,16 @@ export function AuthProvider({ children }) {
     if (!sessionUser) {
       setCustomer(null);
       setIsStaff(false);
+      setOwnedShops([]);
       return;
     }
     const userId = sessionUser.id;
-    const [{ data: custRow }, { data: staffRow }] = await Promise.all([
+    const [{ data: custRow }, { data: staffRow }, { data: shopRows }] = await Promise.all([
       supabase.from("customers").select("*").eq("id", userId).maybeSingle(),
       supabase.from("staff").select("id").eq("id", userId).maybeSingle(),
+      supabase.from("directory_listings").select("id, name, accepts_orders, order_email").eq("owner_id", userId),
     ]);
+    setOwnedShops(shopRows || []);
     if (custRow) {
       setCustomer(custRow);
     } else {
@@ -126,6 +130,15 @@ export function AuthProvider({ children }) {
     return { error: null };
   };
 
+  // "Forgot password": the function emails a link to reset.html for a confirmed account, a
+  // fresh confirmation link for a pending one, and a "no account" note otherwise.
+  const requestPasswordReset = async (email) => {
+    const fn = await callSignupEmail({ email, reset: true });
+    if (!fn) return { error: { message: "Couldn't reach the server — check your connection and try again." } };
+    if (!fn.ok) return { error: { message: friendly(fn.j.error) || "Couldn't send a reset link — please try again." } };
+    return { error: null };
+  };
+
   const signIn = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) return { data, error: { ...error, message: friendly(error) || error.message, notConfirmed: /not confirmed/i.test(error.message || "") } };
@@ -150,6 +163,6 @@ export function AuthProvider({ children }) {
 
   const refreshCustomer = () => loadCustomer(user);
 
-  const value = { user, customer, isStaff, loading, signUp, signIn, signInWithGoogle, signOut, refreshCustomer, resendConfirmation };
+  const value = { user, customer, isStaff, ownedShops, loading, signUp, signIn, signInWithGoogle, signOut, refreshCustomer, resendConfirmation, requestPasswordReset };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

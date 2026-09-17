@@ -562,10 +562,10 @@ $("#f-go").onclick=async()=>{
           licensed_states:$("#f-lic").value.trim(),
         },
       })});
-    if(!ins.ok)throw new Error("submit failed ("+ins.status+")");
+    if(!ins.ok){let m="";try{m=JSON.parse(await ins.text()).message||""}catch(e){}const err=new Error("submit failed ("+ins.status+")");if(/^(We are getting|Too many|That submission)/.test(m))err.user=m;throw err}
     $("#intake").style.display="none";$("#done").style.display="block";window.scrollTo({top:0});
   }catch(x){
-    showErr("Something went wrong sending your application — try again, or email orders@roofcoil.com and we'll take it from there.");
+    showErr(x.user||"Something went wrong sending your application — try again, or email orders@roofcoil.com and we'll take it from there.");
     btn.disabled=false;btn.textContent="Submit — get listed";
   }
 };

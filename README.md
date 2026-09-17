@@ -12,8 +12,11 @@ Same app, same tools, same everything — but now:
   **Customer Pricing Tiers** panel in Price List → Backend
 - Customers only ever see *their own* assigned pricing — no tier switcher, no way to
   see other tiers
-- **Shop Floor** and **Backend Pricing** are now staff-only. Regular customers can't see
+- **Shop Floor** and **Backend Pricing** are staff-only. Regular customers can't see
   internal costs, margins, or other people's orders.
+- **Shops that take orders through RoofCoil** get their own Shop Floor: switch ordering on
+  for their directory listing and every order sent to them is emailed to the shop and shows
+  up for the listing's owner account (see *Shops that take orders* below).
 
 ## One-time setup (about 20 minutes)
 
@@ -113,6 +116,13 @@ same name:
 select vault.update_secret((select id from vault.secrets where name = 'RESEND_API_KEY'), 're_new_key_here');
 ```
 
+**Password reset** goes through the same function: **Forgot password?** on either sign-in
+form posts `{email, reset:true}`, and the email links to `public/reset.html`, where the
+person types a new password and lands back signed in. A pending (never confirmed) account
+gets a fresh confirmation link to the same page instead, so a forgotten first password is
+no longer a dead end. Every address gets the same answer, so the form can't be used to find
+out who is registered.
+
 **Sign-up confirmation emails** go through the same key. Supabase Auth's own mailer is
 capped at two emails an hour, so the `signup-email` Edge Function creates each account
 unconfirmed, asks Supabase Auth for its confirmation code, and emails a link itself
@@ -130,6 +140,28 @@ its password and details until its owner confirms, so asking for a link can neve
 over. When the function is redeployed, ship `public/confirm.html` first: every email links
 to it. A CAPTCHA in front of the forms is the next step if bots ever become a problem.
 
+## Shops that take orders
+
+Any directory listing can take orders from the Panel & Trim app:
+
+1. In **Directory admin → editor**, tap **Takes orders from RoofCoil.com** and fill in the
+   **Order email** (a shop can also propose both from `/manage-listing.html`; you apply the
+   edit like any other). Link the shop's account under **Owner account** so they get a
+   Shop Floor.
+2. The app's order form shows **Send this order to** with every shop that has ordering on
+   (with one shop it just says where the order goes). `?shop=<listing id>` on the app URL
+   preselects a shop, which is how a shop can link to the tools from its own site later.
+3. Every order carries `orders.shop_id`. The `order-alert` function emails that shop's order
+   email (the Fortified desk when there is no shop or no order email), and the customer
+   gets a confirmation with the shop's name and phone. The listing's owner account sees only
+   the orders sent to their shop on **Shop Floor** and can move them through the statuses;
+   the Master Materials List stays staff-only.
+4. When a listing goes live, the shop is emailed that it is published; when a proposed edit
+   is applied or dismissed, the person who proposed it is emailed the outcome.
+
+Fortified Sheet Metal's own listing has ordering switched on with no order email, so its
+orders keep going to `ALERT_EMAIL_TO` and the shop text exactly as before.
+
 ## Notes on how access works
 
 - **Anyone signed in** (staff or customer) can submit orders and see the Price List
@@ -139,6 +171,18 @@ to it. A CAPTCHA in front of the forms is the next step if bots ever become a pr
 - **Customers cannot change their own tier** — that's enforced at the database level
   (Row Level Security), not just hidden in the UI, so it can't be bypassed by someone
   poking at the browser's dev tools.
-- New staff can only be added by you, running SQL directly in Supabase — never through
-  the app itself. This is intentional: it means nobody can grant themselves staff access
-  no matter what they do in the browser.
+- **Raw costs never leave the shop.** Only staff can read the backend price list and the
+  material and production cost keys; customers get the price list through
+  `customer_price_list()`, which drops the cost column. The tier prices stay in that
+  payload because the app computes every estimate in the browser.
+- The first staff member is added by SQL (step 7). After that, staff can grant or revoke
+  admin access from the **Customer Pricing Tiers** panel; nobody can grant it to themselves.
+- Every confirmed account gets its `customers` row from a database trigger the moment it
+  is confirmed, so it shows up in the tiers panel whether or not it has opened the app.
+- The public directory API still exposes each listing's `owner_id`, `application_id` and
+  `order_email` to anonymous readers (a user id, an application id and a business email).
+  A column-level grant was tried and reverted: PostgREST returns 401 to a role without a
+  table-level grant. Hiding them properly needs a public view.
+- The public forms are throttled in the database: Get Listed applications stop at 3 an hour
+  from one address and 20 an hour overall, leads at 10 and 60, uploads at 60 an hour, and
+  sign-ups at 3 an hour per inbox and 10 per connection.

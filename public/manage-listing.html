@@ -86,7 +86,12 @@
     <div class="fld"><label>Fabrication — one sentence</label><textarea id="f-fabdesc" rows="2"></textarea></div>
   </div>
 
-  <div class="step"><h3><span class="sn">5</span>Anything else</h3>
+  <div class="step"><h3><span class="sn">5</span>Orders through RoofCoil</h3>
+    <p style="color:#4E6273;font-size:13.5px;margin:0 0 12px;max-width:70ch">Switched on, contractors can send trim, panel and 3D-part orders to your shop straight from the Panel &amp; Trim app. Each order is emailed to the address below, and this account gets a Shop Floor at shop.roofcoil.com to work them.</p>
+    <div class="fld"><div class="chipgrid"><button type="button" class="seg" id="f-orders">Take orders from RoofCoil.com</button></div></div>
+    <div class="fld"><label>Order email — where each order is sent</label><input id="f-orderemail" type="email" placeholder="orders@company.com"></div>
+  </div>
+  <div class="step"><h3><span class="sn">6</span>Anything else</h3>
     <div class="fld"><label>Address changes, new locations, photos, a logo, or anything the fields above don't cover — describe it and we'll handle it</label><textarea id="f-note" rows="3" placeholder="We moved to 2200 Industrial Blvd, Weatherford…"></textarea></div>
   </div>
 
@@ -114,7 +119,7 @@ const GUTTER_PROFILES=["5″ K-style gutter","6″ K-style gutter","7″ K-style
 const GUTTER_MATERIALS=["Gutter — .027 aluminum","Gutter — .032 aluminum","Gutter — 26 ga painted steel","Gutter — 24 ga painted steel","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
 const ALL_CANON=[...ABILITIES,...EF_PANELS,...GUTTER_PROFILES,...GUTTER_MATERIALS];
 const STOCK_COLORS=["Regal White","Almond","Ash Gray","Slate Gray","Burnished Slate","Charcoal","Medium Bronze","Dark Bronze","Matte Black","Evergreen","Copper Metallic","Galvalume","Texas Silver","Bare Copper","Bonderized"];
-const FIELD_LABELS={name:"Company name",phone:"Phone",website:"Website",gmaps_url:"Maps link",licensed_states:"Licensed states",coil_desc:"Coil sentence",fab_desc:"Fabrication sentence",colors:"Colors",abilities:"Abilities"};
+const FIELD_LABELS={name:"Company name",phone:"Phone",website:"Website",gmaps_url:"Maps link",licensed_states:"Licensed states",coil_desc:"Coil sentence",fab_desc:"Fabrication sentence",colors:"Colors",abilities:"Abilities",accepts_orders:"Takes orders through RoofCoil",order_email:"Order email"};
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
 let token=null,me=null,myEmail=null,listing=null,myListings=[],lastEdits=[];
 
@@ -150,6 +155,7 @@ $$('#f-efpanels .seg').forEach(b=>b.addEventListener('click',()=>{
 GUTTER_PROFILES.forEach(a=>$('#f-gutters').appendChild(segChip(a,gutLabel(a))));
 GUTTER_MATERIALS.forEach(a=>$('#f-gutmats').appendChild(segChip(a,gutLabel(a))));
 STOCK_COLORS.forEach(c=>$('#f-colors').appendChild(segChip(c)));
+$('#f-orders').onclick=()=>$('#f-orders').classList.toggle('sel');
 
 // Every call refreshes the access token first (auth.js refreshes when the old
 // one is stale), so a form finished an hour after the page opened still sends.
@@ -166,7 +172,7 @@ document.addEventListener('rc:auth',async e=>{
   const s=e.detail&&e.detail.session;if(!s)return; // auth.js shows its blocking sign-in modal
   token=s.access_token;me=s.user.id;myEmail=s.user.email||'';
   // a fetch failure is NOT "no listing" — show a retry state instead
-  try{myListings=await api('/rest/v1/directory_listings?select=id,name,status,phone,website,gmaps_url,licensed_states,coil_desc,fab_desc,colors,abilities&owner_id=eq.'+me+'&order=name.asc')}
+  try{myListings=await api('/rest/v1/directory_listings?select=id,name,status,phone,website,gmaps_url,licensed_states,coil_desc,fab_desc,colors,abilities,accepts_orders,order_email&owner_id=eq.'+me+'&order=name.asc')}
   catch(x){$('#loaderr').style.display='block';return}
   if(!myListings.length){$('#unlinked').style.display='block';return}
   $('#manage').style.display='block';
@@ -206,6 +212,8 @@ function fillForm(l){
   $('#f-morecolors').value=notCanon(l.colors,STOCK_COLORS).join(', ');
   $('#f-coildesc').value=l.coil_desc||'';
   $('#f-fabdesc').value=l.fab_desc||'';
+  $('#f-orders').classList.toggle('sel',!!l.accepts_orders);
+  $('#f-orderemail').value=l.order_email||'';
   $('#f-note').value='';
   $('#send-note').textContent='';
   loadMyEdits();
@@ -264,6 +272,12 @@ function buildProposed(){
   if(coild!==(listing.coil_desc||''))p.coil_desc=coild;
   const fabd=$('#f-fabdesc').value.trim();
   if(fabd!==(listing.fab_desc||''))p.fab_desc=fabd;
+  const wantOrders=$('#f-orders').classList.contains('sel');
+  const oe=$('#f-orderemail').value.trim();
+  if(oe&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(oe))return{err:'Order email must be an email address.'};
+  if(wantOrders&&!oe)return{err:'Add the email address your orders should go to.'};
+  if(wantOrders!==!!listing.accepts_orders)p.accepts_orders=wantOrders;
+  if(oe!==(listing.order_email||''))p.order_email=oe;
   return{proposed:p};
 }
 function formDirty(){
@@ -295,7 +309,7 @@ $('#f-send').onclick=async()=>{
   btn.disabled=false;btn.textContent='Send changes for review';
 };
 
-const fmtVal=v=>Array.isArray(v)?v.join(', '):(v===''?'(cleared)':String(v));
+const fmtVal=v=>Array.isArray(v)?v.join(', '):v===true?'yes':v===false?'no':(v===''?'(cleared)':String(v));
 async function loadMyEdits(){
   if(!listing)return;
   const id=listing.id; // guard: a listing switch mid-flight must not paint stale cards

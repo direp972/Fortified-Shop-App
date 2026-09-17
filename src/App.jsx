@@ -522,7 +522,7 @@ const COLORS_BY_BRAND = {
 };
 
 
-/* ------------------------- Residential Standing Seam (the roof kit) ------------------------- */
+/* --------------------------------- Residential Kit --------------------------------- */
 // The standard trim set for a 24 ga standing seam roof, drawn to the roof's pitch and the
 // panel's seam height. Every entry is a real profile the drawing tool can open and edit:
 // points in inches, y grows downward, drawn with the leg that sits on the panel (or the
@@ -561,9 +561,9 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
   return [
     { id: "eave", name: "Eave / Drip Edge", dims: '3" × 2" · ½" 45° kick', per: "eave", on: false,
       where: "Bottom edge of the roof — deck flange under the panels, face down the fascia, kicked out 45° at the bottom to throw the water clear, and hemmed. The panels hook an Offset Cleat over the flange; tick it in place of the D-Style Drip Edge below when the job runs a cleat.",
-      points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 2), kitPt(3 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "left" },
+      points: [kitPt(0, 0), kitPt(3, 0), kitPt(3, 2), kitPt(3 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "open-left", paintSide: "right" },
     { id: "dstyle", name: "D-Style Drip Edge", dims: '3¾" × 2" · 1¼" lip hemmed flat · ½" 45° kick', per: "eave", on: true,
-      where: "The eave the box starts with — for panels that hook the trim itself (the T-style): 2½\" on the deck, then a 1¼\" lip past the fascia, hemmed flat back under, that the panel's hemmed edge hooks and squeezes shut on: no cleat. Face down the fascia, kicked at the bottom with a closed hem.",
+      where: "The eave the kit starts with — for panels that hook the trim itself (the T-style): 2½\" on the deck, then a 1¼\" lip past the fascia, hemmed flat back under, that the panel's hemmed edge hooks and squeezes shut on: no cleat. Face down the fascia, kicked at the bottom with a closed hem.",
       points: [kitPt(0, 0), kitPt(3.75, 0), kitFold(2.5, 0, "left"), kitPt(2.5, 2), kitPt(2.5 + KICK, 2 + KICK)], hemStart: "none", hemEnd: "closed-left", paintSide: "right" },
     { id: "apron", name: "Gutter Apron", dims: '4½" × 2" · 15° kick', per: "eave with gutters", on: false,
       where: "Eave trim for gutter runs — a longer deck flange and a face kicked out over the gutter's back.",
@@ -611,7 +611,7 @@ function buildRoofKit({ pitch = 4, seamHeight = 1.5, lowerPitch = 3 } = {}) {
 }
 const ROOF_KIT_DEFAULT_SEL = Object.fromEntries(buildRoofKit().map((it) => [it.id, it.on ? 1 : 0]));
 
-/* ---------------------------------- Commercial in a Box ---------------------------------- */
+/* ---------------------------------- Commercial Kit ---------------------------------- */
 // The sheet metal for a low-slope commercial roof: coping over the parapets — face-fastened, or
 // hooked on one or two continuous cleats — the cleat itself, the edge metal for the open edges
 // (gravel stop, drip edge, snap-on fascia and the hook strip they hang on, drawn to the fascia
@@ -677,7 +677,7 @@ function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4"
       where: `The edge of a low-slope roof with no parapet and no gutter — the 4\" flange on the deck is stripped into the membrane, the cant stands up ¾\" to hold the gravel and the water back from the edge, steps ¾\" out to the edge of the nailer, and the face drops over it to a ${kickWord} that hooks the Hook Strip: no fastener through the face, the cleated edge the ES-1 systems are built on. Where the spec or the inspector calls for a tested ES-1 edge, that edge comes from a certified shop. One Hook Strip per length, set ¾\" proud of the nailer, up inside the cant.`,
       points: [kitPt(TOP + GS_FLANGE, 0), kitPt(TOP, 0), kitPt(TOP, -CANT), kitPt(0, -CANT), ...edgeEnd(F - CANT)], hemStart: "none", hemEnd: edgeHem, paintSide: "left" },
     { id: "dripedge", name: es("Drip Edge — Membrane Roof"), dims: `3" roof flange · ${inWord(F)} face · ${edgeDrip}`, per: "roof edge", on: false,
-      where: `The same edge where the roof drains over it, into a gutter or clear of the wall, so no cant — a 3\" flange flat on the deck, stripped into the membrane, the face down the nailer to a ${kickWord} that hooks the Hook Strip set flush with the nailer top. Not the Eave or the D-Style Drip Edge of the standing seam box: no panel hooks this one, it hangs on the Hook Strip and nothing else. One Hook Strip per length.`,
+      where: `The same edge where the roof drains over it, into a gutter or clear of the wall, so no cant — a 3\" flange flat on the deck, stripped into the membrane, the face down the nailer to a ${kickWord} that hooks the Hook Strip set flush with the nailer top. Not the Eave or the D-Style Drip Edge of the Residential Kit: no panel hooks this one, it hangs on the Hook Strip and nothing else. One Hook Strip per length.`,
       points: [kitPt(DE_FLANGE, 0), kitPt(0, 0), ...edgeEnd(F)], hemStart: "none", hemEnd: edgeHem, paintSide: "left" },
     { id: "snapfascia", name: es("Snap-On Fascia"), dims: `2⅜" top return · ${inWord(F)} face · ${edgeDrip}`, per: "roof edge", on: false,
       where: `The two-piece edge on a single-ply roof, put on last — the membrane is terminated over the nailer and the Hook Strip screwed flush with its top; the cover's 2⅜\" return lies on the nailer over the termination, the face drops over the strip, and the ${kickWord} snaps under the strip's lip. Nothing stripped in, no fastener showing, and it comes off without touching the roof. One Hook Strip per length. For a canted nailer, open it on the canvas and tilt the return to the bevel. When the spec names an anchor-bar system, the bar comes from that maker and only the cover is bent.`,
@@ -736,9 +736,9 @@ const TRIM_PRESETS = {
 const presetFolds = (name) => { const it = KIT_BY_ID[KIT_PRESETS[name]]; return it ? { hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide } : null; };
 // The two boxes: what each is called, which ?view= opens it from the site, and its colours.
 const BOX_KINDS = {
-  res: { label: "Residential Standing Seam", view: "box", accent: "#A0602E", accentLight: "#B8703A", icon: Package,
+  res: { label: "Residential Kit", view: "box", accent: "#A0602E", accentLight: "#B8703A", icon: Package,
     blurb: "The standard trims for a 24 ga standing seam roof, drawn to your pitch — add them all at once" },
-  com: { label: "Commercial in a Box", view: "commercial", accent: "#4F5D6B", accentLight: "#61707F", icon: Building2,
+  com: { label: "Commercial Kit", view: "commercial", accent: "#4F5D6B", accentLight: "#61707F", icon: Building2,
     blurb: "Coping, edge metal, counter flashing, box gutters and downspouts for a low-slope roof" },
 };
 
@@ -827,10 +827,12 @@ function part3dSummary(o) {
     return bits.join(" · ");
   }
   const style = o.capStyle ? ` (${CAP_STYLE_LABELS[o.capStyle] || o.capStyle})` : "";
-  const chimney = o.partType === "chimney"
-    ? ` (posts ${o.partPostH ?? 6}", roof rise ${o.partCapH}", overhang ${o.partOverhang ?? 2}", ${o.capRibs === false ? "smooth" : "standing seam ribs"})`
-    : "";
-  return `${name}${style} — ${o.partW}"W × ${o.partD}"D × ${o.partH}"H${chimney}`;
+  // A chimney cap has no overall height to give — its base is a shelf and a down leg, and the
+  // roof above it is a rise. Everything else is still W x D x H.
+  const rest = o.partType === "chimney"
+    ? ` · ${o.partShelf ?? 3}" shelf, ${o.partLeg ?? 3}" leg, ${o.partPostH ?? 6}" posts, ${o.partCapH}" rise, ${o.partOverhang ?? 2}" overhang, ${o.capRibs === false ? "smooth" : "standing seam ribs"}`
+    : ` × ${o.partH}"H`;
+  return `${name}${style} — ${o.partW}"W × ${o.partD}"D${rest}`;
 }
 const CAP_RIB_STYLES = ["hip", "pyramid", "gable", "stevenson", "texas", "twotier"]; // roofs that can carry standing seam ribs
 
@@ -867,6 +869,19 @@ const FAB_COMPANIES = [
     bases: [{ name: "Weatherford", lat: 32.7593, lng: -97.7972 }],
   },
 ];
+// A listing's roll-forming bases for the mileage lookup: every location with coordinates,
+// else the listing's own pin. Null when it has neither, so the caller can fall back.
+function shopBases(shop) {
+  if (!shop) return null;
+  const locs = Array.isArray(shop.locations) ? shop.locations : [];
+  const label = (city) => String(city || shop.name || "").split(",")[0].trim() || shop.name;
+  const pts = locs.filter((l) => l && isFinite(+l.lat) && isFinite(+l.lng) && l.lat !== null && l.lng !== null)
+    .map((l) => ({ name: label(l.city), lat: +l.lat, lng: +l.lng }));
+  if (pts.length === 0 && shop.lat !== null && shop.lng !== null && isFinite(+shop.lat) && isFinite(+shop.lng)) {
+    pts.push({ name: label(shop.city), lat: +shop.lat, lng: +shop.lng });
+  }
+  return pts.length ? pts : null;
+}
 const MILEAGE_FREE = 40, MILEAGE_RATE = 2;
 const havMiles = (a, b, c, d) => {
   const r = (x) => (x * Math.PI) / 180;
@@ -1299,11 +1314,11 @@ function computePrice(order, priceList, coilWidthScale) {
     const W = order.partW || 0, D = order.partD || 0, H = order.partH || 0, CH = order.partCapH || 0;
     let sqin;
     if (order.partType === "chimney") {
-      const oh = order.partOverhang ?? 2, postH = order.partPostH ?? 6;
+      const oh = order.partOverhang ?? 2, postH = order.partPostH ?? 6, shelf = order.partShelf ?? 3, leg = order.partLeg ?? 3;
       const EW = W + 2 * oh, ED = D + 2 * oh;
       const slant = Math.sqrt((Math.max(EW, ED) / 2) ** 2 + CH ** 2);
-      // skirt walls + top flange + four posts + the roof out to its eave + drip and seams
-      sqin = 2 * (W + D) * H + W * D * 0.5 + 4 * postH * 6 + 2 * (EW + ED) * slant * 1.1;
+      // the base (shelf + down leg + hem, all the way round) + four posts + the roof out to its eave + drip and seams
+      sqin = 2 * (W + D) * (shelf + leg + 0.5) + 4 * postH * 6 + 2 * (EW + ED) * slant * 1.1;
     } else if (order.partType === "scupper") {
       // the sleeve's girth over its run, plus the roof flange collar, plus whatever the
       // spout runs into. Without this a face-plate scupper and a scupper with a head and
@@ -2268,35 +2283,57 @@ function TrimCanvas({ points, setPoints, colorHex, hemStart, hemEnd, paintSide, 
     padding: "6px 9px", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", color: "#fff",
     border: `1px solid ${active ? SAFETY : "rgba(255,255,255,0.25)"}`, background: active ? "rgba(212,175,55,0.22)" : "rgba(255,255,255,0.06)", ...extra,
   });
+  // A toolbar key is a small blank: squared and mitered, lit from above by a bend line,
+  // hemmed along the bottom. It presses down; nothing here floats.
   const darkBtn = (extra = {}) => ({
-    height: 34, padding: "0 9px", borderRadius: 8, border: "1px solid rgba(255,255,255,0.15)", background: INK, color: "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", ...extra,
+    height: 36, padding: "0 11px", borderRadius: 0, clipPath: "polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)",
+    border: "none", background: INK, color: "#fff", fontSize: 11, fontWeight: 700, letterSpacing: ".02em", cursor: "pointer",
+    boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.18), inset 0 1px 0 rgba(255,255,255,0.16), inset 0 -2px 0 rgba(0,0,0,0.35)",
+    transition: "background-color 60ms linear, box-shadow 60ms linear", ...extra,
   });
 
   return (
     <div style={{ position: "relative", userSelect: "none", WebkitUserSelect: "none", MozUserSelect: "none" }}>
       {/* Tools live above the drawing, not on top of it, so nothing sits over the profile. */}
       <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 5 }}>
-        <div style={{ display: "flex", borderRadius: 6, overflow: "hidden", border: "1px solid rgba(255,255,255,0.18)" }}>
+        <div style={{ display: "flex", borderRadius: 0, overflow: "hidden",
+          clipPath: "polygon(7px 0,100% 0,100% calc(100% - 7px),calc(100% - 7px) 100%,0 100%,0 7px)",
+          boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.20)" }}>
           {[["draw", "Draw"], ["select", "Select"], ["folds", "Folds"]].map(([id, label]) => (
             <button key={id} type="button" data-testid={`mode-${id}`}
               onClick={() => { setMode(id); setSelectedIdx(null); modeBeforeFold.current = null; setPendingFold(null); if (id === "draw") setZoom(1); if (editor?.kind === "fold" && id !== "folds") setEditor(null); }}
-              style={{ padding: "5px 10px", fontSize: 10.5, fontWeight: 700, border: "none", cursor: "pointer",
-                background: mode === id ? SAFETY : INK, color: "#fff" }}>
+              className="tb-btn"
+              style={{ height: 32, padding: "0 12px", fontSize: 10.5, fontWeight: 700, letterSpacing: ".06em", textTransform: "uppercase",
+                border: "none", borderRadius: 0, cursor: "pointer",
+                background: mode === id ? SAFETY : INK,
+                color: mode === id ? INK_DEEP : "#C9D8E2",
+                boxShadow: mode === id
+                  ? "inset 0 2px 4px rgba(10,43,65,0.30)"
+                  : "inset 0 1px 0 rgba(255,255,255,0.10), inset -1px 0 0 rgba(255,255,255,0.12)",
+                transition: "background-color 60ms linear, color 60ms linear, box-shadow 60ms linear" }}>
               {label}
             </button>
           ))}
         </div>
         <span style={{ flex: 1 }} />
         <button type="button" aria-label="Zoom in" onClick={() => setZoom((z) => Math.max(0.35, +(z - 0.2).toFixed(2)))}
-          style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: INK, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>
+          className="tb-btn"
+          style={{ width: 30, height: 30, borderRadius: 0, clipPath: "polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)", border: "none", background: INK, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1,
+            boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.18), inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.32)" }}>
           +
         </button>
         <button type="button" aria-label="Zoom out" onClick={() => setZoom((z) => Math.min(3, +(z + 0.2).toFixed(2)))}
-          style={{ width: 26, height: 26, borderRadius: 6, border: "1px solid rgba(255,255,255,0.18)", background: INK, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1 }}>
+          className="tb-btn"
+          style={{ width: 30, height: 30, borderRadius: 0, clipPath: "polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)", border: "none", background: INK, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer", lineHeight: 1,
+            boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.18), inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.32)" }}>
           −
         </button>
         <button type="button" aria-label="Canvas settings" onClick={() => setShowSettings((s) => !s)}
-          style={{ width: 26, height: 26, borderRadius: 6, border: `1px solid ${showSettings ? SAFETY : "rgba(255,255,255,0.18)"}`, background: INK, color: "#fff", fontSize: 12, cursor: "pointer", lineHeight: 1 }}>
+          className="tb-btn"
+          style={{ width: 30, height: 30, borderRadius: 0, clipPath: "polygon(6px 0,100% 0,100% calc(100% - 6px),calc(100% - 6px) 100%,0 100%,0 6px)", border: "none", background: INK, color: "#fff", fontSize: 12, cursor: "pointer", lineHeight: 1,
+            boxShadow: showSettings
+              ? `inset 0 0 0 1px ${SAFETY}, inset 0 2px 4px rgba(10,43,65,0.35)`
+              : "inset 0 0 0 1px rgba(255,255,255,0.18), inset 0 1px 0 rgba(255,255,255,0.14), inset 0 -2px 0 rgba(0,0,0,0.32)" }}>
           ⚙
         </button>
       </div>
@@ -2934,7 +2971,7 @@ function makePolyGeometry(polys) {
 // top flange, four square corner posts, and a roof that overhangs the base by `oh`, with
 // standing seam ribs and hip/ridge caps when `ribs` is on. Sizes in inches, y up, the
 // skirt's bottom at y = 0; the caller centres the whole group afterwards. ----
-function buildChimneyCap(group, { W, D, H, postH, CH, oh, style, ribs }, mat, addEdges) {
+function buildChimneyCap(group, { W, D, shelf, leg, postH, CH, oh, style, ribs }, mat, addEdges) {
   const add = (geo, x = 0, y = 0, z = 0, parent = group) => {
     const m = new THREE.Mesh(geo, mat.clone());
     m.position.set(x, y, z);
@@ -2943,20 +2980,25 @@ function buildChimneyCap(group, { W, D, H, postH, CH, oh, style, ribs }, mat, ad
     return m;
   };
   const T = 0.12;                                              // sheet thickness as drawn
-  const FL = Math.max(1, Math.min(W, D) * 0.14);               // flange width
+  const FL = Math.min(shelf, Math.min(W, D) / 2 - 0.1);        // the shelf can't be wider than half the base
   const P = Math.max(1, Math.min(4, Math.min(W, D) * 0.09));   // post size
-  // 1. skirt
-  add(makeSideWallsGeometry(W, D, H));
-  // 2. top flange: a flat frame round the opening
-  add(new THREE.BoxGeometry(W, T, FL), 0, H, -(D / 2 - FL / 2));
-  add(new THREE.BoxGeometry(W, T, FL), 0, H, (D / 2 - FL / 2));
-  add(new THREE.BoxGeometry(FL, T, D - 2 * FL), -(W / 2 - FL / 2), H, 0);
-  add(new THREE.BoxGeometry(FL, T, D - 2 * FL), (W / 2 - FL / 2), H, 0);
-  // 3. posts on the flange corners
-  const px = W / 2 - FL / 2, pz = D / 2 - FL / 2;
-  for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(new THREE.BoxGeometry(P, postH, P), sx * px, H + postH / 2, sz * pz);
-  // 4. roof, built with its long axis along X and turned if the cap is deeper than wide
-  const y0 = H + postH;
+  // 1. the base: a flat shelf round the opening with a down leg on its outside edge and a
+  //    small hem turned in at the bottom of the leg (see the close-up photo on PR #34)
+  add(makeSideWallsGeometry(W, D, leg));                                   // down leg
+  const HEM = Math.min(0.5, leg / 2);
+  add(new THREE.BoxGeometry(W, T, HEM), 0, T / 2, -(D / 2 - HEM / 2));      // hem, four sides
+  add(new THREE.BoxGeometry(W, T, HEM), 0, T / 2, (D / 2 - HEM / 2));
+  add(new THREE.BoxGeometry(HEM, T, D - 2 * HEM), -(W / 2 - HEM / 2), T / 2, 0);
+  add(new THREE.BoxGeometry(HEM, T, D - 2 * HEM), (W / 2 - HEM / 2), T / 2, 0);
+  add(new THREE.BoxGeometry(W, T, FL), 0, leg, -(D / 2 - FL / 2));          // shelf, four sides
+  add(new THREE.BoxGeometry(W, T, FL), 0, leg, (D / 2 - FL / 2));
+  add(new THREE.BoxGeometry(FL, T, D - 2 * FL), -(W / 2 - FL / 2), leg, 0);
+  add(new THREE.BoxGeometry(FL, T, D - 2 * FL), (W / 2 - FL / 2), leg, 0);
+  // 2. posts standing on the shelf, just in from the outside corners
+  const px = W / 2 - P / 2 - 0.3, pz = D / 2 - P / 2 - 0.3;
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) add(new THREE.BoxGeometry(P, postH, P), sx * px, leg + postH / 2, sz * pz);
+  // 3. roof, built with its long axis along X and turned if the cap is deeper than wide
+  const y0 = leg + postH;
   const EW = W + 2 * oh, ED = D + 2 * oh;
   const long = Math.max(EW, ED), short = Math.min(EW, ED);
   const roof = new THREE.Group();
@@ -3075,7 +3117,7 @@ function buildChimneyCap(group, { W, D, H, postH, CH, oh, style, ribs }, mat, ad
   } else hipRoof(CH, ridgeHalf, ribs); // "hip" and anything unknown
 }
 
-function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, scupOutlet, scupFlange, scupProj, scupPlateW, scupPlateH, scupBoxW, scupBoxD, scupBoxH, scupDsSize }) {
+function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, shelf, leg, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, scupOutlet, scupFlange, scupProj, scupPlateW, scupPlateH, scupBoxW, scupBoxD, scupBoxH, scupDsSize }) {
   const mountRef = useRef(null);
   const stateRef = useRef({});
   const rotateRef = useRef(null);
@@ -3324,8 +3366,8 @@ function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, colorHe
       }
     } else {
       buildChimneyCap(group, {
-        W, D, H: Math.max(0.5, H), postH: Math.max(0.5, +postH || 6), CH: Math.max(0.5, +capH || 6),
-        oh: Math.max(0, +overhang ?? 2), style: capStyle || "hip", ribs: ribs !== false,
+        W, D, shelf: Math.max(0.5, +shelf || 3), leg: Math.max(0.5, +leg || 3), postH: Math.max(0.5, +postH || 6), CH: Math.max(0.5, +capH || 6),
+        oh: Math.max(0, Number.isFinite(+overhang) ? +overhang : 2), style: capStyle || "hip", ribs: ribs !== false,
       }, mat, addEdges);
     }
 
@@ -3416,7 +3458,7 @@ function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, colorHe
       renderer.dispose();
       if (mount) mount.innerHTML = "";
     };
-  }, [partType, w, d, h, capH, postH, overhang, ribs, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, scupOutlet, scupFlange, scupProj, scupPlateW, scupPlateH, scupBoxW, scupBoxD, scupBoxH, scupDsSize]);
+  }, [partType, w, d, h, capH, postH, overhang, ribs, shelf, leg, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, scupOutlet, scupFlange, scupProj, scupPlateW, scupPlateH, scupBoxW, scupBoxD, scupBoxH, scupDsSize]);
 
   const STEP = 0.35;
   const spinIntervalRef = useRef(null);
@@ -3723,7 +3765,16 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
 
 /* ---------------------------------- main app ---------------------------------- */
 export default function ShopOrderApp() {
-  const { user, customer, isStaff, signOut } = useAuth();
+  const { user, customer, isStaff, ownedShops, signOut } = useAuth();
+  // Signed out, the tools are open to anyone as a demo: draw trim, size a panel
+  // run, try colours. What an account is for — pricing, sending an order to a
+  // shop, and the saved-job tabs — stays locked, and every locked control raises
+  // the sign-in card instead (AuthGate listens for this event).
+  const isDemo = !user;
+  const openAuth = (mode) => window.dispatchEvent(new CustomEvent("rc:open-auth", { detail: mode || "signup" }));
+  // Money the demo visitor may not see. Kept as one helper so a price can never
+  // reach the screen by being formatted somewhere new.
+  const priceText = (n) => (isDemo ? "—" : money(n));
   const [customers, setCustomers] = useState([]); // staff-only: every registered customer, for tier assignment
   const [customersLoaded, setCustomersLoaded] = useState(false);
   const [staffIds, setStaffIds] = useState([]);
@@ -3732,6 +3783,13 @@ export default function ShopOrderApp() {
   const [mfrApps, setMfrApps] = useState([]); // staff-only: manufacturer "get listed" applications from the site
   const [mfrAppsLoaded, setMfrAppsLoaded] = useState(false);
   const [tab, setTab] = useState("order");
+  // Shops that take orders through RoofCoil: directory listings with ordering switched on.
+  // The one picked rides on every order as shop_id; the order-alert function emails that
+  // shop and its owner account sees the job on its own Shop Floor.
+  const [shops, setShops] = useState([]);
+  const [shopId, setShopId] = useState(null);
+  const ownedShopIds = (ownedShops || []).map((s) => s.id);
+  const canRunShopFloor = isStaff || (ownedShops || []).some((s) => s.accepts_orders);
   const [orderStep, setOrderStep] = useState("type"); // "color" | "type" | "details"
   const [showColorMatch, setShowColorMatch] = useState(false);
   const [materialCategory, setMaterialCategory] = useState("painted"); // "painted" | "unpainted"
@@ -3805,7 +3863,9 @@ export default function ShopOrderApp() {
   const [partH, setPartH] = useState(10);
   const [partCapH, setPartCapH] = useState(6);
   const [partPostH, setPartPostH] = useState(6);      // chimney cap: open height between the flange and the roof
-  const [partOverhang, setPartOverhang] = useState(2); // chimney cap: how far the roof eave reaches past the skirt
+  const [partOverhang, setPartOverhang] = useState(2); // chimney cap: how far the roof eave reaches past the base
+  const [partShelf, setPartShelf] = useState(3);       // chimney cap: the flat shelf round the opening
+  const [partLeg, setPartLeg] = useState(3);           // chimney cap: the down leg on the shelf's outside edge
   const [capRibs, setCapRibs] = useState(true);        // chimney cap: standing seam ribs on the roof, or smooth
   const [capStyle, setCapStyle] = useState("hip"); // see CAP_STYLES
   const [partView, setPartView] = useState("3d"); // "3d" | "flat"
@@ -3845,7 +3905,9 @@ export default function ShopOrderApp() {
   const [jobSiteAddress, setJobSiteAddress] = useState("");
   const [jobSiteMiles, setJobSiteMiles] = useState("");
   const [supplierCo, setSupplierCo] = useState("Fortified Metal");
-  const [fabricatorCo, setFabricatorCo] = useState("Fortified Metal");
+  const selectedShop = shops.find((s) => s.id === shopId) || null;
+  const fabricatorCo = selectedShop ? selectedShop.name : "Fortified Metal";
+  const shopIsFortified = !selectedShop || /fortified/i.test(selectedShop.name);
   const [milesLookupBusy, setMilesLookupBusy] = useState(false);
   const [milesLookupNote, setMilesLookupNote] = useState("");
   const [ribStyle, setRibStyle] = useState(null);
@@ -3867,7 +3929,7 @@ export default function ShopOrderApp() {
   const [drawnPitch, setDrawnPitch] = useState(4); // the roof pitch the profile on the canvas was drawn at — the box's, or 4:12 for a preset
   const [hemStart, setHemStart] = useState("none");
   const [hemEnd, setHemEnd] = useState("none");
-  const [paintSide, setPaintSide] = useState("left");
+  const [paintSide, setPaintSide] = useState("right");
   const [partName, setPartName] = useState("");
   const [partPhoto, setPartPhoto] = useState(null); // base64 data URL of an attached reference photo
   const [scanningSketch, setScanningSketch] = useState(false);
@@ -3898,17 +3960,17 @@ export default function ShopOrderApp() {
   const [editingId, setEditingId] = useState(null); // the part from the list that is back on the canvas to be changed
   const editSnapshot = useRef(null); // what the canvas and form held before a part was tapped — put back when the edit ends
   const canvasTopRef = useRef(null);
-  // The boxes — Residential Standing Seam (the 24 ga trim set, drawn to pitch) and Commercial in a
+  // The kits — Residential (the 24 ga trim set, drawn to pitch) and Commercial in a
   // Box (coping, cleats, counter flashing, gutters and downspouts, drawn to their sizes)
   const [roofBoxOpen, setRoofBoxOpen] = useState(false);
-  const [roofBoxKind, setRoofBoxKind] = useState("res"); // which box is up — "res" or "com" (BOX_KINDS)
-  const [comWall, setComWall] = useState(12);            // Commercial in a Box: the parapet's width across the top
+  const [roofBoxKind, setRoofBoxKind] = useState("res"); // which kit is up — "res" or "com" (BOX_KINDS)
+  const [comWall, setComWall] = useState(12);            // Commercial Kit: the parapet's width across the top
   const [comGutter, setComGutter] = useState(6);         //   the box gutter's size
   const [comDownspout, setComDownspout] = useState("4×4"); // the downspout's size
   const [comFascia, setComFascia] = useState(5.5);        //   the edge metal's face height
   const [comAtas, setComAtas] = useState(false);          //   the covers' drip to the ATAS spec (¾" kick, 1" hem)
   const [comEs1, setComEs1] = useState(false);            //   the job calls for ES-1 tested edge metal
-  const [box3dReturn, setBox3dReturn] = useState(false); // the 3D tool was reached from Commercial in a Box — it offers the way back
+  const [box3dReturn, setBox3dReturn] = useState(false); // the 3D tool was reached from the Commercial Kit — it offers the way back
   const [roofBoxPitch, setRoofBoxPitch] = useState(4);
   const [roofBoxSeam, setRoofBoxSeam] = useState(1.5);
   const [roofBoxLower, setRoofBoxLower] = useState(3);
@@ -3919,7 +3981,7 @@ export default function ShopOrderApp() {
   const [boxOrder, setBoxOrder] = useState({});
   const [famShow, setFamShow] = useState({}); // family key -> which member's row is showing
   const [roofBoxRowPitch, setRoofBoxRowPitch] = useState({}); // id -> the pitch that one piece is bent to, when it differs from the roof's
-  const [boxNote, setBoxNote] = useState(""); // one line the box shows after a round trip — "Added Ridge Cap ×4 — pick the next piece."
+  const [boxNote, setBoxNote] = useState(""); // one line the kit shows after a round trip — "Added Ridge Cap ×4 — pick the next piece."
   const [boxStripAll, setBoxStripAll] = useState(false); // the "In the order now" strip shows eight parts until asked for all
   const [boxReturn, setBoxReturn] = useState(null); // the kit id of the box piece on the canvas, or "edit" for a part opened from the box's list — the box comes back when that work is done
   const [boxReturnKind, setBoxReturnKind] = useState("res"); // …and which box that was, so it is the one that comes back
@@ -3936,18 +3998,23 @@ export default function ShopOrderApp() {
   //   ?view=color  the Color Lab button opens straight to Pick Your Finish
   //   ?view=trim   "Trim drawing" on roofcoil.com/members.html opens the drawing tool
   //   ?view=panel  "Panel orders" opens the panel calculator
-  //   ?view=box    "Open Residential Standing Seam" on sheet-metal-trim.html opens that box
-  //   ?view=commercial  "Open Commercial in a Box" opens the other one
+  //   ?view=box    "Open the Residential Kit" on sheet-metal-trim.html opens that kit
+  //   ?view=commercial  "Open the Commercial Kit" opens the other one
+  //   ?view=metal  raw coil and flat sheet;  ?view=part3d  collector boxes, scuppers, caps
+  //   ?view=type   the "What do you need?" chooser, for a member who hasn't decided yet
   // members.html embeds this app in an iframe with one of these, then switches tools
   // with a same-origin postMessage ({type:"rc:view"}) so a half-drawn profile isn't
   // lost to a reload when the member flips tabs.
   const openTool = useCallback((view) => {
     if (view === "color") { setTab("order"); setOrderStep("color"); }
-    else if (view === "trim" || view === "panel") { setTab("order"); setShapeType(view); setOrderStep("details"); }
+    else if (view === "trim" || view === "panel" || view === "metal") { setTab("order"); setShapeType(view); setOrderStep("details"); }
+    // same reset the 3D Parts tile does, so a deep link starts as clean as a tap does
+    else if (view === "part3d") { setTab("order"); setAccessories([]); setBox3dReturn(false); setShapeType("part3d"); setOrderStep("details"); }
     else if (view === "box" || view === "commercial") { setTab("order"); setShapeType("trim"); setOrderStep("details"); setRoofBoxKind(view === "commercial" ? "com" : "res"); setRoofBoxOpen(true); }
+    else if (view === "type") { setTab("order"); setOrderStep("type"); }
   }, []);
   const deepLinkView = new URLSearchParams(window.location.search).get("view");
-  const deepLinked = ["color", "trim", "panel", "box", "commercial"].includes(deepLinkView);
+  const deepLinked = ["color", "trim", "panel", "metal", "part3d", "box", "commercial", "type"].includes(deepLinkView);
   useEffect(() => {
     if (deepLinked) openTool(deepLinkView);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3981,11 +4048,16 @@ export default function ShopOrderApp() {
     storage.set("last-tab", tab, false).catch((e) => console.error("storage error", e));
   }, [tab, tabLoaded]);
 
-  // Shop Floor is staff-only — if a customer's saved "last tab" happens to point there
-  // (or they try to navigate there directly), bounce them back to New Order.
+  // Shop Floor is for staff and for shops that take orders here — if anyone else's saved
+  // "last tab" points there (or they navigate there directly), bounce them back to New Order.
+  // The Master Materials List is the Fortified shop's own board, so it stays staff-only.
   useEffect(() => {
-    if (tab === "dashboard" && !isStaff) setTab("order");
-  }, [tab, isStaff]);
+    if (tab === "dashboard" && !canRunShopFloor) setTab("order");
+    if (isDemo && tab !== "order") setTab("order");
+  }, [tab, canRunShopFloor, isDemo]);
+  useEffect(() => {
+    if (shopFloorView === "materials" && !isStaff) setShopFloorView("jobs");
+  }, [shopFloorView, isStaff]);
 
   useEffect(() => {
     if (priceListView === "backend" && !isStaff) setPriceListView("customer");
@@ -3996,17 +4068,33 @@ export default function ShopOrderApp() {
   useEffect(() => {
     (async () => {
       try {
-        const { data, error } = await supabase.from("orders").select("id, user_id, data").order("created_at", { ascending: false });
-        if (!error && data) setOrders(data.map((r) => ({ ...r.data, userId: r.user_id })));
+        const { data, error } = await supabase.from("orders").select("id, user_id, shop_id, data").order("created_at", { ascending: false });
+        if (!error && data) setOrders(data.map((r) => ({ ...r.data, userId: r.user_id, shopId: r.shop_id || r.data?.shopId || null })));
       } catch (e) { /* no orders yet */ }
       setLoaded(true);
+    })();
+  }, []);
+
+  // Shops that take orders through RoofCoil. ?shop=<listing id> (a shop's own site linking
+  // to the app) preselects that shop; otherwise Fortified, else the first one listed.
+  useEffect(() => {
+    (async () => {
+      const { data, error } = await supabase.from("directory_listings")
+        .select("id, name, phone, city, lat, lng, locations")
+        .eq("status", "live").eq("accepts_orders", true)
+        .order("featured", { ascending: false }).order("name", { ascending: true });
+      if (error || !data) { console.error("shops load error", error); return; }
+      setShops(data);
+      const want = new URLSearchParams(window.location.search).get("shop");
+      const pick = data.find((s) => s.id === want) || data.find((s) => /fortified/i.test(s.name)) || data[0] || null;
+      setShopId((cur) => (cur && data.some((s) => s.id === cur) ? cur : (pick ? pick.id : null)));
     })();
   }, []);
 
   const insertOrders = async (newOrders) => {
     // attach userId locally so a just-submitted order shows in Past Orders without a reload
     setOrders((prev) => [...newOrders.map((o) => ({ ...o, userId: user?.id || null })), ...prev]);
-    const rows = newOrders.map((o) => ({ id: o.id, user_id: user?.id || null, data: o, created_at: o.createdAt }));
+    const rows = newOrders.map((o) => ({ id: o.id, user_id: user?.id || null, shop_id: o.shopId || null, data: o, created_at: o.createdAt }));
     const { error } = await supabase.from("orders").insert(rows);
     if (error) {
       console.error("orders insert error", error);
@@ -4063,7 +4151,8 @@ export default function ShopOrderApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [coilWidth, paintId, brand, coilWidthScale]);
 
-  const fabBases = (FAB_COMPANIES.find((c) => c.name === fabricatorCo) || FAB_COMPANIES[0]).bases;
+  const fabBases = shopBases(selectedShop)
+    || (FAB_COMPANIES.find((c) => c.name.split(" ")[0].toLowerCase() === fabricatorCo.split(" ")[0].toLowerCase()) || FAB_COMPANIES[0]).bases;
 
   // Look up one-way driving miles from the chosen fabricator's NEAREST base to the
   // job site — geocode via OpenStreetMap, route via OSRM, straight-line ×1.25 fallback.
@@ -4170,19 +4259,25 @@ export default function ShopOrderApp() {
     { id: "p17", category: "3D Parts", name: 'Chimney Cap (base fabrication fee)', cost: 0, tier1: 50.00, tier2: 62.00, greenleaf: 47.00 },
   ];
 
+  // Staff read the price list as stored. Everyone else gets it through customer_price_list(),
+  // which strips the cost column; the tier prices stay because estimates are computed here.
   useEffect(() => {
     (async () => {
       try {
-        const res = await storage.get("shop-price-list", true);
-        if (res?.value) {
-          const parsed = JSON.parse(res.value);
-          setPriceList(parsed.map((p) => ({ cost: 0, ...p })));
+        let parsed = null;
+        if (isStaff) {
+          const res = await storage.get("shop-price-list", true);
+          if (res?.value) parsed = JSON.parse(res.value);
+        } else {
+          const { data, error } = await supabase.rpc("customer_price_list");
+          if (error) throw error;
+          parsed = Array.isArray(data) ? data : null;
         }
-        else setPriceList(DEFAULT_PRICE_LIST);
+        setPriceList(parsed ? parsed.map((p) => ({ cost: 0, ...p })) : DEFAULT_PRICE_LIST);
       } catch (e) { setPriceList(DEFAULT_PRICE_LIST); }
       setPriceListLoaded(true);
     })();
-  }, []);
+  }, [isStaff]);
 
   const savePriceList = async (next) => {
     setPriceList(next);
@@ -4388,6 +4483,7 @@ export default function ShopOrderApp() {
   ];
 
   useEffect(() => {
+    if (!isStaff) { setMaterialCosts(DEFAULT_MATERIAL_COSTS); setMaterialCostsLoaded(true); return; }
     (async () => {
       try {
         const res = await storage.get("shop-material-costs", true);
@@ -4398,7 +4494,7 @@ export default function ShopOrderApp() {
       } catch (e) { setMaterialCosts(DEFAULT_MATERIAL_COSTS); }
       setMaterialCostsLoaded(true);
     })();
-  }, []);
+  }, [isStaff]);
 
   const saveMaterialCosts = async (next) => {
     setMaterialCosts(next);
@@ -4418,6 +4514,7 @@ export default function ShopOrderApp() {
   ];
 
   useEffect(() => {
+    if (!isStaff) { setProductionCosts(DEFAULT_PRODUCTION_COSTS); setProductionCostsLoaded(true); return; }
     (async () => {
       try {
         const res = await storage.get("shop-production-costs", true);
@@ -4426,7 +4523,7 @@ export default function ShopOrderApp() {
       } catch (e) { setProductionCosts(DEFAULT_PRODUCTION_COSTS); }
       setProductionCostsLoaded(true);
     })();
-  }, []);
+  }, [isStaff]);
 
   const saveProductionCosts = async (next) => {
     setProductionCosts(next);
@@ -4797,7 +4894,7 @@ export default function ShopOrderApp() {
     : shapeType === "metal"
     ? { type: "metal", flatWidth, flatLength, coilWidth: metalCoilWidth, coilLength: metalCoilLength, quantity, gaugeId, paintId, brand, colorName }
     : shapeType === "part3d"
-    ? { type: "part3d", partType, partW, partD, partH, partCapH, partPostH, partOverhang, capRibs, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, scupOutlet, scupFlange, scupProj, scupPlateW, scupPlateH, scupBoxW, scupBoxD, scupBoxH, scupDsSize, scupDsLen, quantity, gaugeId, paintId, brand, colorName }
+    ? { type: "part3d", partType, partW, partD, partH, partCapH, partPostH, partOverhang, partShelf, partLeg, capRibs, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, scupOutlet, scupFlange, scupProj, scupPlateW, scupPlateH, scupBoxW, scupBoxD, scupBoxH, scupDsSize, scupDsLen, quantity, gaugeId, paintId, brand, colorName }
     : { type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, brand, colorName };
   const estimate = computePrice(draft, priceList, coilWidthScale);
   const girth = profileGirth(points, hemStart, hemEnd); // legs plus the end folds — the width the shear cuts
@@ -4810,7 +4907,7 @@ export default function ShopOrderApp() {
 
   const resetForm = () => {
     setOrderStep("type");
-    setShapeType("panel"); setWidth(16.88); setHeight(853.08); setCoilWidth(21); setProfile(PROFILES[0]); setRunLocation("Shop"); setJobSiteAddress(""); setJobSiteMiles(""); setMilesLookupNote(""); setSupplierCo("Fortified Metal"); setFabricatorCo("Fortified Metal"); setRibStyle(null); setClipRelief(null);
+    setShapeType("panel"); setWidth(16.88); setHeight(853.08); setCoilWidth(21); setProfile(PROFILES[0]); setRunLocation("Shop"); setJobSiteAddress(""); setJobSiteMiles(""); setMilesLookupNote(""); setSupplierCo("Fortified Metal"); setRibStyle(null); setClipRelief(null);
     setFlatWidth(48); setFlatLength(120); setMetalCoilWidth(21); setMetalCoilLength(12000);
     setAccessories([]); setAccType("Screws"); setAccSpec(ACCESSORY_SPECS.Screws[0]); setAccProfile(PROFILES[0]); setAccQty(1);
     setPartType("collector"); setPartW(12); setPartD(8); setPartH(10); setPartCapH(6); setPartView("3d"); setCapStyle("pyramid");
@@ -4821,7 +4918,7 @@ export default function ShopOrderApp() {
     setScupPlateW(16); setScupPlateH(8); setScupBoxW(16); setScupBoxD(8); setScupBoxH(12);
     setScupDsSize("4×5"); setScupDsLen(10);
     setPoints(TRIM_PRESETS["Eave / Drip Edge"]); setPreset("Eave / Drip Edge");
-    setHemStart("none"); setHemEnd("none"); setPaintSide("left");
+    setHemStart("none"); setHemEnd("none"); setPaintSide("right");
     setGaugeId(GAUGE_OPTIONS[0].id); setPaintId(PAINT_OPTIONS[0].id); setBrand(BRANDS[0]); setColorName(COLORS_BY_BRAND[BRANDS[0]][0].name);
     setQuantity(4); setLengthPerPiece(10); setSheetWidth(48); setPartName("");
     setEditingId(null); setBoxReturn(null); editSnapshot.current = null; setRoofBoxOpen(false); setBox3dReturn(false);
@@ -4922,7 +5019,7 @@ export default function ShopOrderApp() {
   };
   const cancelEdit = () => { restoreCanvas(); setToast("Left as it was."); setTimeout(() => setToast(""), 2000); };
 
-  /* ---------- The boxes: Residential Standing Seam and Commercial in a Box ---------- */
+  /* ---------- The kits: Residential and Commercial ---------- */
   const boxKind = BOX_KINDS[roofBoxKind];
   const seedBoxSel = (sel, kit) => {
     let next = sel;
@@ -5054,7 +5151,7 @@ export default function ShopOrderApp() {
     setViewResetKey((k) => k + 1); setRoofBoxOpen(false);
     setToast(`${it.name} is on the canvas — adjust any leg, then Add Part to Order.${replaced ? ` It took the place of the ${replaced} that was there.` : ""}`); setTimeout(() => setToast(""), 4000);
   };
-  // A scupper or a collector box is built in the 3D tool, not drawn — its row in Commercial in a Box
+  // A scupper or a collector box is built in the 3D tool, not drawn — its row in the Commercial Kit
   // takes the roofer there with that part up, and the tool shows the way back. The trims in the
   // list stay as they are; the 3D part is sent as its own part, the way the 3D tool always has.
   // Each 3D part starts at its own size. A scupper carrying the collector box's 12 x 8 x 10
@@ -5072,7 +5169,7 @@ export default function ShopOrderApp() {
     setRoofBoxOpen(false); setBox3dReturn(true);
     seedPartDims(it.tool3d, partType);
     setPartType(it.tool3d); setShapeType("part3d"); setOrderStep("details");
-    setToast(`${it.name} — size it in the 3D tool and send it as its own part. The parts in your list stay; sending brings you back to Commercial in a Box for the rest.`); setTimeout(() => setToast(""), 5000);
+    setToast(`${it.name} — size it in the 3D tool and send it as its own part. The parts in your list stay; sending brings you back to the Commercial Kit for the rest.`); setTimeout(() => setToast(""), 5000);
   };
 
   // Screws only sell in lots of 100 — the qty spinner steps by the lot size and any
@@ -5120,6 +5217,9 @@ export default function ShopOrderApp() {
   };
 
   const submitOrder = async () => {
+    // The button already asks a signed-out visitor to sign up; this is the backstop
+    // so no other path can put an anonymous order in front of the shop.
+    if (isDemo) { openAuth("signup"); return; }
     if (!customerName.trim()) { setToast("Add a name so the shop knows who this is for."); return; }
     if (shapeType === "panel") {
       if (ribStyle === null) { setToast("Pick a rib style (or None) before sending the order."); return; }
@@ -5140,6 +5240,8 @@ export default function ShopOrderApp() {
           id: uid(),
           jobId,
           poNumber,
+          shopId: shopId || undefined,
+          shopName: selectedShop ? selectedShop.name : undefined,
           type: "trim",
           // accessories ride on the job's first part only, so quantities aren't duplicated per part
           accessories: idx === 0 && accessories.length > 0 ? accessories : undefined,
@@ -5189,6 +5291,8 @@ export default function ShopOrderApp() {
       id: uid(),
       jobId: uid(),
       poNumber: await nextPoNumber(),
+      shopId: shopId || undefined,
+      shopName: selectedShop ? selectedShop.name : undefined,
       type: shapeType,
       customerName: customerName.trim(),
       phone: phone.trim(),
@@ -5207,6 +5311,8 @@ export default function ShopOrderApp() {
       partCapH: isPart3d && partType === "chimney" ? partCapH : undefined,
       partPostH: isPart3d && partType === "chimney" ? partPostH : undefined,
       partOverhang: isPart3d && partType === "chimney" ? partOverhang : undefined,
+      partShelf: isPart3d && partType === "chimney" ? partShelf : undefined,
+      partLeg: isPart3d && partType === "chimney" ? partLeg : undefined,
       capRibs: isPart3d && partType === "chimney" ? capRibs : undefined,
       capStyle: isPart3d && partType === "chimney" ? capStyle : undefined,
       outletShape: isPart3d && partType === "collector" ? outletShape : undefined,
@@ -5253,7 +5359,7 @@ export default function ShopOrderApp() {
     setSubmitting(false);
     if (!saved) return; // insertOrders already said so — keep the form so they can retry
     setToast(`Order sent — estimate ${money(order.price)}. The shop will confirm final pricing.`);
-    if (box3dReturn) { // reached from Commercial in a Box: the trim order is still being built, so back to it — name, phone and notes kept
+    if (box3dReturn) { // reached from the Commercial Kit: the trim order is still being built, so back to it — name, phone and notes kept
       setBox3dReturn(false); setBoxNote(`${PART3D_LABELS[partType]} sent as its own order — pick the next piece.`); openRoofBox("com");
     } else resetForm();
     setTimeout(() => setToast(""), 5000);
@@ -5324,6 +5430,8 @@ export default function ShopOrderApp() {
       partCapH: isPart3d && partType === "chimney" ? partCapH : undefined,
       partPostH: isPart3d && partType === "chimney" ? partPostH : undefined,
       partOverhang: isPart3d && partType === "chimney" ? partOverhang : undefined,
+      partShelf: isPart3d && partType === "chimney" ? partShelf : undefined,
+      partLeg: isPart3d && partType === "chimney" ? partLeg : undefined,
       capRibs: isPart3d && partType === "chimney" ? capRibs : undefined,
       capStyle: isPart3d && partType === "chimney" ? capStyle : undefined,
       outletShape: isPart3d && partType === "collector" ? outletShape : undefined,
@@ -5433,7 +5541,7 @@ export default function ShopOrderApp() {
       setJobSiteAddress(p.jobSiteAddress || "");
       setJobSiteMiles(p.jobSiteMiles ?? "");
       setSupplierCo(p.metalSupplier || "Fortified Metal");
-      setFabricatorCo(p.fabricator || "Fortified Metal");
+      if (p.shopId && shops.some((s) => s.id === p.shopId)) setShopId(p.shopId);
     } else if (kind === "metal") {
       if (p.flatWidth != null) setFlatWidth(p.flatWidth);
       if (p.flatLength != null) setFlatLength(p.flatLength);
@@ -5447,6 +5555,8 @@ export default function ShopOrderApp() {
       if (p.partCapH != null) setPartCapH(p.partCapH);
       if (p.partPostH != null) setPartPostH(p.partPostH);
       if (p.partOverhang != null) setPartOverhang(p.partOverhang);
+      if (p.partShelf != null) setPartShelf(p.partShelf);
+      if (p.partLeg != null) setPartLeg(p.partLeg);
       if (p.capRibs != null) setCapRibs(!!p.capRibs);
       if (p.capStyle) setCapStyle(p.capStyle);
       if (p.outletShape) setOutletShape(p.outletShape);
@@ -5524,7 +5634,33 @@ export default function ShopOrderApp() {
       .catch((e) => console.error("storage error", e));
   };
 
-  const visibleOrders = statusFilter === "All" ? orders : orders.filter((o) => o.status === statusFilter);
+  // Staff see every order; a shop owner's Shop Floor shows only the orders sent to their shop.
+  const floorOrders = isStaff ? orders : orders.filter((o) => o.shopId && ownedShopIds.includes(o.shopId));
+  const visibleOrders = statusFilter === "All" ? floorOrders : floorOrders.filter((o) => o.status === statusFilter);
+
+  // "Send this order to": every shop that takes orders through RoofCoil. With one shop the
+  // order still carries it; with none switched on, it goes to the Fortified desk as before.
+  const renderShopPicker = () => shops.length === 0 ? null : shops.length === 1 ? (
+    <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 4 }}>
+      Sent to <b style={{ color: theme.text }}>{shops[0].name}</b>{shops[0].city ? ` · ${shops[0].city}` : ""}
+    </div>
+  ) : (
+    <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 4 }}>
+      Send this order to
+      <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+        {shops.map((c) => (
+          <button key={c.id} type="button" onClick={() => setShopId(c.id)}
+            style={{
+              flex: "1 1 45%", padding: "7px", borderRadius: 6, fontSize: 12, cursor: "pointer",
+              border: `1px solid ${shopId === c.id ? INK : "#D9D5C7"}`,
+              background: shopId === c.id ? INK : "#fff", color: shopId === c.id ? "#fff" : INK_DEEP, fontWeight: 600,
+            }}>
+            {c.name}{c.city ? <span style={{ display: "block", fontSize: 10, fontWeight: 400, opacity: 0.8 }}>{c.city}</span> : null}
+          </button>
+        ))}
+      </div>
+    </label>
+  );
 
   return (
     <div style={{ fontFamily: "Inter, sans-serif", background: theme.pageBg, minHeight: "100vh" }}>
@@ -5534,23 +5670,33 @@ export default function ShopOrderApp() {
         .mono { font-family: 'IBM Plex Mono', monospace; }
         input[type=number]::-webkit-inner-spin-button { opacity: 1; }
         select { -webkit-appearance: none; appearance: none; }
+        /* Press feedback is a die closing, not a spring: the key goes DOWN 1px, its
+           bend line goes out and the face takes an inset shadow. Linear timing — a
+           press has no bounce in it. Nothing scales and nothing floats. */
         .mac-btn {
-          transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease, filter 0.15s ease;
+          transition: background-color 60ms linear, box-shadow 60ms linear, filter 60ms linear;
         }
         .mac-btn:hover {
-          transform: scale(1.08) translateY(-1px);
-          filter: brightness(1.04);
+          filter: brightness(1.06);
+          box-shadow: inset 0 0 0 1px rgba(212,175,55,0.55);
         }
         .mac-btn:active {
-          transform: scale(0.97);
+          transform: translateY(1px);
+          box-shadow: inset 0 0 0 1px rgba(212,175,55,0.55), inset 0 2px 3px rgba(10,43,65,0.35);
         }
-        /* Bouncy press feedback for everyday buttons — a snappier, more playful tap than a flat click. */
+        .tb-btn { transition: background-color 60ms linear, box-shadow 60ms linear, filter 60ms linear; }
+        .tb-btn:hover { filter: brightness(1.14); }
+        .tb-btn:active { transform: translateY(1px); filter: brightness(0.94); }
         .tap-bounce {
-          transition: transform 0.12s cubic-bezier(0.34, 1.56, 0.64, 1), filter 0.12s ease;
+          transition: transform 50ms linear, box-shadow 50ms linear, filter 50ms linear;
         }
         .tap-bounce:active {
-          transform: scale(0.93);
-          filter: brightness(0.97);
+          transform: translateY(1px);
+          box-shadow: inset 0 2px 3px rgba(10,43,65,0.32);
+          filter: brightness(0.96);
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .mac-btn:active, .tap-bounce:active, .tb-btn:active { transform: none; }
         }
         @keyframes popIn {
           0% { transform: scale(0.7); opacity: 0; }
@@ -5591,15 +5737,16 @@ export default function ShopOrderApp() {
           <div className="mono" style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>Shop Order Portal</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-          <div style={{ textAlign: "right", marginRight: 4, maxWidth: 150, overflow: "hidden" }}>
+          {/* name and pricing tier belong to an account — a demo visitor has neither */}
+          {!isDemo && <div style={{ textAlign: "right", marginRight: 4, maxWidth: 150, overflow: "hidden" }}>
             <div style={{ color: "#fff", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{customer?.name || user?.email}</div>
             <div style={{ color: theme.textSecondary, fontSize: 9.5 }}>
               {isStaff ? "Staff" : `Tier: ${customer?.tier === "tier1" ? "Tier 1" : customer?.tier === "greenleaf" ? "Greenleaf" : "Tier 2"}`}
             </div>
-          </div>
-          <button onClick={signOutEverywhere}
-            style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
-            Sign Out
+          </div>}
+          <button onClick={isDemo ? () => openAuth("signin") : signOutEverywhere}
+            style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${isDemo ? SAFETY : "rgba(255,255,255,0.3)"}`, background: isDemo ? SAFETY : "rgba(255,255,255,0.08)", color: isDemo ? "#1C1C1E" : "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+            {isDemo ? "Sign in / Sign up" : "Sign Out"}
           </button>
           <button onClick={() => setDarkMode((d) => !d)}
             style={{ width: 30, height: 30, borderRadius: 15, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
@@ -5612,7 +5759,12 @@ export default function ShopOrderApp() {
 
       {/* tabs */}
       <div style={{ display: "flex", background: CHARCOAL, paddingBottom: 0 }}>
-        {[{ id: "order", label: "New Order", icon: PenTool }, { id: "vault", label: "Job Vault", icon: Briefcase }, ...(isStaff ? [{ id: "dashboard", label: "Shop Floor", icon: ClipboardList }] : []), { id: "past", label: "Past Orders", icon: Clock }, { id: "pricelist", label: "Price List", icon: DollarSign }].map((t) => {
+        {[{ id: "order", label: "New Order", icon: PenTool },
+          // Job Vault, Past Orders and the Price List are all account territory.
+          ...(isDemo ? [] : [{ id: "vault", label: "Job Vault", icon: Briefcase }]),
+          ...(canRunShopFloor ? [{ id: "dashboard", label: "Shop Floor", icon: ClipboardList }] : []),
+          ...(isDemo ? [] : [{ id: "past", label: "Past Orders", icon: Clock }, { id: "pricelist", label: "Price List", icon: DollarSign }]),
+        ].map((t) => {
           const Icon = t.icon;
           const active = tab === t.id;
           return (
@@ -5633,6 +5785,22 @@ export default function ShopOrderApp() {
           );
         })}
       </div>
+
+      {isDemo && (
+        <div style={{
+          background: theme.card, borderBottom: `1px solid ${theme.border}`, color: theme.textSecondary,
+          padding: "9px 20px", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+        }}>
+          <span>
+            <b style={{ color: theme.text }}>You're trying the tools.</b>{" "}
+            Draw and measure as much as you like. Pricing and sending an order to a shop need a free account.
+          </span>
+          <button onClick={() => openAuth("signup")} className="tap-bounce"
+            style={{ border: `1.5px solid ${SAFETY}`, background: "transparent", color: theme.text, borderRadius: 999, padding: "5px 14px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+            Create a free account
+          </button>
+        </div>
+      )}
 
       {toast && (
         <div className="pop-in" style={{
@@ -6085,8 +6253,8 @@ export default function ShopOrderApp() {
                         </label>
                         <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                           $/Sheet
-                          <div className="mono" style={priceBox}>{money(flatSheetPrice)}</div>
-                          <div className="mono" style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3, whiteSpace: "nowrap" }}>× {quantity || 0} = {money(flatSheetPrice * (+quantity || 0))}</div>
+                          <div className="mono" style={priceBox}>{priceText(flatSheetPrice)}</div>
+                          <div className="mono" style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3, whiteSpace: "nowrap" }}>× {quantity || 0} = {priceText(flatSheetPrice * (+quantity || 0))}</div>
                         </label>
                       </div>
 
@@ -6108,8 +6276,8 @@ export default function ShopOrderApp() {
                         </label>
                         <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                           $/Linear Ft
-                          <div className="mono" style={priceBox}>{money(metalCoilPricePerFt)}</div>
-                          <div className="mono" style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3, whiteSpace: "nowrap" }}>× {Math.round(coilFeet)} ft = {money(metalCoilPricePerFt * coilFeet)}</div>
+                          <div className="mono" style={priceBox}>{priceText(metalCoilPricePerFt)}</div>
+                          <div className="mono" style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 3, whiteSpace: "nowrap" }}>× {Math.round(coilFeet)} ft = {priceText(metalCoilPricePerFt * coilFeet)}</div>
                         </label>
                       </div>
                       <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 6 }}>
@@ -6127,7 +6295,7 @@ export default function ShopOrderApp() {
             ) : shapeType === "part3d" ? (
               <>
                 {box3dReturn && (
-                  <button type="button" onClick={() => { setBox3dReturn(false); openRoofBox("com"); }} data-testid="box-3d-back" title="Back to Commercial in a Box — your parts are still in the list"
+                  <button type="button" onClick={() => { setBox3dReturn(false); openRoofBox("com"); }} data-testid="box-3d-back" title="Back to the Commercial Kit — your parts are still in the list"
                     style={{
                       padding: "5px 11px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer", marginBottom: 8,
                       border: `1px solid ${BOX_KINDS.com.accent}`, background: `linear-gradient(180deg, ${BOX_KINDS.com.accentLight}, ${BOX_KINDS.com.accent})`, color: "#fff", display: "inline-flex", alignItems: "center", gap: 5,
@@ -6166,13 +6334,13 @@ export default function ShopOrderApp() {
                       onBlur={(e) => { if (e.target.value === "") setPartD(8); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
                   </label>
-                  <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                  {partType !== "chimney" && <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     {partType === "scupper" ? "Opening height (in)" : "Height (in)"}{partType === "collector" && <span style={{ color: theme.textSecondary, fontWeight: 400 }}> (max 150)</span>}
                     <input type="number" min={0.1} max={partType === "collector" ? 150 : undefined} step="0.1" value={partH}
                       onChange={(e) => setPartH(e.target.value === "" ? "" : Math.max(0, partType === "collector" ? Math.min(150, +e.target.value) : +e.target.value))}
                       onBlur={(e) => { if (e.target.value === "") setPartH(partType === "scupper" ? 4 : 10); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
-                  </label>
+                  </label>}
                 </div>
 
                 {partType === "chimney" && (() => {
@@ -6190,7 +6358,11 @@ export default function ShopOrderApp() {
                   return (
                     <>
                       <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>
-                        Width × Depth are the base skirt's outside size; Height is the skirt. The roof overhangs the skirt and sits on four corner posts.
+                        Width × Depth are the base's outside size. The base is a flat shelf round the opening with a down leg on its outside edge; the posts stand on the shelf and the roof overhangs it.
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                        {num("Shelf (in)", partShelf, setPartShelf, 3, "cap-shelf")}
+                        {num("Down leg (in)", partLeg, setPartLeg, 3, "cap-leg")}
                       </div>
                       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                         {num("Open height — posts (in)", partPostH, setPartPostH, 6, "cap-post-h")}
@@ -6480,7 +6652,7 @@ export default function ShopOrderApp() {
 
                 <div style={{ marginTop: 8 }}>
                   {partView === "3d" ? (
-                    <Part3DPreview partType={partType} w={partW} d={partD} h={partH} capH={partCapH} postH={partPostH} overhang={partOverhang} ribs={capRibs} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} flangeLength={flangeLength} outletRoundTapered={outletRoundTapered} capStyle={capStyle} scupOutlet={scupOutlet} scupFlange={scupFlange} scupProj={scupProj} scupPlateW={scupPlateW} scupPlateH={scupPlateH} scupBoxW={scupBoxW} scupBoxD={scupBoxD} scupBoxH={scupBoxH} scupDsSize={scupDsSize} />
+                    <Part3DPreview partType={partType} w={partW} d={partD} h={partH} capH={partCapH} postH={partPostH} overhang={partOverhang} ribs={capRibs} shelf={partShelf} leg={partLeg} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} flangeLength={flangeLength} outletRoundTapered={outletRoundTapered} capStyle={capStyle} scupOutlet={scupOutlet} scupFlange={scupFlange} scupProj={scupProj} scupPlateW={scupPlateW} scupPlateH={scupPlateH} scupBoxW={scupBoxW} scupBoxD={scupBoxD} scupBoxH={scupBoxH} scupDsSize={scupDsSize} />
                   ) : (
                     <FlatPatternSVG partType={partType} w={partW} d={partD} h={partH} capH={partCapH} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} scupOutlet={scupOutlet} scupFlange={scupFlange} scupProj={scupProj} scupPlateW={scupPlateW} scupPlateH={scupPlateH} scupDsLen={scupDsLen} />
                   )}
@@ -6492,22 +6664,8 @@ export default function ShopOrderApp() {
               </>
             ) : shapeType === "panel" ? (
               <>
-                <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 4 }}>
-                  Fabricated By
-                  <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-                    {FAB_COMPANIES.map((c) => (
-                      <button key={c.name} type="button" onClick={() => setFabricatorCo(c.name)}
-                        style={{
-                          flex: 1, padding: "7px", borderRadius: 6, fontSize: 12, cursor: "pointer",
-                          border: `1px solid ${fabricatorCo === c.name ? INK : "#D9D5C7"}`,
-                          background: fabricatorCo === c.name ? INK : "#fff", color: fabricatorCo === c.name ? "#fff" : INK_DEEP, fontWeight: 600,
-                        }}>
-                        {c.name}
-                      </button>
-                    ))}
-                  </div>
-                </label>
-                {(supplierCo !== "Fortified Metal" || fabricatorCo !== "Fortified Metal") && (
+                {renderShopPicker()}
+                {(supplierCo !== "Fortified Metal" || !shopIsFortified) && (
                   <div style={{ fontSize: 10.5, fontWeight: 600, color: AMBER, marginTop: 6 }}>
                     Estimate shown at Fortified rates — final pricing confirmed by the companies you picked.
                   </div>
@@ -6735,7 +6893,7 @@ export default function ShopOrderApp() {
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Total Price
                     <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${coilOverMax ? coilGateColor : theme.border}`, borderRadius: 6, fontSize: coilOverMax ? 13 : 14, background: theme.highlight, boxSizing: "border-box", color: coilOverMax ? coilGateColor : theme.text, fontWeight: coilOverMax ? 700 : 600 }}>
-                      {coilOverMax ? coilGateText : money(((+coilPricePerFt || 0) + (+fabPricePerFt || 0)) * ((+height || 0) / 12))}
+                      {coilOverMax ? coilGateText : priceText(((+coilPricePerFt || 0) + (+fabPricePerFt || 0)) * ((+height || 0) / 12))}
                     </div>
                   </label>
                 </div>
@@ -6744,9 +6902,11 @@ export default function ShopOrderApp() {
                     {coilUnavailable ? 'Coil over 48" isn\'t available — 48" is the widest we can run.' : 'Coil over 24" — call the shop for pricing on wide panels.'}
                   </div>
                 )}
-                <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
-                  Fabrication minimum: $200 shop-rolled · $600 rolled on site — applied automatically in the order estimate.
-                </div>
+                {!isDemo && (
+                  <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
+                    Fabrication minimum: $200 shop-rolled · $600 rolled on site — applied automatically in the order estimate.
+                  </div>
+                )}
 
                 <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 10 }}>
                   Run Location
@@ -6785,7 +6945,7 @@ export default function ShopOrderApp() {
                     </div>
                     <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
                       First {MILEAGE_FREE} miles free, then ${MILEAGE_RATE}/mile one way from the nearest {fabricatorCo} shop ({fabBases.map((b) => b.name).join(" or ")})
-                      {(+jobSiteMiles || 0) > MILEAGE_FREE ? <b style={{ color: AMBER }}> — mileage charge {money(mileageCharge(jobSiteMiles))}</b> : null}
+                      {(+jobSiteMiles || 0) > MILEAGE_FREE ? <b style={{ color: AMBER }}> — mileage charge {priceText(mileageCharge(jobSiteMiles))}</b> : null}
                       {milesLookupNote ? ` · ${milesLookupNote}` : ""}
                     </div>
                   </>
@@ -7100,7 +7260,7 @@ export default function ShopOrderApp() {
                         </div>
                         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 12, paddingTop: 12, borderTop: `1px solid ${theme.border}` }}>
                           <div className="mono" style={{ fontSize: 11.5, color: theme.text, fontWeight: 600 }} data-testid="box-totals">
-                            {roofBoxPicked.length} {boxNoun}{roofBoxPicked.length === 1 ? "" : "s"} · {totalPcs} pcs · {totalSheets} sheet{totalSheets === 1 ? "" : "s"} · est. {money(totalPrice)}
+                            {roofBoxPicked.length} {boxNoun}{roofBoxPicked.length === 1 ? "" : "s"} · {totalPcs} pcs · {totalSheets} sheet{totalSheets === 1 ? "" : "s"}{isDemo ? "" : ` · est. ${money(totalPrice)}`}
                             {boxPending && <span data-testid="box-pending" style={{ display: "block", fontWeight: 500, color: theme.textSecondary }}>+ the {boxPending.name} ×{boxPending.quantity} on the canvas goes in with them</span>}
                           </div>
                           <div style={{ display: "flex", gap: 8 }}>
@@ -7245,7 +7405,7 @@ export default function ShopOrderApp() {
                               {it.colorName} · {itGauge?.label} · {itBends} bend{itBends === 1 ? "" : "s"} · Paint side: {it.paintSide === "left" ? "Left" : "Right"}{it.kit && PITCHED_KIT.has(it.kit) && it.pitch ? ` · ${fmtPitch(it.pitch)}` : ""}
                             </span>
                           </span>
-                          <span className="mono" style={{ fontSize: 11, color: theme.textSecondary }}>{money(it.price)}</span>
+                          <span className="mono" style={{ fontSize: 11, color: theme.textSecondary }}>{priceText(it.price)}</span>
                           <button onClick={(e) => { e.stopPropagation(); editBasketItem(it); }} title="Edit this part" aria-label={`Edit ${it.name}`}
                             style={{ border: "none", background: "none", color: editing ? SAFETY : theme.textSecondary, cursor: "pointer", padding: 2, display: "flex" }}>
                             <Pencil size={13} />
@@ -7391,6 +7551,7 @@ export default function ShopOrderApp() {
           {/* order details */}
           <div style={{ background: theme.card, borderRadius: 10, padding: 12, marginTop: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
             <div className="disp" style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8 }}>Order Details</div>
+            {shapeType !== "panel" && renderShopPicker()}
 
             <div style={{ position: "relative", marginTop: 10 }}>
               <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Customer name"
@@ -7409,22 +7570,25 @@ export default function ShopOrderApp() {
             </div>
           </div>
 
-          {/* estimate + submit */}
-          <div style={{ background: INK, borderRadius: 10, padding: 14, marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          {/* estimate + submit — signed out, the price is withheld and the button
+              asks for the free account instead of sending anything */}
+          <div style={{ background: INK, borderRadius: 10, padding: 14, marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div>
               <div style={{ color: "#CFE3EF", fontSize: 11 }}>
-                {shapeType === "trim" ? `Estimated total${basket.length > 0 ? ` · ${orderParts().length} part(s)` : ""}` : "Estimated total"}
+                {isDemo ? "Pricing needs a free account" : shapeType === "trim" ? `Estimated total${basket.length > 0 ? ` · ${orderParts().length} part(s)` : ""}` : "Estimated total"}
               </div>
-              <div className="mono" style={{ color: "#fff", fontSize: 22, fontWeight: 600 }}>{shapeType === "panel" && coilOverMax ? coilGateText : money(combinedEstimate)}</div>
+              <div className="mono" style={{ color: "#fff", fontSize: isDemo ? 14 : 22, fontWeight: 600 }}>
+                {isDemo ? "Your drawing is ready to send" : shapeType === "panel" && coilOverMax ? coilGateText : money(combinedEstimate)}
+              </div>
             </div>
-            <button onClick={submitOrder} disabled={submitting}
+            <button onClick={isDemo ? () => openAuth("signup") : submitOrder} disabled={!isDemo && submitting}
               className="disp tap-bounce"
               style={{
                 background: `linear-gradient(135deg, ${SAFETY}, #F0C955)`, color: "#fff", border: "none", padding: "13px 22px", borderRadius: 10,
-                fontSize: 13.5, fontWeight: 700, cursor: submitting ? "default" : "pointer", opacity: submitting ? 0.7 : 1,
+                fontSize: 13.5, fontWeight: 700, cursor: !isDemo && submitting ? "default" : "pointer", opacity: !isDemo && submitting ? 0.7 : 1,
                 boxShadow: `0 4px 14px ${SAFETY}55`,
               }}>
-              {submitting ? "Sending…" : "🚀 Send Order"}
+              {isDemo ? "Sign up free to see pricing & send" : submitting ? "Sending…" : "🚀 Send Order"}
             </button>
           </div>
           {user && (
@@ -8126,7 +8290,7 @@ export default function ShopOrderApp() {
       ) : (
         <div style={{ padding: 16, maxWidth: 640, margin: "0 auto" }}>
           <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-            {[{ id: "jobs", label: "Jobs" }, { id: "materials", label: "Master Materials List" }].map((v) => (
+            {[{ id: "jobs", label: "Jobs" }, ...(isStaff ? [{ id: "materials", label: "Master Materials List" }] : [])].map((v) => (
               <button key={v.id} onClick={() => setShopFloorView(v.id)}
                 style={{
                   flex: 1, padding: "9px 6px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
@@ -8289,6 +8453,7 @@ export default function ShopOrderApp() {
                             <div>
                               <div style={{ fontWeight: 700, fontSize: 15, color: theme.text }}>{first.customerName}</div>
                               <div style={{ fontSize: 11, color: theme.textSecondary }}>{first.phone || "No phone provided"}</div>
+                              {first.shopName && (<div style={{ fontSize: 10.5, color: SAFETY, fontWeight: 600, marginTop: 1 }}>Sent to {first.shopName}</div>)}
                               <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 2 }}>
                                 {group.items.length} piece{group.items.length === 1 ? "" : "s"} in this job
                               </div>
