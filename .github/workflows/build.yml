@@ -1,0 +1,20 @@
+# Every push and pull request runs the same build Vercel runs, prerender included. The
+# prerender reads the live public directory with the publishable key, so a broken anonymous
+# read (the September 16 outage) fails here before anything merges. Make this check required
+# on main under Settings > Branches to stop a red build from being merged.
+name: build
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run build

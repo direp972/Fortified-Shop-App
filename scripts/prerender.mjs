@@ -92,7 +92,7 @@ async function loadListings() {
     return JSON.parse(await fs.readFile(process.env.LISTINGS_FIXTURE, "utf8"));
   }
   const cols = "id,name,badges,address,city,area_keywords,lat,lng,locations,abilities,colors,coil_desc,fab_desc,website,phone,photos,logo_url,logo_bg,licensed_states,featured,gmaps_url,updated_at,created_at";
-  const r = await fetch(`${SUPA}/rest/v1/directory_listings?select=${cols}&status=eq.live&order=featured.desc,name.asc`, { headers: { apikey: KEY } });
+  const r = await fetch(`${SUPA}/rest/v1/directory_public?select=${cols}&order=featured.desc,name.asc`, { headers: { apikey: KEY } });
   if (!r.ok) throw new Error(`directory_listings fetch failed: HTTP ${r.status}`);
   return r.json();
 }

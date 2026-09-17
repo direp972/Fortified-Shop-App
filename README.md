@@ -158,6 +158,8 @@ Any directory listing can take orders from the Panel & Trim app:
    the Master Materials List stays staff-only.
 4. When a listing goes live, the shop is emailed that it is published; when a proposed edit
    is applied or dismissed, the person who proposed it is emailed the outcome.
+5. The customer is emailed when their job moves to In Production, Ready for Pickup or
+   Completed, once per status, with the pieces that reached it and the shop's phone.
 
 Fortified Sheet Metal's own listing has ordering switched on with no order email, so its
 orders keep going to `ALERT_EMAIL_TO` and the shop text exactly as before.
@@ -179,10 +181,12 @@ orders keep going to `ALERT_EMAIL_TO` and the shop text exactly as before.
   admin access from the **Customer Pricing Tiers** panel; nobody can grant it to themselves.
 - Every confirmed account gets its `customers` row from a database trigger the moment it
   is confirmed, so it shows up in the tiers panel whether or not it has opened the app.
-- The public directory API still exposes each listing's `owner_id`, `application_id` and
-  `order_email` to anonymous readers (a user id, an application id and a business email).
-  A column-level grant was tried and reverted: PostgREST returns 401 to a role without a
-  table-level grant. Hiding them properly needs a public view.
+- Anonymous readers (the directory page, the home-page counter, the prerender step and
+  the app's shop picker) read the `directory_public` view, which lists live rows without
+  `owner_id`, `application_id` or `order_email`. Signed-in admin pages read the table.
+- Every push and pull request runs the real build, prerender included, in GitHub Actions
+  (`.github/workflows/build.yml`). Make it a required check on `main` so a red build can't
+  be merged.
 - The public forms are throttled in the database: Get Listed applications stop at 3 an hour
   from one address and 20 an hour overall, leads at 10 and 60, uploads at 60 an hour, and
   sign-ups at 3 an hour per inbox and 10 per connection.

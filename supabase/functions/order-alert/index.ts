@@ -9,6 +9,11 @@
 // shop, or a shop with no order email, goes to the Fortified Metals desk (ALERT_EMAIL_TO)
 // and the shop text, exactly as before.
 //
+// Status changes: orders_status_alert calls this with {kind:"status"} when a row's status
+// moves to In Production, Ready for Pickup or Completed. The first row of a job to reach a
+// status claims "<jobId>:<status>" in order_alerts, waits for its siblings, and emails the
+// customer once with every item now at that status. A status reached twice is not re-sent.
+//
 // Auth: custom shared-secret header (x-alert-secret) matching the DB trigger —
 // verify_jwt is off because pg_net cannot mint JWTs. Worst case for a leaked
 // secret is a spurious notification; no data is exposed.
@@ -134,6 +139,97 @@ function customerMail(name: string, shopName: string, shopPhone: string, po: str
   return { subject: `Order received${po ? ` — ${po}` : ""} · ${shopName}`, text, html };
 }
 
+const STATUS_LINE: Record<string, { subject: string; lead: string }> = {
+  "In Production": { subject: "is in production", lead: "is being made now" },
+  "Ready for Pickup": { subject: "is ready for pickup", lead: "is ready for pickup" },
+  "Completed": { subject: "is complete", lead: "is complete" },
+};
+
+// The customer's status note: which pieces reached the status, and who to call.
+function statusMail(name: string, status: string, shopName: string, shopPhone: string, po: string, items: Record<string, unknown>[]) {
+  const first = (name || "").trim().split(/\s+/)[0];
+  const hi = first ? `Hi ${first},` : "Hi there,";
+  const words = STATUS_LINE[status] || { subject: `is now ${status}`, lead: `is now ${status}` };
+  const lines = items.map(describeItem);
+  const text = [
+    hi, "",
+    `Your order${po ? ` ${po}` : ""} at ${shopName} ${words.lead}.`,
+    ...(shopPhone ? [`Questions? Call ${shopName} at ${shopPhone}.`] : []),
+    "", ...lines, "",
+    `See your orders any time under Past Orders: https://shop.roofcoil.com/`,
+    "",
+    `RoofCoil.com · Fortified Metals · ${PHONE}`,
+  ].join("\n");
+  const html = `<div style="background:#F6F4EE;padding:28px 12px;font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;color:#1C1C1E">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;padding:28px 26px;border:1px solid #E7E2D6">
+    <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#8A94A6;margin-bottom:14px">RoofCoil.com</div>
+    <h1 style="font-size:22px;margin:0 0 10px;color:#0A2B41">${esc(hi)}</h1>
+    <p style="font-size:15px;line-height:1.55;margin:0 0 14px">Your order${po ? ` <b>${esc(po)}</b>` : ""} at <b>${esc(shopName)}</b> ${esc(words.lead)}.${shopPhone ? ` Questions? Call <a href="tel:${esc(shopPhone.replace(/[^\d+]/g, ""))}" style="color:#0F3D5C">${esc(shopPhone)}</a>.` : ""}</p>
+    <ul style="font-size:13.5px;line-height:1.6;padding-left:18px;margin:0 0 18px">${lines.map((l) => `<li>${esc(l.replace(/^- /, ""))}</li>`).join("")}</ul>
+    <p style="margin:0 0 20px"><a href="https://shop.roofcoil.com/" style="display:inline-block;background:#0F3D5C;color:#fff;font-weight:700;font-size:14px;text-decoration:none;padding:11px 18px;border-radius:9px">See your orders</a></p>
+    <div style="margin-top:22px;padding-top:14px;border-top:1px solid #E7E2D6;font-size:12px;color:#8A94A6;line-height:1.5">RoofCoil.com · Fortified Metals · ${PHONE}</div>
+  </div></div>`;
+  return { subject: `Your order${po ? ` ${po}` : ""} ${words.subject} · ${shopName}`, text, html };
+}
+
+async function statusChange(record: Record<string, any>) {
+  try {
+    const data = record?.data ?? {};
+    const jobId: string = data.jobId || record?.id;
+    const status: string = String(data.status || "");
+    if (!jobId || !STATUS_LINE[status]) return;
+
+    // Claim "<job>:<status>" — one email per job per status, whichever row got there first.
+    const key = `${jobId}:${status}`;
+    const { data: claimed, error: claimErr } = await sb
+      .from("order_alerts")
+      .upsert({ job_id: key }, { onConflict: "job_id", ignoreDuplicates: true })
+      .select();
+    if (claimErr) { console.error("status claim error", claimErr); return; }
+    if (!claimed || claimed.length === 0) return;
+
+    await new Promise((r) => setTimeout(r, BATCH_SETTLE_MS)); // let the rest of the job be marked too
+
+    const byJob = await sb.from("orders").select("id,user_id,shop_id,data").eq("data->>jobId", jobId);
+    const byId = await sb.from("orders").select("id,user_id,shop_id,data").eq("id", jobId);
+    const seen = new Set<string>();
+    const rows = [...(byJob.data ?? []), ...(byId.data ?? [])].filter((r) => {
+      if (seen.has(r.id)) return false; seen.add(r.id); return true;
+    });
+    const items = rows.map((r) => r.data ?? {}).filter((d) => String(d.status || "") === status);
+    if (items.length === 0) return;
+
+    const first = items[0] ?? {};
+    const po = items.map((i) => i.poNumber).find(Boolean) || "";
+    const shopId: string | null = rows.find((r) => r.shop_id)?.shop_id || first.shopId || null;
+    let shop: Shop = null;
+    if (shopId) {
+      const { data: s } = await sb.from("directory_listings").select("id,name,phone,order_email,accepts_orders").eq("id", shopId).maybeSingle();
+      shop = (s as Shop) ?? null;
+    }
+    const routed = !!(shop && shop.order_email && shop.order_email.includes("@"));
+    const shopName = shop?.name || first.shopName || DEFAULT_SHOP;
+    const shopPhone = routed ? (shop?.phone || "") : PHONE;
+
+    let confirmation: Record<string, unknown> = { skipped: "no account on the order" };
+    const userId: string | null = rows.find((r) => r.user_id)?.user_id || record?.user_id || null;
+    if (userId) {
+      const { data: u, error } = await sb.auth.admin.getUserById(userId);
+      const to = u?.user?.email;
+      if (error) confirmation = { skipped: `user lookup: ${error.message}` };
+      else if (!to) confirmation = { skipped: "account has no email" };
+      else {
+        const m = statusMail(first.customerName || "", status, shopName, shopPhone, po, items);
+        confirmation = await sendEmail(m.subject, m.text, to, m.html);
+      }
+    }
+    console.log("order-alert status", key, JSON.stringify({ shop: shop?.name ?? null, confirmation }));
+    await sb.from("order_alerts").update({ status: { kind: "status", status, shop: shop?.name ?? null, confirmation, items: items.length } }).eq("job_id", key);
+  } catch (e) {
+    console.error("order-alert status failed", e);
+  }
+}
+
 async function process(record: Record<string, any>) {
   try {
     const data = record?.data ?? {};
@@ -225,6 +321,7 @@ Deno.serve(async (req: Request) => {
   }
   let payload: Record<string, any>;
   try { payload = await req.json(); } catch { return new Response("bad request", { status: 400 }); }
-  EdgeRuntime.waitUntil(process(payload?.record ?? {}));
+  if (payload?.kind === "status") EdgeRuntime.waitUntil(statusChange(payload?.record ?? {}));
+  else EdgeRuntime.waitUntil(process(payload?.record ?? {}));
   return new Response("accepted", { status: 202 });
 });
