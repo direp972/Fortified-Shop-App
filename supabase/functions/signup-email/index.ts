@@ -149,7 +149,7 @@ function confirmationMail(name: string, link: string, brand: string, note: strin
 }
 
 function existingAccountMail(brand: string, signIn: string): Mail {
-  const help = `If you signed up with Google, use "Continue with Google". Forgot your password, or wasn't you? Call ${PHONE} and we'll sort it out.`;
+  const help = `If you signed up with Google, use "Continue with Google". Forgot your password? Tap "Forgot password?" on the sign-in box and we'll email you a link to choose a new one. Wasn't you? Call ${PHONE}.`;
   return {
     subject: `You already have a ${brand} account`,
     text: `Someone — probably you — just tried to create a ${brand} account with this email address, but it already has one.\n\nSign in here with your password: ${signIn}\n\n${help}\n\n${footer(brand)}`,

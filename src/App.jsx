@@ -3805,9 +3805,9 @@ export default function ShopOrderApp() {
   // to the app) preselects that shop; otherwise Fortified, else the first one listed.
   useEffect(() => {
     (async () => {
-      const { data, error } = await supabase.from("directory_listings")
+      const { data, error } = await supabase.from("directory_public")
         .select("id, name, phone, city, lat, lng, locations")
-        .eq("status", "live").eq("accepts_orders", true)
+        .eq("accepts_orders", true)
         .order("featured", { ascending: false }).order("name", { ascending: true });
       if (error || !data) { console.error("shops load error", error); return; }
       setShops(data);
@@ -4461,111 +4461,6 @@ export default function ShopOrderApp() {
   // mobile/tablet keyboards when tapping "Done" or switching fields quickly).
   const commitOnEnter = (e) => { if (e.key === "Enter") e.target.blur(); };
 
-  const seedSampleOrders = async () => {
-    const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
-    const trimColor = (brandName, name) => {
-      const c = COLORS_BY_BRAND[brandName].find((x) => x.name === name) || COLORS_BY_BRAND[brandName][0];
-      return { colorName: c.name, colorHex: c.hex };
-    };
-    const mkTrim = (over) => {
-      const base = {
-        id: uid(), type: "trim", partName: "Sample Part",
-        customerName: "Sample Customer", phone: "(555) 555-0100",
-        points: TRIM_PRESETS["Eave / Drip Edge"], lengthPerPiece: 10, hemStart: "none", hemEnd: "none", paintSide: "left",
-        quantity: 4, gaugeId: GAUGE_OPTIONS[0].id, paintId: PAINT_OPTIONS[0].id, brand: "Fortified Metal",
-        notes: "", status: "Pending", createdAt: daysAgo(1),
-        ...trimColor("Fortified Metal", "Charcoal Gray"),
-      };
-      const merged = { ...base, ...over };
-      // Same math the real order form uses when a trim order is actually submitted,
-      // so sample/seed data rolls up into Materials Needed the same way real orders do.
-      const girth = profileGirth(merged.points, merged.hemStart, merged.hemEnd);
-      const sheetWidth = merged.sheetWidth || 48;
-      const partsPerSheet = piecesPerSheet(sheetWidth, girth);
-      const sheetsNeeded = partsPerSheet > 0 ? Math.ceil(merged.quantity / partsPerSheet) : 0;
-      Object.assign(merged, { girth, sheetWidth, partsPerSheet, sheetsNeeded });
-      merged.price = computePrice(merged, priceList, coilWidthScale);
-      return merged;
-    };
-    const mkPanel = (over) => {
-      const base = {
-        id: uid(), type: "panel",
-        customerName: "Sample Customer", phone: "(555) 555-0100",
-        profile: PROFILES[0], width: 16, height: 120, quantity: 6, runLocation: "Shop", ribStyle: "none", clipRelief: false,
-        gaugeId: GAUGE_OPTIONS[0].id, paintId: PAINT_OPTIONS[0].id, brand: "Fortified Metal",
-        notes: "", status: "Pending", createdAt: daysAgo(1),
-        ...trimColor("Fortified Metal", "Charcoal Gray"),
-      };
-      const merged = { ...base, ...over };
-      merged.price = computePrice(merged, priceList, coilWidthScale);
-      return merged;
-    };
-
-    // Each customer's parts (trim + panel) share one jobId, so the whole
-    // job — every piece of trim and every panel — groups together as one order.
-    const jobDave = uid();
-    const jobPriya = uid();
-    const jobMarcus = uid();
-    const jobTammy = uid();
-
-    const samples = [
-      // Dave Rutherford — 2 trim pieces + 1 panel run, all Pending
-      mkTrim({ jobId: jobDave, partName: "Eave — North Slope", customerName: "Dave Rutherford", phone: "(817) 555-0142",
-        points: TRIM_PRESETS["Eave / Drip Edge"], quantity: 12, lengthPerPiece: 10, hemStart: "closed-left",
-        brand: "Berridge", ...trimColor("Berridge", "Charcoal Grey"), status: "Pending", createdAt: daysAgo(1) }),
-      mkTrim({ jobId: jobDave, partName: "Rake — West Gable", customerName: "Dave Rutherford", phone: "(817) 555-0142",
-        points: TRIM_PRESETS["Rake / Gable Trim"], quantity: 8, lengthPerPiece: 10, hemEnd: "open-right",
-        brand: "Berridge", ...trimColor("Berridge", "Charcoal Grey"), status: "Pending", createdAt: daysAgo(1) }),
-      mkTrim({ jobId: jobDave, partName: "Ridge Cap — North Slope", customerName: "Dave Rutherford", phone: "(817) 555-0142",
-        points: TRIM_PRESETS["Ridge Cap"], quantity: 4, lengthPerPiece: 10,
-        brand: "Berridge", ...trimColor("Berridge", "Charcoal Grey"), status: "Pending", createdAt: daysAgo(1) }),
-      mkPanel({ jobId: jobDave, customerName: "Dave Rutherford", phone: "(817) 555-0142", profile: "SS150 – 1.5\" Mechanical Seam",
-        width: 16, height: 216, quantity: 22,
-        brand: "Berridge", ...trimColor("Berridge", "Charcoal Grey"), status: "Pending", createdAt: daysAgo(1) }),
-
-      // Priya Anand — 2 trim pieces + 2 panel runs, all In Production
-      mkTrim({ jobId: jobPriya, partName: "Ridge Cap — Main House", customerName: "Priya Anand", phone: "(972) 555-0118",
-        points: TRIM_PRESETS["Ridge Cap"], quantity: 6, lengthPerPiece: 10,
-        brand: "Una-Clad", ...trimColor("Una-Clad", "Hartford Green"), status: "In Production", createdAt: daysAgo(3) }),
-      mkTrim({ jobId: jobPriya, partName: "Sidewall Flashing — Chimney", customerName: "Priya Anand", phone: "(972) 555-0118",
-        points: TRIM_PRESETS["Sidewall Flashing"], quantity: 4, lengthPerPiece: 8, hemStart: "closed-right",
-        brand: "Una-Clad", ...trimColor("Una-Clad", "Hartford Green"), status: "In Production", createdAt: daysAgo(3) }),
-      mkPanel({ jobId: jobPriya, customerName: "Priya Anand", phone: "(972) 555-0118", profile: "SS450 – 1.5\" Snap-Lock",
-        width: 18, height: 180, quantity: 16,
-        brand: "Una-Clad", ...trimColor("Una-Clad", "Hartford Green"), status: "In Production", createdAt: daysAgo(3) }),
-      mkPanel({ jobId: jobPriya, customerName: "Priya Anand", phone: "(972) 555-0118", profile: "FWQ100 – 1\" Flush Wall / Soffit",
-        width: 12, height: 108, quantity: 10,
-        brand: "Una-Clad", ...trimColor("Una-Clad", "Hartford Green"), status: "In Production", createdAt: daysAgo(3) }),
-
-      // Marcus Webb — 2 trim pieces + 1 panel run, all Ready for Pickup
-      mkTrim({ jobId: jobMarcus, partName: "F-Channel — Soffit Return", customerName: "Marcus Webb", phone: "(469) 555-0177",
-        points: [[0, 0], [0, 10.5], [7, 10.5], [7, 4], [10, 4], [10, 0]], quantity: 10, lengthPerPiece: 10,
-        brand: "Adax Metals", ...trimColor("Adax Metals", "Matte Black"), status: "Ready for Pickup", createdAt: daysAgo(5) }),
-      mkTrim({ jobId: jobMarcus, partName: "Z-Bar — Wainscot Transition", customerName: "Marcus Webb", phone: "(469) 555-0177",
-        points: [[0, 0], [0, 7.5], [6, 1.5], [6, 9]], quantity: 14, lengthPerPiece: 10,
-        brand: "Adax Metals", ...trimColor("Adax Metals", "Matte Black"), status: "Ready for Pickup", createdAt: daysAgo(5) }),
-      mkPanel({ jobId: jobMarcus, customerName: "Marcus Webb", phone: "(469) 555-0177", profile: "BB750 – Board and Batten",
-        width: 12, height: 144, quantity: 30, runLocation: "Job Site",
-        brand: "Adax Metals", ...trimColor("Adax Metals", "Matte Black"), status: "Ready for Pickup", createdAt: daysAgo(5) }),
-
-      // Tammy Ostrowski — 2 trim pieces + 1 panel run, all Completed
-      mkTrim({ jobId: jobTammy, partName: "Eave — Shop Addition", customerName: "Tammy Ostrowski", phone: "(214) 555-0163",
-        points: TRIM_PRESETS["Eave / Drip Edge"], quantity: 20, lengthPerPiece: 10, hemStart: "closed-left", hemEnd: "closed-left",
-        brand: "Fortified Metal", ...trimColor("Fortified Metal", "Copper Metallic"), status: "Completed", createdAt: daysAgo(9) }),
-      mkTrim({ jobId: jobTammy, partName: "Ridge Cap — Shop Addition", customerName: "Tammy Ostrowski", phone: "(214) 555-0163",
-        points: TRIM_PRESETS["Ridge Cap"], quantity: 5, lengthPerPiece: 10,
-        brand: "Fortified Metal", ...trimColor("Fortified Metal", "Copper Metallic"), status: "Completed", createdAt: daysAgo(9) }),
-      mkPanel({ jobId: jobTammy, customerName: "Tammy Ostrowski", phone: "(214) 555-0163", profile: "FWQ100 – 1\" Flush Wall / Soffit",
-        width: 12, height: 96, quantity: 40,
-        brand: "Fortified Metal", ...trimColor("Fortified Metal", "Copper Metallic"), status: "Completed", createdAt: daysAgo(9) }),
-    ];
-    const poByJob = { [jobDave]: "PO-1001", [jobPriya]: "PO-1002", [jobMarcus]: "PO-1003", [jobTammy]: "PO-1004" };
-    samples.forEach((o) => { o.poNumber = poByJob[o.jobId]; });
-    const saved = await insertOrders(samples);
-    if (!saved) return; // insertOrders already said so and rolled the rows back
-    setToast(`Added ${samples.length} sample orders across 4 jobs to the Shop Floor.`);
-    setTimeout(() => setToast(""), 4000);
-  };
 
   const colorObj = findColor(colorName, brand, paintId);
   const activeGauge = findGauge(gaugeId, brand);
@@ -7874,12 +7769,6 @@ export default function ShopOrderApp() {
             })()
           ) : (
             <>
-          <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>
-            <button onClick={seedSampleOrders}
-              style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, padding: "6px 10px", borderRadius: 6, border: `1px solid ${SAFETY}`, background: theme.inputBg, color: SAFETY, fontWeight: 600, cursor: "pointer" }}>
-              <Plus size={12} /> Load 12 Sample Orders
-            </button>
-          </div>
           <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap" }}>
             {["All", ...STATUS_FLOW].map((s) => (
               <button key={s} onClick={() => setStatusFilter(s)}
