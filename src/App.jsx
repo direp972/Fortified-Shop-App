@@ -3914,6 +3914,9 @@ export default function ShopOrderApp() {
   // Scupper: the sleeve is partW x partH clear opening through partD of wall. Everything
   // below is what happens at the two ends of it.
   const [scupOutlet, setScupOutlet] = useState("none"); // "none" | "faceplate" | "collector" — what is outside the wall under the spout, if anything is
+  // which terminations have already been sized on this part, so tapping between the chips to
+  // compare them does not throw away numbers that were typed or restored
+  const outletSeeded = useRef(new Set());
   const [scupRoofMode, setScupRoofMode] = useState("field"); // "field" | "shop" — the roof plate is usually cut and welded on the roof
   const [scupDeckLeg, setScupDeckLeg] = useState(0);         // the plate's bottom turned out flat onto the deck; 0 stops it at the deck
   const [scupFlange, setScupFlange] = useState(6);  // TPO-clad roof plate the membrane welds to
@@ -4841,6 +4844,7 @@ export default function ShopOrderApp() {
     setOutletShape("box"); setFlangeW(4); setFlangeD(4); setOutletDiameter(4); setOutletLength(6); setFlangeTapered(true);
     setFlangeLength(4); setOutletRoundTapered(false);
     setTopTrim(false); setBodyTaper(false); setTaperStart(0); setTaperLength(6);
+    outletSeeded.current = new Set();
     setScupOutlet("none"); setScupRoofMode("field"); setScupDeckLeg(0); setScupFlange(6); setScupProj(2);
     setScupPlateW(16); setScupPlateH(8); setScupBoxW(16); setScupBoxD(8); setScupBoxH(12);
     setScupDsSize("4×5"); setScupDsLen(10);
@@ -5087,7 +5091,7 @@ export default function ShopOrderApp() {
   // dimensions, and an effect would fire after it and stomp a saved part.
   const seedPartDims = (next, prev) => {
     if (next === prev) return;
-    if (next === "scupper") { setPartW(12); setPartD(8); setPartH(4); }
+    if (next === "scupper") { setPartW(12); setPartD(8); setPartH(4); outletSeeded.current = new Set(); }
     else if (prev === "scupper") { setPartW(12); setPartD(8); setPartH(10); }
   };
 
@@ -5506,15 +5510,30 @@ export default function ShopOrderApp() {
       // would start at — so every size comes back through scupperSpec, which is what the stored
       // row was quoted, drawn and ticketed as. An item saved before the outlet choice existed
       // has no scupOutlet and was priced as a face plate; it does not pick up the new default.
-      const sk = scupperSpec(p);
-      setScupOutlet(sk.outside);
-      setScupRoofMode(sk.roofShop ? "shop" : "field");
-      setScupDeckLeg(sk.deckLeg);
-      setScupFlange(sk.roofShop ? sk.flange : 6); // keep a sane number in the box for when they switch it on
-      setScupProj(sk.proj);
-      setScupPlateW(sk.plateW); setScupPlateH(sk.plateH);
-      setScupBoxW(sk.boxW); setScupBoxD(sk.boxD); setScupBoxH(sk.boxH);
-      setScupDsSize(sk.dsSize); setScupDsLen(sk.dsLen);
+      //
+      // Only for an actual scupper. A collector box or a chimney cap carries none of these
+      // fields, so scupperSpec would hand back that legacy face-plate answer sized off the
+      // wrong part, and the next scupper opened in the same session would start with a plate
+      // and a shop roof plate nobody asked for.
+      if (p.partType === "scupper") {
+        const sk = scupperSpec(p);
+        setScupOutlet(sk.outside);
+        setScupRoofMode(sk.roofShop ? "shop" : "field");
+        setScupDeckLeg(sk.deckLeg);
+        // A size the stored order never carried comes back as something usable rather than as
+        // the resolver's "there wasn't one" zero, so switching that termination on gives the
+        // same numbers a fresh order would.
+        setScupFlange(sk.roofShop ? sk.flange : 6);
+        setScupProj(sk.proj);
+        setScupPlateW(sk.plateW); setScupPlateH(sk.plateH);
+        setScupBoxW(sk.boxW); setScupBoxH(sk.boxH);
+        // boxD and the downspout run are the two the resolver answers differently from the chip
+        // when the stored order had no box at all — it says "spout + 4" and "none", the chip says
+        // 8 and 10 ft. Take the chip's answer so switching a box on reads the same either way.
+        setScupBoxD(sk.collector ? sk.boxD : Math.max(8, sk.proj + 4));
+        setScupDsSize(sk.dsSize); setScupDsLen(sk.collector ? sk.dsLen : 10);
+        outletSeeded.current = new Set(["none", "faceplate", "collector"]); // these sizes are the order's, not to be re-seeded
+      }
     }
     setToast(`Loaded "${vaultItemLabel(item)}" from ${sourceLabel} — adjust anything and send when ready.`);
     setTimeout(() => setToast(""), 4000);
@@ -6393,13 +6412,15 @@ export default function ShopOrderApp() {
                                 onClick={() => {
                                   // Size the termination off the opening it has to cover, the way
                                   // Tapered Sides derives its taper from the body height — but only
-                                  // on a real change, or re-tapping the chip you are already on
-                                  // throws away the sizes you just typed. Nothing to size for a
-                                  // bare sleeve, so it leaves both sets of numbers where they are.
-                                  if (o.id !== scupOutlet) {
+                                  // the first time it is picked. Bare sleeve is where the form
+                                  // opens now, so tapping through it to compare the other two is
+                                  // the common motion, and re-seeding on every pick meant coming
+                                  // back to a chip silently replaced what had been typed there.
+                                  if (!outletSeeded.current.has(o.id)) {
                                     if (o.id === "faceplate") { setScupPlateW((+partW || 12) + 4); setScupPlateH((+partH || 4) + 4); }
                                     else if (o.id === "collector") { setScupBoxW((+partW || 12) + 4); setScupBoxD(Math.max(8, (+scupProj || 2) + 4)); }
                                   }
+                                  outletSeeded.current.add(o.id);
                                   setScupOutlet(o.id);
                                 }}
                                 style={{
