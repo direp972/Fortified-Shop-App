@@ -30,6 +30,9 @@
 .filebox.has{border-style:solid;border-color:var(--patina);background:#F0F7F3}
 .filebox b{display:block;font-size:14px;color:var(--ink-deep);margin-bottom:3px}
 .filebox small{font-family:var(--mono);font-size:10.5px;color:var(--steel);letter-spacing:.05em}
+.plprev{font-size:13px;line-height:1.6;color:var(--ink-deep);background:var(--paper);border:1px dashed rgba(15,61,92,.3);border-radius:var(--r-sm);padding:10px 14px;margin:0 0 14px}
+.plprev b{font-family:var(--mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--steel);display:block;margin-bottom:4px}
+.plnote{font-size:13px;line-height:1.6;color:var(--ink-deep);background:#FDF8E7;border-left:3px solid var(--gold);border-radius:var(--r-sm);padding:10px 14px;margin:0 0 14px}
 .err{color:#B3261E;background:#FDECEA;border-radius:8px;padding:10px 14px;font-size:13px;display:none;margin-bottom:12px}
 .locrow{border:1px solid rgba(15,61,92,.15);border-radius:var(--r-sm);padding:12px 14px 10px;margin-bottom:10px;background:var(--paper)}
 .locrow .lbtns{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -107,10 +110,11 @@
     </div>
 
     <div class="step"><h3><span class="sn">5</span>Colors you carry</h3>
-      <div class="fld"><label>How do you stock color? Tap one — or both</label>
+      <div class="fld"><label>How do you stock color? Tap one — or more</label>
         <div class="chipgrid">
           <button type="button" class="seg" id="f-mode-own">We carry our own colors</button>
           <button type="button" class="seg" id="f-mode-brand">We stock a brand's coil</button>
+          <button type="button" class="seg" id="f-mode-private">We private-label somebody's coil</button>
         </div>
       </div>
       <div id="f-owncolors" style="display:none">
@@ -124,6 +128,23 @@
           <div class="chipgrid" id="f-brands"></div>
         </div>
         <div class="fld"><label>Other brands (comma separated)</label><input id="f-morebrands" placeholder="Custom-Bilt, Quality Metals…"></div>
+      </div>
+      <div id="f-privatesec" style="display:none">
+        <p class="plnote">Tap this if the panel goes out under your name but the coil is somebody else's. Your label is what we put on the listing. We ask whose coil is under it because a contractor searching that mill's color still has to find you.</p>
+        <div class="fld"><label>Your label name — how it reads on the panel, the color card and the invoice *</label><input id="f-plname" placeholder="Summit Seam, Lone Star Rib…"></div>
+        <div class="fld"><label>Whose coil is under it — tap all that apply *</label>
+          <div class="chipgrid" id="f-plsource"></div>
+        </div>
+        <div class="fld"><label>Other source (comma separated)</label><input id="f-plmoresource" placeholder="Custom-Bilt, Quality Metals…"></div>
+        <div class="fld"><label>Can we name that source on your public listing?</label>
+          <div class="chipgrid">
+            <button type="button" class="seg" id="f-plshow">Yes — name it</button>
+            <button type="button" class="seg" id="f-plhide">No — keep it to staff</button>
+          </div>
+        </div>
+        <p class="plprev" id="f-plpreview" style="display:none"></p>
+        <button type="button" class="seg" id="f-plpull" style="display:none"></button>
+        <p class="plnote" id="f-plcolornote" style="display:none"></p>
       </div>
     </div>
 
@@ -213,11 +234,25 @@ const ABILITIES=[
 // uses, never one maker's trade name — every profile here is rolled by more
 // than one manufacturer. Tapping one also lights the "Exposed fastener"
 // umbrella ability so the broad directory filter still finds the shop.
-const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated","1/2″ corrugated (low-profile)","5V-crimp","Ag panel / tuff rib","U-panel","M-panel / box-rib (wall)"];
+const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated","1/2″ corrugated (low-profile)","5V-crimp","Ag panel / tuff rib","U-panel / PBU","M-panel / box-rib (wall)"];
+// "U-panel" here was renamed "U-panel / PBU"; this page only ever writes abilities, so
+// it needs the new spelling but not the alias layer the reading pages carry.
 const GUTTER_PROFILES=["5″ K-style gutter","6″ K-style gutter","7″ K-style gutter","5″ half-round gutter","6″ half-round gutter","6″ box gutter","7″ box gutter","8″ box gutter","6″ euro box gutter","Fascia gutter","Straight-face / square gutter"];
 const GUTTER_MATERIALS=["Gutter — .027 aluminum","Gutter — .032 aluminum","Gutter — 26 ga painted steel","Gutter — 24 ga painted steel","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
 const STOCK_COLORS=["Regal White","Almond","Ash Gray","Slate Gray","Burnished Slate","Charcoal","Medium Bronze","Dark Bronze","Matte Black","Evergreen","Copper Metallic","Galvalume","Texas Silver","Bare Copper","Bonderized"];
-const COIL_BRANDS=["Fortified Metal","Sheffield Metals","McElroy Metal","Berridge","Drexel Metals","PAC-CLAD (Petersen)","Una-Clad","Adax Metals","ATAS","Englert","Central States","Metal Sales"];
+// A private-label shop sells under its own name, but the coil under it is somebody
+// else's and so are the colors. Color search matches on the color NAME, so the source
+// names have to land on the listing or a contractor searching that color never finds
+// the shop — their label goes in its own field instead of into the color list.
+// United's published chart could not be retrieved when this was built, so the palette
+// falls back to the stock vocabulary above. Correct it here and every page follows.
+// If you put names here that are NOT in STOCK_COLORS, also add a hex for each to
+// COLOR_HEX in suppliers.html and prerender.mjs (or the swatch greys out), and read
+// manage-listing.html's fillForm first: it drops every non-stock color into a free-text
+// box the shop owner can wipe, which would delete them from the live listing.
+const BARE_STOCK=["Galvalume","Bare Copper","Bonderized"];
+const PRIVATE_LABEL_COLORS={"United Metals":STOCK_COLORS.filter(c=>!BARE_STOCK.includes(c))};
+const COIL_BRANDS=["Fortified Metal","Sheffield Metals","McElroy Metal","Berridge","Drexel Metals","PAC-CLAD (Petersen)","Una-Clad","Adax Metals","ATAS","Englert","Central States","United Metals","Metal Sales"];
 const GAUGES=["29 ga","28 ga","26 ga","24 ga","22 ga","20 ga"];
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
 const chip=(t)=>`<button type="button" class="seg" data-v="${t}">${t}</button>`;
@@ -231,13 +266,42 @@ $("#f-gutmats").innerHTML=GUTTER_MATERIALS.map(gchip).join("");
 $("#f-gauges").innerHTML=GAUGES.map(chip).join("");
 $("#f-colors").innerHTML=STOCK_COLORS.map(chip).join("");
 $("#f-brands").innerHTML=COIL_BRANDS.map(chip).join("");
-// color-mode toggles: a shop can carry its own colors, stock brands, or both
+$("#f-plsource").innerHTML=COIL_BRANDS.map(chip).join("");
+// color-mode toggles: a shop can carry its own colors, stock brands, private-label
+// somebody else's coil, or any mix of the three
 function syncColorModes(){
   $("#f-owncolors").style.display=$("#f-mode-own").classList.contains("sel")?"":"none";
   $("#f-brandsec").style.display=$("#f-mode-brand").classList.contains("sel")?"":"none";
+  $("#f-privatesec").style.display=$("#f-mode-private").classList.contains("sel")?"":"none";
 }
 $("#f-mode-own").onclick=()=>{$("#f-mode-own").classList.toggle("sel");syncColorModes()};
 $("#f-mode-brand").onclick=()=>{$("#f-mode-brand").classList.toggle("sel");syncColorModes()};
+$("#f-mode-private").onclick=()=>{$("#f-mode-private").classList.toggle("sel");syncColorModes();syncPrivateLabel()};
+$("#f-plshow").onclick=()=>{$("#f-plshow").classList.add("sel");$("#f-plhide").classList.remove("sel")};
+$("#f-plhide").onclick=()=>{$("#f-plhide").classList.add("sel");$("#f-plshow").classList.remove("sel")};
+
+// The label on the panel is theirs; the coil and the colors under it are the mill's, and
+// the mill's color names are what a color search matches against — so private label opens
+// the color grid whatever the source. Nothing is tapped on the shop's behalf: a palette we
+// happen to carry is offered as a button they press, so the claim is theirs.
+function syncPrivateLabel(){
+  const note=$("#f-plcolornote"),pull=$("#f-plpull");
+  if(!$("#f-mode-private").classList.contains("sel")){note.style.display="none";pull.style.display="none";return}
+  if(!$("#f-mode-own").classList.contains("sel")){$("#f-mode-own").classList.add("sel");syncColorModes()}
+  note.textContent="Tap your colors up in step 5, under the names the mill uses for them. That list is what a color search matches you on, and it sits under your label, not theirs.";
+  note.style.display="";
+  const named=[...$$("#f-plsource .seg.sel")].map(b=>b.dataset.v).filter(v=>(PRIVATE_LABEL_COLORS[v]||[]).length);
+  pull.dataset.pull=named.join("|");
+  pull.textContent=named.length?"Tap the standard "+named.join(" and ")+" colors for me":"";
+  pull.style.display=named.length?"":"none";
+}
+$("#f-plpull").onclick=()=>{
+  const pulled=[];
+  ($("#f-plpull").dataset.pull||"").split("|").filter(Boolean)
+    .forEach(v=>(PRIVATE_LABEL_COLORS[v]||[]).forEach(c=>{if(!pulled.includes(c))pulled.push(c)}));
+  $$("#f-colors .seg").forEach(b=>{if(pulled.includes(b.dataset.v))b.classList.add("sel")});
+  $("#f-owncolors").scrollIntoView({block:"nearest"});
+};
 // Signed-in members get their contact details prefilled from their account.
 document.addEventListener("rc:auth",e=>{
   const s=e.detail&&e.detail.session;if(!s)return;
@@ -246,7 +310,26 @@ document.addEventListener("rc:auth",e=>{
   if(!$("#f-co").value)$("#f-co").value=md.company||"";
   if(!$("#f-em").value)$("#f-em").value=s.user.email||"";
 });
-$$("#f-types .seg, #f-efpanels .seg, #f-gutters .seg, #f-gutmats .seg, #f-gauges .seg, #f-colors .seg, #f-brands .seg").forEach(b=>b.onclick=()=>b.classList.toggle("sel"));
+$$("#f-types .seg, #f-efpanels .seg, #f-gutters .seg, #f-gutmats .seg, #f-gauges .seg, #f-colors .seg, #f-brands .seg, #f-plsource .seg").forEach(b=>b.onclick=()=>b.classList.toggle("sel"));
+// runs after the toggle above, so it reads the chip's settled state
+$$("#f-plsource .seg").forEach(b=>b.addEventListener("click",syncPrivateLabel));
+
+// Shows the applicant the exact sentence their card will carry, so the choice about
+// naming the coil source is something they can see before they send it. The wording
+// mirrors plPublicLine() in directory-admin.html — keep the two in lock-step.
+function plPreview(){
+  const box=$("#f-plpreview"),label=$("#f-plname").value.trim();
+  if(!$("#f-mode-private").classList.contains("sel")||!label){box.style.display="none";return}
+  const src=[...[...$$("#f-plsource .seg.sel")].map(b=>b.dataset.v),$("#f-plmoresource").value.trim()].filter(Boolean).join(", ");
+  const named=$("#f-plshow").classList.contains("sel")&&src;
+  box.textContent="Private label — panels go out under their own "+label+" name"+(named?", on "+src+" coil.":".");
+  const tag=document.createElement("b");tag.textContent="Your listing will say";
+  box.prepend(tag);
+  box.style.display="";
+}
+$("#f-plname").addEventListener("input",plPreview);
+$("#f-plmoresource").addEventListener("input",plPreview);
+$$("#f-plsource .seg, #f-plshow, #f-plhide, #f-mode-private").forEach(b=>b.addEventListener("click",plPreview));
 // a specific screw-down profile implies the umbrella ability
 const EF_LABEL="Exposed fastener";
 $$("#f-efpanels .seg").forEach(b=>b.addEventListener("click",()=>{
@@ -399,7 +482,16 @@ $("#f-go").onclick=async()=>{
   if((gutters.length>0||extraGutters.length>0)&&gutmats.length===0){showErr("You picked gutter profiles — tap at least one gutter material so contractors can filter by it.");return}
   const ownColorsOn=$("#f-mode-own").classList.contains("sel");
   const stockBrandsOn=$("#f-mode-brand").classList.contains("sel");
+  const privateOn=$("#f-mode-private").classList.contains("sel");
   if(stockBrandsOn&&$$("#f-brands .seg.sel").length===0&&!$("#f-morebrands").value.trim()){showErr("You said you stock a brand's coil — tap the brands you carry, or type them in.");return}
+  const plSources=privateOn?[...$$("#f-plsource .seg.sel")].map(b=>b.dataset.v):[];
+  if(privateOn&&!$("#f-plname").value.trim()){showErr("You said you private-label — give us the label your panels go out under. That's the name a contractor will be looking for.");return}
+  if(privateOn&&plSources.length===0&&!$("#f-plmoresource").value.trim()){showErr("Tap whose coil is under your label, or type it in — it's how someone searching that mill's color still lands on you.");return}
+  // a private label is only ever found on the colors under it, so leaving with none is
+  // the one way this feature quietly fails to do anything
+  if(privateOn&&$$("#f-colors .seg.sel").length===0&&!$("#f-morecolors").value.trim()){
+    $("#f-mode-own").classList.add("sel");syncColorModes();
+    showErr("Tap the colors you run, up in step 5 — a private label only gets found on the colors underneath it.");return}
   // locations: main one needs a full street address; extras need at least City, ST
   const locs=[];
   for(const row of $$("#f-locs .locrow")){
@@ -456,6 +548,12 @@ $("#f-go").onclick=async()=>{
           extra_colors:ownColorsOn?$("#f-morecolors").value.trim():"",
           brands:stockBrandsOn?[...$$("#f-brands .seg.sel")].map(b=>b.dataset.v):[],
           extra_brands:stockBrandsOn?$("#f-morebrands").value.trim():"",
+          private_label:privateOn?{
+            label:$("#f-plname").value.trim(),
+            sources:plSources,
+            extra_sources:$("#f-plmoresource").value.trim(),
+            show_source:$("#f-plshow").classList.contains("sel"),
+          }:null,
           job_photos:photoUrls,
           logo_url:logoUrl,
           locations:locs,

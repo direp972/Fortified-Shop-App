@@ -686,10 +686,10 @@ function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4"
       where: "Continuous cleat the Gravel Stop, the Drip Edge and the Snap-On Fascia hook — a strip as tall as the face it holds, screwed flat to the face of the nailer 12\" o.c., the bottom ½\" kicked out 45° so the cover's kicked hem snaps over it. Top edge where the top of the face lands: flush with the nailer under the Drip Edge and the Snap-On Fascia, ¾\" above it under the Gravel Stop, inside the cant. One length per length of edge metal. Usually 24 ga bare or paint-grip; 22 ga where the spec calls for it — FM 1-49 wants the cleat a gauge heavier than the cover.",
       points: cleat(F), hemStart: "none", hemEnd: "none", paintSide: "left" },
     { id: "boxgutter", name: `Box Gutter — ${G}"`, dims: `${G}" × ${G}" · ${G + 1}" back · 1" hemmed return`, per: "gutter run", on: true,
-      where: "Along the low edge of the roof — bottom and front the gutter's size, the back an inch taller against the fascia so an overflow spills over the front and never behind it, a 1\" return across the top of the front, hemmed under, for stiffness and for the hangers to clip. Both edges hemmed. Drops to a downspout through an outlet cut in the bottom, or into a collector box.",
+      where: "Along the low edge of the roof — bottom and front the gutter's size, the back an inch taller against the fascia so a gutter running full spills over the front and never behind it, a 1\" return across the top of the front, hemmed under, for stiffness and for the hangers to clip. Both edges hemmed. Drops to a downspout through an outlet cut in the bottom, or into a collector box.",
       points: [kitPt(G - 1, -G), kitPt(G, -G), kitPt(G, 0), kitPt(0, 0), kitPt(0, -(G + 1))], hemStart: "closed-left", hemEnd: "closed-left", paintSide: "right" },
     { id: "scupper", name: "Scupper", tool3d: "scupper", dims: "built to size in the 3D tool", per: "outlet through the parapet",
-      where: "Through-wall outlet that lets the roof drain out through the parapet — a sleeve sized to the wall with a flange on the roof side, into a collector box or straight down a downspout." },
+      where: "Through-wall outlet that lets the roof drain out through the parapet — a sleeve closed on all four sides, the clear opening and the wall thickness its size. On the roof side it takes its own TPO-clad plate, white stock rather than the order's color, with the opening cut through it, so the membrane welds straight to it. Outside the wall it usually takes a collector box over the hole with a downspout under it, and the box's own back plate covers the opening, so a box means no face plate. A face plate in the order's color goes on instead where nothing under it is catching the water — usually an overflow, with no gutter below it, letting the water drop." },
     { id: "collector", name: "Collector Box", tool3d: "collector", dims: "built to size in the 3D tool", per: "drop",
       where: "The conductor head under a scupper or a gutter outlet — catches the water and feeds the downspout, with the outlet the downspout below fits." },
     { id: "downspout", name: `Downspout — ${downspout}"`, dims: `${D}" out × ${W}" on the wall · 1" lock flange · ½" pocket`, per: "drop", on: true,
@@ -700,6 +700,24 @@ function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4"
 const COM_KIT = buildCommercialKit();
 // Every box row's starting tick, both kits, by kit id — what a row goes back to when the last
 // of that piece leaves the order.
+// Pieces that answer the same question on a roof, collapsed into one row so the list reads as
+// decisions rather than parts. Only the valley is a true either/or: hemmed and cleated pans are
+// the same choice made once for the whole roof. The rest a job can legitimately need two of —
+// gutters on the front elevation and open eaves on the back, saw-cut reglet into the masonry and
+// surface mount on the stucco beside it, a drip edge at the edge the roof drains over with gravel
+// stop holding the water back on the other three sides.
+// Deliberately NOT families: the two coping cleats (a two-cleat cap needs both, one per face),
+// the hook strip (every edge cover hangs on it), and the offset cleat (it is what makes the
+// cleated eave and the cleated valley work).
+const KIT_FAMILIES = [
+  { key: "f-eave", exclusive: false, members: [["dstyle", "D-style"], ["eave", "Drip edge + cleat"], ["apron", "Gutter apron"]] },
+  { key: "f-valley", exclusive: true, members: [["valley", "Hemmed"], ["valleyc", "Cleated"]] },
+  { key: "f-counter", exclusive: false, members: [["counter", "Saw-cut reglet"], ["counter2", "Surface mount"]] },
+  { key: "f-coping", exclusive: false, members: [["coping1", "One cleat"], ["coping0", "Face-fastened"], ["coping2", "Two cleats"]] },
+  { key: "f-edge", exclusive: false, members: [["dripedge", "Drip edge"], ["gravelstop", "Gravel stop"], ["snapfascia", "Snap-on fascia"]] },
+];
+const KIT_FAMILY_OF = Object.fromEntries(KIT_FAMILIES.flatMap((f) => f.members.map(([id]) => [id, f])));
+
 const KIT_DEFAULT_SEL = { ...ROOF_KIT_DEFAULT_SEL, ...Object.fromEntries(COM_KIT.filter((it) => !it.tool3d).map((it) => [it.id, it.on ? 1 : 0])) };
 // Quick presets on the trim canvas: every piece of the roof kit at a 4:12 roof and every drawn
 // piece of the commercial kit at its stock sizes, under the names the boxes give them (the boxes
@@ -741,6 +759,89 @@ const CAP_STYLES = [
   { id: "chateau", label: "Chateau", hint: "A flared, bell-shaped roof" },
 ];
 const CAP_STYLE_LABELS = Object.fromEntries(CAP_STYLES.map((s) => [s.id, s.label]));
+
+// One resolved set of scupper numbers, shared by the model, the blank, the price and the
+// ticket. They used to be defaulted and clamped separately in each, so a plate typed
+// narrower than its own opening was drawn at one size, priced at a second and printed at a
+// third — and the shop builds from the printed one.
+function scupperSpec(o) {
+  const n = (v, d) => (Number.isFinite(+v) ? +v : d);
+  const W = Math.max(1, n(o.partW, 12)), H = Math.max(1, n(o.partH, 4)), WT = Math.max(1, n(o.partD, 8));
+  const proj = Math.max(0.25, n(o.scupProj, 2));
+  // The roof-side plate is usually cut and welded in the field, so the shop only makes one when
+  // the order says so. An order written before that was a choice has no scupRoofMode: it was
+  // priced with whatever flange it carried, so that is what it keeps.
+  const roofShop = o.scupRoofMode ? o.scupRoofMode === "shop" : Math.max(0, n(o.scupFlange, 6)) > 0.01;
+  const flange = roofShop ? Math.max(0, n(o.scupFlange, 6)) : 0;
+  const dsRaw = String(o.scupDsSize || "4×5").split("×").map(Number);
+  return {
+    W, H, WT, proj, flange, roofShop,
+    // the bottom of the roof plate can turn out flat onto the deck for the membrane to lap over;
+    // zero leaves it stopping at the deck, which is the other way it gets done
+    deckLeg: roofShop ? Math.max(0, n(o.scupDeckLeg, 0)) : 0,
+    collector: o.scupOutlet === "collector",
+    // a termination narrower than the hole it covers is not a thing, so the opening floors it
+    plateW: Math.max(W + 1, n(o.scupPlateW, W + 4)),
+    plateH: Math.max(H + 1, n(o.scupPlateH, H + 4)),
+    boxW: Math.max(W + 1, n(o.scupBoxW, W + 4)),
+    // the box has to reach past the spout or the stream lands in front of it
+    boxD: Math.max(1, proj + 2, n(o.scupBoxD, proj + 4)),
+    boxH: Math.max(2, n(o.scupBoxH, 12)),
+    dsSize: o.scupDsSize || "4×5",
+    dsOut: Math.max(1, dsRaw[0] || 4), dsAcross: Math.max(1, dsRaw[1] || 5),
+    dsLen: Math.max(0, n(o.scupDsLen, 0)),
+    gap: 1.5, // free fall under the spout, so a hard rain can't dam back into the wall
+  };
+}
+
+// The back plate of the collector box, derived from the spec so the model, the price and the
+// ticket describe the same piece of metal. It runs from the box bottom up past the spout,
+// with the sleeve pierced through it.
+function scupperBack(k) {
+  return { h: k.H + 2 + k.gap + k.boxH, pierceW: k.W, pierceH: k.H };
+}
+
+// The one line describing a 3D part wherever it is listed. A scupper reads differently from
+// a box: its three shared numbers are a clear opening and a wall thickness, not W×D×H, and
+// the shop cannot build it without knowing what hangs on the outside of the wall.
+function part3dSummary(o) {
+  const name = PART3D_LABELS[o.partType] || o.partType;
+  if (o.partType === "scupper") {
+    const k = scupperSpec(o);
+    const bits = [
+      `${name} — ${formatDim(k.W)}"W × ${formatDim(k.H)}"H clear opening, ${formatDim(k.WT)}" thru-wall`,
+      // At zero the model draws no collar and the pattern cuts no blank, so the ticket must not
+      // order one either — it used to name a plate the exact size of the hole, a frame with no
+      // metal in it.
+      k.flange > 0.01
+        ? `TPO roof plate ${formatDim(k.W + k.flange * 2)} × ${formatDim(k.H + k.flange * 2)}" (clad stock, ${formatDim(k.flange)}" past the opening)`
+          + (k.deckLeg > 0.01 ? ` + ${formatDim(k.deckLeg)}" leg turned out onto the deck` : ` — stops at the deck`)
+        : `roof plate field-fabricated — not in this order`,
+      `spout ${formatDim(k.proj)}" past the face`,
+    ];
+    if (k.collector) {
+      const b = scupperBack(k);
+      bits.push(`collector box ${formatDim(k.boxW)}"W × ${formatDim(k.boxD)}" out × ${formatDim(k.boxH)}"H`);
+      bits.push(`back plate ${formatDim(k.boxW)} × ${formatDim(b.h)}" pierced ${formatDim(b.pierceW)} × ${formatDim(b.pierceH)}"`);
+      bits.push(`rim ${formatDim(k.gap)}" below the invert`);
+      // Same rule as the roof plate above: at zero there is no downspout on the sheet and none
+      // in the price, so the ticket does not get to promise one.
+      bits.push(k.dsLen > 0
+        ? `${k.dsSize}" downspout, ${formatDim(k.dsLen)} ft`
+        : `no downspout on this order`);
+    } else {
+      bits.push(`face plate ${formatDim(k.plateW)} × ${formatDim(k.plateH)}" outside, in the order's color`);
+    }
+    return bits.join(" · ");
+  }
+  const style = o.capStyle ? ` (${CAP_STYLE_LABELS[o.capStyle] || o.capStyle})` : "";
+  // A chimney cap has no overall height to give — its base is a shelf and a down leg, and the
+  // roof above it is a rise. Everything else is still W x D x H.
+  const rest = o.partType === "chimney"
+    ? ` · ${o.partShelf ?? 3}" shelf, ${o.partLeg ?? 3}" leg, ${o.partPostH ?? 6}" posts, ${o.partCapH}" rise, ${o.partOverhang ?? 2}" overhang, ${o.capRibs === false ? "smooth" : "standing seam ribs"}`
+    : ` × ${o.partH}"H`;
+  return `${name}${style} — ${o.partW}"W × ${o.partD}"D${rest}`;
+}
 const CAP_RIB_STYLES = ["hip", "pyramid", "gable", "stevenson", "texas", "twotier"]; // roofs that can carry standing seam ribs
 
 const ACCESSORY_TYPES = ["Screws", "Butyl Tape", "Pipe Boots", "Sealant", "Clips"];
@@ -966,6 +1067,22 @@ function formatFeetInches(totalInches) {
   const ft = Math.floor(totalIn / 12);
   const inch = totalIn % 12;
   return inch === 0 ? `${ft}'` : `${ft}' ${inch}"`;
+}
+
+// A private-label applicant sells under its own name on somebody else's coil. Staff need
+// to see whose it is, and whether the shop cleared us to name that source publicly.
+// The blob arrives from an unauthenticated form post, so no field is trusted to be the
+// shape it should be — a malformed one renders as nothing rather than throwing here and
+// taking the whole applications panel down with it.
+function privateLabelSummary(details) {
+  const pl = details && details.private_label;
+  const label = pl && typeof pl.label === "string" ? pl.label.trim() : "";
+  if (!label) return "";
+  const list = Array.isArray(pl.sources) ? pl.sources.filter((x) => typeof x === "string") : [];
+  const extra = typeof pl.extra_sources === "string" ? pl.extra_sources : "";
+  const src = [...list, extra].map((x) => x.trim()).filter(Boolean).join(", ");
+  if (!src) return `Private label: ${label}`;
+  return `Private label: ${label} on ${src}${pl.show_source === true ? "" : " — source is staff-only"}`;
 }
 
 // Renders a trim profile as a plain, static SVG string (not the interactive drawing
@@ -1210,13 +1327,36 @@ function computePrice(order, priceList, coilWidthScale) {
       const slant = Math.sqrt((Math.max(EW, ED) / 2) ** 2 + CH ** 2);
       // the base (shelf + down leg + hem, all the way round) + four posts + the roof out to its eave + drip and seams
       sqin = 2 * (W + D) * (shelf + leg + 0.5) + 4 * postH * 6 + 2 * (EW + ED) * slant * 1.1;
+    } else if (order.partType === "scupper") {
+      // the sleeve's girth over its run, plus the roof flange collar, plus whatever the
+      // spout runs into. Without this a face-plate scupper and a scupper with a head and
+      // ten feet of downspout under it quote to exactly the same number.
+      const k = scupperSpec(order);
+      sqin = 2 * (k.W + k.H) * (k.WT + k.proj)
+        + ((k.W + 2 * k.flange) * (k.H + 2 * k.flange) - k.W * k.H)
+        + (k.W + 2 * k.flange) * k.deckLeg; // the turned-out leg comes off the same blank
+      if (k.collector) {
+        // bottom, front, two sides, and the back the sleeve passes through
+        sqin += k.boxW * k.boxD + k.boxW * k.boxH + 2 * k.boxD * k.boxH
+          + (k.boxW * scupperBack(k).h - k.W * k.H);
+        sqin += 2 * (k.dsOut + k.dsAcross) * k.dsLen * 12;
+      } else {
+        sqin += k.plateW * k.plateH - k.W * k.H;
+      }
     } else {
       sqin = 2 * (W + D) * H + W * D; // walls + bottom
     }
     const sqft = sqin / 144;
     const fabItemName = order.partType === "collector" ? "collector box" : order.partType === "scupper" ? "scupper" : "chimney cap";
-    const fabItem = priceList?.find((p) => p.category === "3D Parts" && p.name.toLowerCase().includes(fabItemName) && typeof p.greenleaf === "number");
-    const formingFee = fabItem ? fabItem.greenleaf : 12; // per-piece fee for the extra seams/folds vs a flat panel
+    const feeFor = (name) => {
+      const it = priceList?.find((p) => p.category === "3D Parts" && p.name.toLowerCase().includes(name) && typeof p.greenleaf === "number");
+      return it ? it.greenleaf : 12; // per-piece fee for the extra seams/folds vs a flat panel
+    };
+    // A scupper with a head under it is two fabricated pieces on one line. The head's seams
+    // and its outlet are the same work the standalone Collector Box part is billed for, so
+    // without this the box and its downspout go out as raw coil with no labor on them.
+    let formingFee = feeFor(fabItemName);
+    if (order.partType === "scupper" && order.scupOutlet === "collector") formingFee += feeFor("collector box");
     const base = sqft * rates.coilSqft * paint.mult * order.quantity + formingFee * order.quantity;
     return Math.max(20, base * premiumMult + 20);
   } else if (order.type === "panel") {
@@ -2763,18 +2903,20 @@ function makeSideWallsGeometry(w, d, height) {
   return geo;
 }
 
-function makeTroughGeometry(w, h, d) {
-  // A real open channel: bottom + two side walls only. No end caps, no top — water
-  // (visually, empty space) passes straight through both open ends and the open top.
-  const hw = w / 2, hd = d / 2;
+// A through-wall scupper sleeve: a closed four-sided tube, open at the two ends only,
+// running along Z. Water goes in the roof end and out the wall end. It has to be closed on
+// top — an open channel inside a parapet pours straight into the wall cavity.
+function makeSleeveGeometry(w, h, len) {
+  const hw = w / 2, hh = h / 2, hl = len / 2;
   const positions = new Float32Array([
-    -hw, 0, -hd,  hw, 0, -hd,  -hw, 0, hd,  hw, 0, hd, // bottom: 0,1,2,3
-    -hw, h, -hd,  hw, h, -hd,  -hw, h, hd,  hw, h, hd, // top rim: 4,5,6,7
+    -hw, -hh, -hl,  hw, -hh, -hl,  hw, hh, -hl,  -hw, hh, -hl, // roof-end ring 0-3
+    -hw, -hh, hl,   hw, -hh, hl,   hw, hh, hl,   -hw, hh, hl,  // wall-end ring 4-7
   ]);
   const idx = [
-    0, 1, 3, 0, 3, 2, // bottom
-    0, 2, 6, 0, 6, 4, // left wall
-    1, 5, 7, 1, 7, 3, // right wall
+    0, 4, 5, 0, 5, 1, // bottom
+    1, 5, 6, 1, 6, 2, // right
+    2, 6, 7, 2, 7, 3, // top
+    3, 7, 4, 3, 4, 0, // left
   ];
   const geo = new THREE.BufferGeometry();
   geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
@@ -2984,7 +3126,7 @@ function buildChimneyCap(group, { W, D, shelf, leg, postH, CH, oh, style, ribs }
   } else hipRoof(CH, ridgeHalf, ribs); // "hip" and anything unknown
 }
 
-function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, shelf, leg, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle }) {
+function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, shelf, leg, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, scupOutlet, scupFlange, scupProj, scupPlateW, scupPlateH, scupBoxW, scupBoxD, scupBoxH, scupDsSize, scupRoofMode, scupDeckLeg }) {
   const mountRef = useRef(null);
   const stateRef = useRef({});
   const rotateRef = useRef(null);
@@ -3141,28 +3283,102 @@ function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, shelf, 
         [front, back, left, right].forEach((m) => { addEdges(m.geometry, m); group.add(m); });
       }
     } else if (partType === "scupper") {
-      // A real open channel — bottom + two side walls, open top, open both ends —
-      // so it visually reads as something water actually flows through, not a solid block.
-      const troughGeo = makeTroughGeometry(W, H, D);
-      const troughMesh = new THREE.Mesh(troughGeo, mat.clone());
-      addEdges(troughGeo, troughMesh);
-      group.add(troughMesh);
-      // mounting flanges at both open ends — thin open frames, not solid caps, so the
-      // through-opening stays visible rather than looking plugged.
-      const flangeT = 0.5; // frame thickness
-      [-1, 1].forEach((side) => {
-        const z = side * (D / 2 + 0.06);
-        const fw = W * 1.35, fh = H * 1.35;
-        const top = new THREE.Mesh(new THREE.BoxGeometry(fw, flangeT, 0.12), mat.clone());
-        top.position.set(0, fh / 2 - flangeT / 2, z);
-        const bottom = new THREE.Mesh(new THREE.BoxGeometry(fw, flangeT, 0.12), mat.clone());
-        bottom.position.set(0, -fh / 2 + flangeT / 2, z);
-        const left = new THREE.Mesh(new THREE.BoxGeometry(flangeT, fh, 0.12), mat.clone());
-        left.position.set(-fw / 2 + flangeT / 2, 0, z);
-        const right = new THREE.Mesh(new THREE.BoxGeometry(flangeT, fh, 0.12), mat.clone());
-        right.position.set(fw / 2 - flangeT / 2, 0, z);
-        [top, bottom, left, right].forEach((m) => group.add(m));
+      // A through-wall scupper: a closed sleeve lining a hole cut through the parapet. The
+      // roof end opens into a solid flange the membrane laps onto; the wall end either takes
+      // a face plate or spouts into a collector box. The two ends are deliberately not alike
+      // — a roofer should see which way the water runs without reading a label.
+      const T = 0.12; // drawn metal thickness
+      const k = scupperSpec({
+        partW: w, partH: h, partD: d, scupOutlet, scupFlange, scupProj,
+        scupPlateW, scupPlateH, scupBoxW, scupBoxD, scupBoxH, scupDsSize, scupRoofMode, scupDeckLeg,
       });
+      const zRoof = -k.WT / 2, zFace = k.WT / 2, zTip = zFace + k.proj;
+
+      // the parapet, ghosted. Nothing else in the frame says there is a wall involved, and
+      // without it the sleeve just reads as a length of duct. Where a collector box hangs,
+      // the patch runs down far enough that the box reads as fastened to the wall.
+      const wallTop = k.H / 2 + k.flange + 4;
+      const wallBot = k.collector ? -k.H / 2 - k.gap - k.boxH - 3 : -(k.H / 2 + k.flange + 4);
+      const wallGeo = new THREE.BoxGeometry(k.W + k.flange * 2 + 8, wallTop - wallBot, k.WT);
+      const wallMesh = new THREE.Mesh(wallGeo, new THREE.MeshStandardMaterial({
+        color: 0x9FB6C8, transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false,
+      }));
+      wallMesh.position.y = (wallTop + wallBot) / 2;
+      group.add(wallMesh);
+      const wallEdges = new THREE.LineSegments(new THREE.EdgesGeometry(wallGeo),
+        new THREE.LineBasicMaterial({ color: 0xA8C0D2, transparent: true, opacity: 0.3 }));
+      wallEdges.position.y = wallMesh.position.y;
+      group.add(wallEdges);
+
+      // the sleeve — closed on all four sides, open only at the two ends
+      const sleeveGeo = makeSleeveGeometry(k.W, k.H, k.WT + k.proj);
+      const sleeveMesh = new THREE.Mesh(sleeveGeo, mat.clone());
+      sleeveMesh.position.z = (zRoof + zTip) / 2;
+      addEdges(sleeveGeo, sleeveMesh);
+      group.add(sleeveMesh);
+
+      // The roof-side plate is TPO-clad so the membrane welds straight to it — it is white
+      // stock, not the order's colour, and it reads as a different piece because it is one.
+      const tpoMat = new THREE.MeshStandardMaterial({ color: 0xF4F4F0, metalness: 0.04, roughness: 0.78, side: THREE.DoubleSide });
+      const plate = (bw, bh, bd, x, y, z, useMat) => {
+        const g = new THREE.BoxGeometry(bw, bh, bd);
+        const m = new THREE.Mesh(g, (useMat || mat).clone());
+        m.position.set(x, y, z);
+        addEdges(g, m);
+        group.add(m);
+      };
+      // A solid collar with the opening through it — four plates, not four sticks. This is
+      // continuous metal, which is the whole reason the part is sheet metal and not a hole.
+      const collar = (z, outW, outH, useMat) => {
+        const side = (outW - k.W) / 2, cap = (outH - k.H) / 2;
+        if (cap > 0.01) {
+          plate(outW, cap, T, 0, k.H / 2 + cap / 2, z, useMat);
+          plate(outW, cap, T, 0, -k.H / 2 - cap / 2, z, useMat);
+        }
+        if (side > 0.01) {
+          plate(side, k.H, T, -k.W / 2 - side / 2, 0, z, useMat);
+          plate(side, k.H, T, k.W / 2 + side / 2, 0, z, useMat);
+        }
+      };
+      if (k.flange > 0.01) {
+        collar(zRoof, k.W + k.flange * 2, k.H + k.flange * 2, tpoMat);
+        // the bottom of that plate bent out flat, lying on the deck for the membrane to lap over
+        if (k.deckLeg > 0.01) {
+          plate(k.W + k.flange * 2, T, k.deckLeg, 0, -k.H / 2 - k.flange, zRoof - k.deckLeg / 2, tpoMat);
+        }
+      }
+
+      if (k.collector) {
+        // The rim sits below the scupper invert. If the front came up past it, a hard rain
+        // would dam at the spout and back water into the wall.
+        const rimY = -k.H / 2 - k.gap, botY = rimY - k.boxH;
+        plate(k.boxW, T, k.boxD, 0, botY, zFace + k.boxD / 2);                  // bottom
+        plate(k.boxW, k.boxH, T, 0, rimY - k.boxH / 2, zFace + k.boxD);         // front
+        plate(T, k.boxH, k.boxD, -k.boxW / 2, rimY - k.boxH / 2, zFace + k.boxD / 2); // left
+        plate(T, k.boxH, k.boxD, k.boxW / 2, rimY - k.boxH / 2, zFace + k.boxD / 2);  // right
+        // The back runs up behind the spout so splash hits metal instead of the wall, with
+        // the sleeve passing through it — a solid plate there would dam the scupper shut.
+        const topY = k.H / 2 + 2, belowH = -k.H / 2 - botY, sideW = (k.boxW - k.W) / 2;
+        if (belowH > 0.01) plate(k.boxW, belowH, T, 0, botY + belowH / 2, zFace);
+        plate(k.boxW, topY - k.H / 2, T, 0, (topY + k.H / 2) / 2, zFace);
+        if (sideW > 0.01) {
+          plate(sideW, k.H, T, -k.W / 2 - sideW / 2, 0, zFace);
+          plate(sideW, k.H, T, k.W / 2 + sideW / 2, 0, zFace);
+        }
+        // The downspout is drawn as a stub. At its real length it would be ten times the
+        // rest of the part and there would be nothing to look at; the ticket carries the run.
+        const stub = Math.max(5, k.boxH);
+        const dsW = Math.min(k.dsAcross, k.boxW - 1), dsD = Math.min(k.dsOut, k.boxD - 0.5);
+        const dsGeo = makeSleeveGeometry(dsW, dsD, stub);
+        const dsMesh = new THREE.Mesh(dsGeo, mat.clone());
+        dsMesh.rotation.x = Math.PI / 2; // the tube runs down, not through
+        dsMesh.position.set(0, botY - stub / 2, zFace + dsD / 2 + 0.25); // strapped tight to the wall
+        addEdges(dsGeo, dsMesh);
+        group.add(dsMesh);
+      } else {
+        // one flat plate on the wall face with the opening cut through it
+        collar(zFace, k.plateW, k.plateH);
+      }
     } else {
       buildChimneyCap(group, {
         W, D, shelf: Math.max(0.5, +shelf || 3), leg: Math.max(0.5, +leg || 3), postH: Math.max(0.5, +postH || 6), CH: Math.max(0.5, +capH || 6),
@@ -3175,7 +3391,15 @@ function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, shelf, 
     const box = new THREE.Box3().setFromObject(group);
     const size = box.getSize(new THREE.Vector3());
     const center = box.getCenter(new THREE.Vector3());
-    group.position.sub(center); // recenter the model at world origin — camera can now always look at (0,0,0), which stays correct through any rotation
+    // Recenter the model on the origin so the camera can always look at (0,0,0). The offset has
+    // to ride on a child, not on the object that gets rotated: three.js applies position after
+    // rotation, so offsetting and spinning the same group swings the part around a point that
+    // isn't its center and walks it out of frame. A collector-box scupper, whose weight hangs
+    // well below the sleeve, went half off-screen on a tilt.
+    const pivot = new THREE.Group();
+    while (group.children.length) pivot.add(group.children[0]);
+    pivot.position.sub(center);
+    group.add(pivot);
     const radius = Math.max(0.5, size.length() / 2);
     const fovRad = (camera.fov * Math.PI) / 180;
     const marginFactor = 1.25; // >1 leaves breathing room so the part never touches the frame edge
@@ -3249,7 +3473,7 @@ function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, shelf, 
       renderer.dispose();
       if (mount) mount.innerHTML = "";
     };
-  }, [partType, w, d, h, capH, postH, overhang, ribs, shelf, leg, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle]);
+  }, [partType, w, d, h, capH, postH, overhang, ribs, shelf, leg, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, scupOutlet, scupFlange, scupProj, scupPlateW, scupPlateH, scupBoxW, scupBoxD, scupBoxH, scupDsSize, scupRoofMode, scupDeckLeg]);
 
   const STEP = 0.35;
   const spinIntervalRef = useRef(null);
@@ -3302,7 +3526,7 @@ function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, shelf, 
   );
 }
 
-function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered }) {
+function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, scupOutlet, scupFlange, scupProj, scupPlateW, scupPlateH, scupDsLen, scupRoofMode, scupDeckLeg }) {
   const W = Math.max(1, +w || 1), D = Math.max(1, +d || 1), H = Math.max(1, +h || 1), CH = Math.max(1, +capH || 6);
 
   if (partType === "collector") {
@@ -3451,20 +3675,50 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
 
   const TAB = 0.75; // seam tab width, schematic only
   const panels = []; // {x,y,w,h,fold:[edges]}
-  let vbW = 100, vbH = 100;
+  let vbW = 100, vbH = 100, patternNote = "";
 
   const panel = (x, y, pw, ph, foldEdges) => panels.push({ x, y, w: pw, h: ph, foldEdges: foldEdges || [] });
 
   if (partType === "scupper") {
-    // Cross layout: bottom in the middle, four sides folding up around it.
+    // Three blanks, not one. The sleeve is the girth laid flat — side, bottom, side, top —
+    // wrapped into a tube closed on four sides and open at both ends. A pan closed at the ends,
+    // which is what this used to draw, is the one shape a scupper can never be. The roof plate
+    // is separate because it is TPO-clad stock, and the face plate is separate because it goes
+    // on from the other side of the wall.
+    const k = scupperSpec({ partW: w, partH: h, partD: d, scupOutlet, scupFlange, scupProj, scupPlateW, scupPlateH, scupDsLen, scupRoofMode, scupDeckLeg });
     const pad = 4;
-    panel(pad + H, pad + H, W, D, ["top", "bottom", "left", "right"]); // bottom/base
-    panel(pad + H, pad, W, H, ["bottom"]); // front
-    panel(pad + H, pad + H + D, W, H, ["top"]); // back
-    panel(pad, pad + H, H, D, ["right"]); // left side
-    panel(pad + H + W, pad + H, H, D, ["left"]); // right side
-    vbW = W + H * 2 + pad * 2 + TAB * 2;
-    vbH = D + H * 2 + pad * 2 + TAB * 2;
+    const RUN = k.WT + k.proj; // through the wall, plus the spout past the face
+    const girth = [k.H, k.W, k.H, k.W]; // side · bottom · side · top
+    let gy = pad;
+    girth.forEach((seg, i2) => {
+      panel(pad, gy, RUN, seg, i2 === girth.length - 1 ? [] : ["bottom"]);
+      gy += seg;
+    });
+    panel(pad, gy, RUN, TAB, ["top"]); // seam tab — laps the first side to close the tube
+    vbW = pad * 2 + RUN;
+    vbH = pad * 2 + k.H * 2 + k.W * 2 + TAB + 5; // the last 5 is headroom for the footer line
+
+    // the plates, each with the opening cut out of the middle
+    const plateBlank = (px, pw, ph, legOut) => {
+      const leg = legOut || 0;
+      panels.push({ x: px, y: pad, w: pw, h: ph, foldEdges: leg > 0.01 ? ["bottom"] : [], labelTop: (ph - k.H) / 2 });
+      panels.push({ cutout: true, x: px + (pw - k.W) / 2, y: pad + (ph - k.H) / 2, w: k.W, h: k.H });
+      // The leg is the same blank, bent where it meets the deck — one cut, one fold, so it is
+      // drawn as a panel sharing that edge rather than a second piece.
+      if (leg > 0.01) panels.push({ x: px, y: pad + ph, w: pw, h: leg, foldEdges: [] });
+      vbW = px + pw + pad;
+      vbH = Math.max(vbH, pad * 2 + ph + leg + 5);
+    };
+    const onSheet = ["Sleeve"];
+    if (k.flange > 0.01) { plateBlank(pad + RUN + pad, k.W + k.flange * 2, k.H + k.flange * 2, k.deckLeg); onSheet.push("TPO roof plate"); }
+    if (!k.collector) { plateBlank(vbW, k.plateW, k.plateH); onSheet.push("face plate"); }
+    // Name what is on the sheet, not what usually is — a zero roof plate draws no blank, and a
+    // caption that still promised one had the shop hunting for a piece that was never there.
+    patternNote = onSheet.join(" · ")
+      + (k.flange > 0.01
+          ? " — the roof plate is clad stock, not the order's color" + (k.deckLeg > 0.01 ? ", bent out at the bottom onto the deck" : "")
+          : " — roof plate is field-fabricated, not on this sheet")
+      + (k.collector ? (k.dsLen > 0 ? ". Collector box and downspout are bent separately" : ". Collector box is bent separately; no downspout on this order") : "");
   } else {
     // Chimney cap: 4 side panels around a base rectangle, plus 4 triangular cap panels above.
     const pad = 4;
@@ -3480,27 +3734,51 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
     vbH = D + H * 2 + CH + pad * 2 + TAB * 2;
   }
 
+  const FOOTER_TEXT = "Nominal flat pattern — schematic only, not bend-allowance corrected";
+  const captionFs = (txt) => Math.min(3.2, (vbW * 0.94) / Math.max(1, String(txt).length * 0.5));
   return (
     <svg viewBox={`0 0 ${vbW} ${vbH}`} style={{ width: "100%", height: "auto", background: INK, borderRadius: 4 }}>
-      {panels.filter((p) => !p.tri).map((p, i) => (
+      {panels.filter((p) => !p.tri && !p.cutout).map((p, i) => (
         <g key={i}>
           <rect x={p.x} y={p.y} width={p.w} height={p.h} fill={colorHex} fillOpacity={0.85} stroke="#fff" strokeWidth={0.4} />
           {p.foldEdges.includes("top") && <line x1={p.x} y1={p.y} x2={p.x + p.w} y2={p.y} stroke="#0A2B41" strokeWidth={0.5} strokeDasharray="1.5 1" />}
           {p.foldEdges.includes("bottom") && <line x1={p.x} y1={p.y + p.h} x2={p.x + p.w} y2={p.y + p.h} stroke="#0A2B41" strokeWidth={0.5} strokeDasharray="1.5 1" />}
           {p.foldEdges.includes("left") && <line x1={p.x} y1={p.y} x2={p.x} y2={p.y + p.h} stroke="#0A2B41" strokeWidth={0.5} strokeDasharray="1.5 1" />}
           {p.foldEdges.includes("right") && <line x1={p.x + p.w} y1={p.y} x2={p.x + p.w} y2={p.y + p.h} stroke="#0A2B41" strokeWidth={0.5} strokeDasharray="1.5 1" />}
-          <text x={p.x + p.w / 2} y={p.y + p.h / 2} fill="#fff" fontSize={Math.min(p.w, p.h) * 0.18} fontFamily="'IBM Plex Mono', monospace" textAnchor="middle" dominantBaseline="central">
-            {p.w.toFixed(0)}×{p.h.toFixed(0)}
-          </text>
         </g>
       ))}
+      {panels.filter((p) => p.cutout).map((p, i) => (
+        <rect key={`c${i}`} x={p.x} y={p.y} width={p.w} height={p.h} fill={INK_DEEP} stroke="#fff" strokeWidth={0.4} strokeDasharray="2 1.2" />
+      ))}
+      {/* The size goes on last. A blank with a hole through it has its cutout painted opaque in
+          the pass above, and on a plate only an inch bigger than the opening that hole sat
+          right on top of the one number the shop cuts to. */}
+      {panels.filter((p) => !p.tri && !p.cutout).map((p, i) => {
+        // A blank with a hole through it wears its size in the margin above the hole. On a plate
+        // cut close to the opening there is no margin worth using, so the size goes back to the
+        // middle and rides on top of the cutout — white on the dark punch-out, still full size,
+        // because shrinking it to fit is how a number gets misread on the bench.
+        const room = typeof p.labelTop === "number" ? p.labelTop : 0;
+        const fs = Math.min(p.w, p.h) * 0.18;
+        const ly = p.labelTop && room >= fs * 1.1 ? p.y + room / 2 : p.y + p.h / 2;
+        return (
+          <text key={`l${i}`} x={p.x + p.w / 2} y={ly} fill="#fff" fontSize={fs} fontFamily="'IBM Plex Mono', monospace" textAnchor="middle" dominantBaseline="central">
+            {formatDim(p.w)}×{formatDim(p.h)}
+          </text>
+        );
+      })}
       {panels.filter((p) => p.tri).map((p, i) => (
         <g key={`t${i}`}>
           <polygon points={p.tri.map((pt) => pt.join(",")).join(" ")} fill={colorHex} fillOpacity={0.85} stroke="#fff" strokeWidth={0.4} />
         </g>
       ))}
-      <text x={vbW / 2} y={vbH - 3} fill="#8FB4C9" fontSize={3.2} textAnchor="middle" fontFamily="Inter, sans-serif">
-        Nominal flat pattern — schematic only, not bend-allowance corrected
+      {patternNote && (
+        <text x={vbW / 2} y={vbH - 3 - captionFs(FOOTER_TEXT) * 1.5} fill="#8FB4C9" fontSize={captionFs(patternNote)} textAnchor="middle" fontFamily="Inter, sans-serif">
+          {patternNote}
+        </text>
+      )}
+      <text x={vbW / 2} y={vbH - 3} fill="#8FB4C9" fontSize={captionFs(FOOTER_TEXT)} textAnchor="middle" fontFamily="Inter, sans-serif">
+        {FOOTER_TEXT}
       </text>
     </svg>
   );
@@ -3624,6 +3902,20 @@ export default function ShopOrderApp() {
   const [bodyTaper, setBodyTaper] = useState(false);
   const [taperStart, setTaperStart] = useState(0); // inches of straight wall from the top before the taper begins
   const [taperLength, setTaperLength] = useState(6); // inches the taper itself spans before leveling into a straight shelf
+  // Scupper: the sleeve is partW x partH clear opening through partD of wall. Everything
+  // below is what happens at the two ends of it.
+  const [scupOutlet, setScupOutlet] = useState("collector"); // "faceplate" | "collector" — what is outside the wall under the spout, if anything is
+  const [scupRoofMode, setScupRoofMode] = useState("field"); // "field" | "shop" — the roof plate is usually cut and welded on the roof
+  const [scupDeckLeg, setScupDeckLeg] = useState(0);         // the plate's bottom turned out flat onto the deck; 0 stops it at the deck
+  const [scupFlange, setScupFlange] = useState(6);  // TPO-clad roof plate the membrane welds to
+  const [scupProj, setScupProj] = useState(2);      // how far the spout clears the wall face so water doesn't streak it
+  const [scupPlateW, setScupPlateW] = useState(16); // face plate, overall
+  const [scupPlateH, setScupPlateH] = useState(8);
+  const [scupBoxW, setScupBoxW] = useState(16);     // collector box hung under the spout
+  const [scupBoxD, setScupBoxD] = useState(8);
+  const [scupBoxH, setScupBoxH] = useState(12);
+  const [scupDsSize, setScupDsSize] = useState("4×5"); // out from the wall × across it, same as the kit's downspout
+  const [scupDsLen, setScupDsLen] = useState(10);      // finished run in feet — the shop breaks it into sticks
   const [flatLength, setFlatLength] = useState(120); // 10 ft
   const [metalCoilWidth, setMetalCoilWidth] = useState(21);
   const [metalCoilLength, setMetalCoilLength] = useState(12000); // 1000 ft
@@ -3706,6 +3998,11 @@ export default function ShopOrderApp() {
   const [roofBoxSeam, setRoofBoxSeam] = useState(1.5);
   const [roofBoxLower, setRoofBoxLower] = useState(3);
   const [roofBoxSel, setRoofBoxSel] = useState({}); // id -> qty (0 = not in the box)
+  // Who was in the box when it opened. The list sorts picked-first off THIS, not off the live
+  // selection, so ticking a row never slides it out from under the finger and the next row you
+  // meant to tick never moves. It re-freezes on open and when Tidy is pressed.
+  const [boxOrder, setBoxOrder] = useState({});
+  const [famShow, setFamShow] = useState({}); // family key -> which member's row is showing
   const [roofBoxRowPitch, setRoofBoxRowPitch] = useState({}); // id -> the pitch that one piece is bent to, when it differs from the roof's
   const [boxNote, setBoxNote] = useState(""); // one line the kit shows after a round trip — "Added Ridge Cap ×4 — pick the next piece."
   const [boxStripAll, setBoxStripAll] = useState(false); // the "In the order now" strip shows eight parts until asked for all
@@ -4515,7 +4812,7 @@ export default function ShopOrderApp() {
     : shapeType === "metal"
     ? { type: "metal", flatWidth, flatLength, coilWidth: metalCoilWidth, coilLength: metalCoilLength, quantity, gaugeId, paintId, brand, colorName }
     : shapeType === "part3d"
-    ? { type: "part3d", partType, partW, partD, partH, partCapH, partPostH, partOverhang, partShelf, partLeg, capRibs, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, quantity, gaugeId, paintId, brand, colorName }
+    ? { type: "part3d", partType, partW, partD, partH, partCapH, partPostH, partOverhang, partShelf, partLeg, capRibs, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, scupOutlet, scupRoofMode, scupFlange, scupDeckLeg, scupProj, scupPlateW, scupPlateH, scupBoxW, scupBoxD, scupBoxH, scupDsSize, scupDsLen, quantity, gaugeId, paintId, brand, colorName }
     : { type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, brand, colorName };
   const estimate = computePrice(draft, priceList, coilWidthScale);
   const girth = profileGirth(points, hemStart, hemEnd); // legs plus the end folds — the width the shear cuts
@@ -4535,6 +4832,9 @@ export default function ShopOrderApp() {
     setOutletShape("box"); setFlangeW(4); setFlangeD(4); setOutletDiameter(4); setOutletLength(6); setFlangeTapered(true);
     setFlangeLength(4); setOutletRoundTapered(false);
     setTopTrim(false); setBodyTaper(false); setTaperStart(0); setTaperLength(6);
+    setScupOutlet("collector"); setScupRoofMode("field"); setScupDeckLeg(0); setScupFlange(6); setScupProj(2);
+    setScupPlateW(16); setScupPlateH(8); setScupBoxW(16); setScupBoxD(8); setScupBoxH(12);
+    setScupDsSize("4×5"); setScupDsLen(10);
     setPoints(TRIM_PRESETS["Eave / Drip Edge"]); setPreset("Eave / Drip Edge");
     setHemStart("none"); setHemEnd("none"); setPaintSide("right");
     setGaugeId(GAUGE_OPTIONS[0].id); setPaintId(PAINT_OPTIONS[0].id); setBrand(BRANDS[0]); setColorName(COLORS_BY_BRAND[BRANDS[0]][0].name);
@@ -4639,6 +4939,11 @@ export default function ShopOrderApp() {
 
   /* ---------- The kits: Residential and Commercial ---------- */
   const boxKind = BOX_KINDS[roofBoxKind];
+  const seedBoxSel = (sel, kit) => {
+    let next = sel;
+    for (const it of kit) if (!it.tool3d && !(it.id in next)) { if (next === sel) next = { ...sel }; next[it.id] = it.on ? 1 : 0; }
+    return next;
+  };
   const boxNoun = roofBoxKind === "com" ? "part" : "trim"; // what the box calls its rows — a gutter is not a trim
   // The roof kit: every piece at the roof's pitch, carrying the pitch it was bent to — except a piece
   // the roofer gave its own pitch, which is bent from a kit built at that pitch instead. The commercial
@@ -4655,17 +4960,60 @@ export default function ShopOrderApp() {
       return { ...kitsAt[own].find((k) => k.id === it.id), pitch: own };
     });
   })();
+  // One row per decision. A family of alternatives collapses into a single row carrying whichever
+  // member is showing; everything else is its own row. Built by walking the kit in its own order, so
+  // the water path it is written in survives the grouping.
+  const kitRows = (() => {
+    const seen = new Set(), rows = [];
+    for (const it of roofKit) {
+      const fam = KIT_FAMILY_OF[it.id];
+      if (fam && !seen.has(fam.key)) {
+        const members = fam.members.map(([id, short]) => { const m = roofKit.find((x) => x.id === id); return m ? { short, it: m } : null; }).filter(Boolean);
+        if (members.length > 1) { seen.add(fam.key); rows.push({ key: fam.key, kind: "family", fam, members }); continue; }
+      }
+      if (fam && seen.has(fam.key)) continue;
+      rows.push({ key: it.id, kind: it.tool3d ? "tool" : "item", it });
+    }
+    return rows;
+  })();
+  // which member of a family the row is showing: what the roofer last tapped, else whatever is
+  // already in the box, else the kit's own default
+  const famShownIt = (row) => {
+    const tapped = row.members.find((m) => m.it.id === famShow[row.fam.key]);
+    return (tapped || row.members.find((m) => (roofBoxSel[m.it.id] || 0) > 0) || row.members[0]).it;
+  };
+  const rowIsPicked = (row, sel) => (row.kind === "family"
+    ? row.members.some((m) => (sel[m.it.id] || 0) > 0)
+    : row.kind === "item" && (sel[row.it.id] || 0) > 0);
+  const boxOrderNow = Object.keys(boxOrder).length ? boxOrder : seedBoxSel(roofBoxSel, roofKit);
+  // A family that has taken more than one answer gets an extra row per additional piece, right
+  // under its own, so each has a quantity of its own instead of hiding behind a chip. They stay
+  // in their family's section rather than floating off on their own.
+  const withExtras = (rows) => rows.flatMap((row) => {
+    if (row.kind !== "family") return [row];
+    const shownId = famShownIt(row).id;
+    const extras = row.members.filter((m) => m.it.id !== shownId && (roofBoxSel[m.it.id] || 0) > 0);
+    return [row, ...extras.map((m) => ({ key: `also-${m.it.id}`, kind: "item", it: m.it, alsoOf: row.fam }))];
+  });
+  const pickedRows = withExtras(kitRows.filter((r) => r.kind !== "tool" && rowIsPicked(r, boxOrderNow)));
+  const restRows = withExtras(kitRows.filter((r) => r.kind !== "tool" && !rowIsPicked(r, boxOrderNow)));
+  const toolRows = kitRows.filter((r) => r.kind === "tool");
+  // how many rows have drifted out of the section they opened in — what Tidy would move
+  const outOfPlace = kitRows.filter((r) => r.kind !== "tool" && rowIsPicked(r, roofBoxSel) !== rowIsPicked(r, boxOrderNow)).length;
+  const kitEntries = [];
+  if (pickedRows.length || outOfPlace) kitEntries.push({ head: "In this box", tidy: true }, ...pickedRows.map((row) => ({ row })));
+  if (restRows.length) kitEntries.push({ head: pickedRows.length || outOfPlace ? "Everything else" : "Nothing in this box yet", tidy: !(pickedRows.length || outOfPlace) }, ...restRows.map((row) => ({ row })));
+  if (toolRows.length) kitEntries.push({ head: "Built to size in the 3D tool" }, ...toolRows.map((row) => ({ row })));
+
   // Opening a box (tile, button or ?view=box / ?view=commercial) starts its rows ticked the way the
   // kit ships them — rows the roofer already set keep their tick — and prices its parts as 24 gauge,
   // which is what the kits are drawn for.
   const roofBoxPitchRef = useRef(null);
   useEffect(() => {
     if (!roofBoxOpen) { setBoxNote(""); setBoxStripAll(false); return; }
-    setRoofBoxSel((sel) => {
-      let next = sel;
-      for (const it of roofBoxKind === "com" ? COM_KIT : buildRoofKit()) if (!it.tool3d && !(it.id in next)) { if (next === sel) next = { ...sel }; next[it.id] = it.on ? 1 : 0; }
-      return next;
-    });
+    const seedKit = roofBoxKind === "com" ? COM_KIT : buildRoofKit();
+    setRoofBoxSel((sel) => seedBoxSel(sel, seedKit));
+    setBoxOrder(seedBoxSel(roofBoxSel, seedKit)); // same computation, so the order matches what seeds
     const onKey = (e) => { if (e.key === "Escape") setRoofBoxOpen(false); };
     window.addEventListener("keydown", onKey);
     const focusTimer = setTimeout(() => roofBoxPitchRef.current?.focus(), 0);
@@ -4724,9 +5072,20 @@ export default function ShopOrderApp() {
   // A scupper or a collector box is built in the 3D tool, not drawn — its row in the Commercial Kit
   // takes the roofer there with that part up, and the tool shows the way back. The trims in the
   // list stay as they are; the 3D part is sent as its own part, the way the 3D tool always has.
+  // Each 3D part starts at its own size. A scupper carrying the collector box's 12 x 8 x 10
+  // is a plausible-looking part nobody would ever order. Only ever called from a deliberate
+  // part switch — never an effect, because loadFromVault sets partType and then the
+  // dimensions, and an effect would fire after it and stomp a saved part.
+  const seedPartDims = (next, prev) => {
+    if (next === prev) return;
+    if (next === "scupper") { setPartW(12); setPartD(8); setPartH(4); }
+    else if (prev === "scupper") { setPartW(12); setPartD(8); setPartH(10); }
+  };
+
   const openBox3dPart = (it) => {
     if (editingId) restoreCanvas(); // a part being changed goes back in its place first
     setRoofBoxOpen(false); setBox3dReturn(true);
+    seedPartDims(it.tool3d, partType);
     setPartType(it.tool3d); setShapeType("part3d"); setOrderStep("details");
     setToast(`${it.name} — size it in the 3D tool and send it as its own part. The parts in your list stay; sending brings you back to the Commercial Kit for the rest.`); setTimeout(() => setToast(""), 5000);
   };
@@ -4886,6 +5245,18 @@ export default function ShopOrderApp() {
       bodyTaper: isPart3d && partType === "collector" ? bodyTaper : undefined,
       taperStart: isPart3d && partType === "collector" && bodyTaper ? taperStart : undefined,
       taperLength: isPart3d && partType === "collector" && bodyTaper ? taperLength : undefined,
+      scupOutlet: isPart3d && partType === "scupper" ? scupOutlet : undefined,
+      scupRoofMode: isPart3d && partType === "scupper" ? scupRoofMode : undefined,
+      scupFlange: isPart3d && partType === "scupper" && scupRoofMode === "shop" ? scupFlange : undefined,
+      scupDeckLeg: isPart3d && partType === "scupper" && scupRoofMode === "shop" ? scupDeckLeg : undefined,
+      scupProj: isPart3d && partType === "scupper" ? scupProj : undefined,
+      scupPlateW: isPart3d && partType === "scupper" && scupOutlet === "faceplate" ? scupPlateW : undefined,
+      scupPlateH: isPart3d && partType === "scupper" && scupOutlet === "faceplate" ? scupPlateH : undefined,
+      scupBoxW: isPart3d && partType === "scupper" && scupOutlet === "collector" ? scupBoxW : undefined,
+      scupBoxD: isPart3d && partType === "scupper" && scupOutlet === "collector" ? scupBoxD : undefined,
+      scupBoxH: isPart3d && partType === "scupper" && scupOutlet === "collector" ? scupBoxH : undefined,
+      scupDsSize: isPart3d && partType === "scupper" && scupOutlet === "collector" ? scupDsSize : undefined,
+      scupDsLen: isPart3d && partType === "scupper" && scupOutlet === "collector" ? scupDsLen : undefined,
       quantity,
       runLocation: isMetal || isPart3d ? undefined : runLocation,
       jobSiteAddress: !isMetal && !isPart3d && runLocation === "Job Site" ? jobSiteAddress.trim() : "",
@@ -4995,6 +5366,18 @@ export default function ShopOrderApp() {
       bodyTaper: isPart3d && partType === "collector" ? bodyTaper : undefined,
       taperStart: isPart3d && partType === "collector" && bodyTaper ? taperStart : undefined,
       taperLength: isPart3d && partType === "collector" && bodyTaper ? taperLength : undefined,
+      scupOutlet: isPart3d && partType === "scupper" ? scupOutlet : undefined,
+      scupRoofMode: isPart3d && partType === "scupper" ? scupRoofMode : undefined,
+      scupFlange: isPart3d && partType === "scupper" && scupRoofMode === "shop" ? scupFlange : undefined,
+      scupDeckLeg: isPart3d && partType === "scupper" && scupRoofMode === "shop" ? scupDeckLeg : undefined,
+      scupProj: isPart3d && partType === "scupper" ? scupProj : undefined,
+      scupPlateW: isPart3d && partType === "scupper" && scupOutlet === "faceplate" ? scupPlateW : undefined,
+      scupPlateH: isPart3d && partType === "scupper" && scupOutlet === "faceplate" ? scupPlateH : undefined,
+      scupBoxW: isPart3d && partType === "scupper" && scupOutlet === "collector" ? scupBoxW : undefined,
+      scupBoxD: isPart3d && partType === "scupper" && scupOutlet === "collector" ? scupBoxD : undefined,
+      scupBoxH: isPart3d && partType === "scupper" && scupOutlet === "collector" ? scupBoxH : undefined,
+      scupDsSize: isPart3d && partType === "scupper" && scupOutlet === "collector" ? scupDsSize : undefined,
+      scupDsLen: isPart3d && partType === "scupper" && scupOutlet === "collector" ? scupDsLen : undefined,
       accessories: !isPart3d && accessories.length > 0 ? accessories : undefined,
       quantity, gaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
     }];
@@ -5110,6 +5493,19 @@ export default function ShopOrderApp() {
       if (p.bodyTaper != null) setBodyTaper(p.bodyTaper);
       if (p.taperStart != null) setTaperStart(p.taperStart);
       if (p.taperLength != null) setTaperLength(p.taperLength);
+      // Reopening an order has to reproduce the part that was priced, not the part a new order
+      // would start at — so every size comes back through scupperSpec, which is what the stored
+      // row was quoted, drawn and ticketed as. An item saved before the outlet choice existed
+      // has no scupOutlet and was priced as a face plate; it does not pick up the new default.
+      const sk = scupperSpec(p);
+      setScupOutlet(p.scupOutlet === "collector" ? "collector" : "faceplate");
+      setScupRoofMode(sk.roofShop ? "shop" : "field");
+      setScupDeckLeg(sk.deckLeg);
+      setScupFlange(sk.roofShop ? sk.flange : 6); // keep a sane number in the box for when they switch it on
+      setScupProj(sk.proj);
+      setScupPlateW(sk.plateW); setScupPlateH(sk.plateH);
+      setScupBoxW(sk.boxW); setScupBoxD(sk.boxD); setScupBoxH(sk.boxH);
+      setScupDsSize(sk.dsSize); setScupDsLen(sk.dsLen);
     }
     setToast(`Loaded "${vaultItemLabel(item)}" from ${sourceLabel} — adjust anything and send when ready.`);
     setTimeout(() => setToast(""), 4000);
@@ -5838,7 +6234,7 @@ export default function ShopOrderApp() {
                     { id: "scupper", label: "Scupper" },
                     { id: "chimney", label: "Chimney Cap" },
                   ].map((t) => (
-                    <button key={t.id} type="button" onClick={() => setPartType(t.id)}
+                    <button key={t.id} type="button" onClick={() => { seedPartDims(t.id, partType); setPartType(t.id); }}
                       style={{
                         padding: "6px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
                         border: `1px solid ${partType === t.id ? INK : theme.border}`, background: partType === t.id ? INK : theme.inputBg, color: partType === t.id ? "#fff" : theme.text,
@@ -5850,24 +6246,24 @@ export default function ShopOrderApp() {
 
                 <div style={{ display: "flex", gap: 8 }}>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                    Width (in){partType === "collector" && <span style={{ color: theme.textSecondary, fontWeight: 400 }}> (max 150)</span>}
+                    {partType === "scupper" ? "Opening width (in)" : "Width (in)"}{partType === "collector" && <span style={{ color: theme.textSecondary, fontWeight: 400 }}> (max 150)</span>}
                     <input type="number" min={0.1} max={partType === "collector" ? 150 : undefined} step="0.1" value={partW}
                       onChange={(e) => setPartW(e.target.value === "" ? "" : Math.max(0, partType === "collector" ? Math.min(150, +e.target.value) : +e.target.value))}
                       onBlur={(e) => { if (e.target.value === "") setPartW(12); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                    Depth (in){partType === "collector" && <span style={{ color: theme.textSecondary, fontWeight: 400 }}> (max 150)</span>}
+                    {partType === "scupper" ? "Wall thickness (in)" : "Depth (in)"}{partType === "collector" && <span style={{ color: theme.textSecondary, fontWeight: 400 }}> (max 150)</span>}
                     <input type="number" min={0.1} max={partType === "collector" ? 150 : undefined} step="0.1" value={partD}
                       onChange={(e) => setPartD(e.target.value === "" ? "" : Math.max(0, partType === "collector" ? Math.min(150, +e.target.value) : +e.target.value))}
                       onBlur={(e) => { if (e.target.value === "") setPartD(8); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
                   </label>
                   {partType !== "chimney" && <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
-                    Height (in){partType === "collector" && <span style={{ color: theme.textSecondary, fontWeight: 400 }}> (max 150)</span>}
+                    {partType === "scupper" ? "Opening height (in)" : "Height (in)"}{partType === "collector" && <span style={{ color: theme.textSecondary, fontWeight: 400 }}> (max 150)</span>}
                     <input type="number" min={0.1} max={partType === "collector" ? 150 : undefined} step="0.1" value={partH}
                       onChange={(e) => setPartH(e.target.value === "" ? "" : Math.max(0, partType === "collector" ? Math.min(150, +e.target.value) : +e.target.value))}
-                      onBlur={(e) => { if (e.target.value === "") setPartH(10); }}
+                      onBlur={(e) => { if (e.target.value === "") setPartH(partType === "scupper" ? 4 : 10); }}
                       className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
                   </label>}
                 </div>
@@ -5927,6 +6323,121 @@ export default function ShopOrderApp() {
                         </div>
                         {!canRib && <div style={{ fontSize: 10, marginTop: 3 }}>This roof style is made smooth.</div>}
                       </div>
+                    </>
+                  );
+                })()}
+
+                {partType === "scupper" && (() => {
+                  const numStyle = { width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.inputBg, color: theme.text, boxSizing: "border-box" };
+                  const num = (label, value, set, fallback, testid) => (
+                    <label style={{ flex: 1, minWidth: 0, fontSize: 11, color: theme.textSecondary }}>
+                      {label}
+                      <input type="number" min={0} step="0.25" value={value} data-testid={testid}
+                        onChange={(e) => set(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
+                        onBlur={(e) => { if (e.target.value === "") set(fallback); }}
+                        className="mono" style={numStyle} />
+                    </label>
+                  );
+                  return (
+                    <>
+                      <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>
+                        Opening width × height is the clear hole through the parapet. Wall thickness is how far the sleeve runs through it — measure it, don't take the nominal. The rough opening gets cut about ½" bigger all round than the sleeve. The face plate or a collector box goes outside; the roof side is usually field-made.
+                      </div>
+                      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                        <div style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                          Roof Side
+                          <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                            {[{ id: "field", label: "Field-Made" }, { id: "shop", label: "Shop Plate" }].map((o) => (
+                              <button key={o.id} type="button" data-testid={`scup-roof-${o.id}`}
+                                onClick={() => setScupRoofMode(o.id)}
+                                style={{
+                                  flex: 1, padding: "7px 4px", borderRadius: 6, fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+                                  border: `1px solid ${scupRoofMode === o.id ? INK : theme.border}`, background: scupRoofMode === o.id ? INK : theme.inputBg, color: scupRoofMode === o.id ? "#fff" : theme.text,
+                                }}>
+                                {o.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        {num("Spout past the wall (in)", scupProj, setScupProj, 2, "scup-proj")}
+                      </div>
+                      <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>
+                        The plate on the roof side is usually cut and welded up on the roof, so the shop sends the sleeve alone. Pick Shop Plate when you want it made with the part. The spout has to clear the wall face or the water runs back down it and streaks the building.
+                      </div>
+                      {scupRoofMode === "shop" && (
+                        <>
+                          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                            {num("Plate past the opening (in)", scupFlange, setScupFlange, 6, "scup-flange")}
+                            {num("Leg out onto the deck (in)", scupDeckLeg, setScupDeckLeg, 0, "scup-deck-leg")}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>
+                            TPO-clad stock, white rather than the order's color, cut as its own blank with the opening through it. Leave the leg at 0 and the plate stops at the deck; give it a number and the bottom bends out flat so the membrane laps over it instead of turning up the wall.
+                          </div>
+                        </>
+                      )}
+                      <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                        <div style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                          Outside the Wall
+                          <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                            {[{ id: "faceplate", label: "Face Plate" }, { id: "collector", label: "Collector Box" }].map((o) => (
+                              <button key={o.id} type="button" data-testid={`scup-out-${o.id}`}
+                                onClick={() => {
+                                  // Size the termination off the opening it has to cover, the way
+                                  // Tapered Sides derives its taper from the body height — but only
+                                  // on a real change, or re-tapping the chip you are already on
+                                  // throws away the sizes you just typed.
+                                  if (o.id !== scupOutlet) {
+                                    if (o.id === "faceplate") { setScupPlateW((+partW || 12) + 4); setScupPlateH((+partH || 4) + 4); }
+                                    else { setScupBoxW((+partW || 12) + 4); setScupBoxD(Math.max(8, (+scupProj || 2) + 4)); }
+                                  }
+                                  setScupOutlet(o.id);
+                                }}
+                                style={{
+                                  flex: 1, padding: "7px 4px", borderRadius: 6, fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+                                  border: `1px solid ${scupOutlet === o.id ? INK : theme.border}`, background: scupOutlet === o.id ? INK : theme.inputBg, color: scupOutlet === o.id ? "#fff" : theme.text,
+                                }}>
+                                {o.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>
+                        A face plate is usually the overflow — no gutter and no box under it, so the water just drops. A collector box usually goes over the hole itself, with a downspout under it carrying the water down.
+                      </div>
+                      {scupOutlet === "faceplate" && (
+                        <>
+                          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                            {num("Face plate width (in)", scupPlateW, setScupPlateW, 16, "scup-plate-w")}
+                            {num("Face plate height (in)", scupPlateH, setScupPlateH, 8, "scup-plate-h")}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>
+                            Overall size of the plate, opening cut through the middle of it — about 2" of cover all round is the everyday default. It's the only part of this anyone sees from the ground, so its edges get hemmed.
+                          </div>
+                        </>
+                      )}
+                      {scupOutlet === "collector" && (
+                        <>
+                          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                            {num("Box width (in)", scupBoxW, setScupBoxW, 16, "scup-box-w")}
+                            {num("Box out from wall (in)", scupBoxD, setScupBoxD, 8, "scup-box-d")}
+                            {num("Box height (in)", scupBoxH, setScupBoxH, 12, "scup-box-h")}
+                          </div>
+                          <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                            <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+                              Downspout size (in)
+                              <select value={scupDsSize} onChange={(e) => setScupDsSize(e.target.value)} data-testid="scup-ds-size"
+                                style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, background: theme.inputBg, color: theme.text }}>
+                                {DOWNSPOUT_SIZES.map((v) => <option key={v} value={v}>{v}"</option>)}
+                              </select>
+                            </label>
+                            {num("Downspout length (ft)", scupDsLen, setScupDsLen, 10, "scup-ds-len")}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>
+                            Box wider than the sleeve so the stream lands inside it, rim below the scupper so a hard rain can't dam back into the wall, back run up behind the spout. That back is what covers the wall opening, so a box means no face plate. Downspout size is out from the wall × across it; length is the finished run in feet and the shop breaks it into sticks.
+                          </div>
+                        </>
+                      )}
                     </>
                   );
                 })()}
@@ -6091,9 +6602,9 @@ export default function ShopOrderApp() {
 
                 <div style={{ marginTop: 8 }}>
                   {partView === "3d" ? (
-                    <Part3DPreview partType={partType} w={partW} d={partD} h={partH} capH={partCapH} postH={partPostH} overhang={partOverhang} ribs={capRibs} shelf={partShelf} leg={partLeg} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} flangeLength={flangeLength} outletRoundTapered={outletRoundTapered} capStyle={capStyle} />
+                    <Part3DPreview partType={partType} w={partW} d={partD} h={partH} capH={partCapH} postH={partPostH} overhang={partOverhang} ribs={capRibs} shelf={partShelf} leg={partLeg} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} flangeLength={flangeLength} outletRoundTapered={outletRoundTapered} capStyle={capStyle} scupOutlet={scupOutlet} scupFlange={scupFlange} scupProj={scupProj} scupPlateW={scupPlateW} scupPlateH={scupPlateH} scupBoxW={scupBoxW} scupBoxD={scupBoxD} scupBoxH={scupBoxH} scupDsSize={scupDsSize} scupRoofMode={scupRoofMode} scupDeckLeg={scupDeckLeg} />
                   ) : (
-                    <FlatPatternSVG partType={partType} w={partW} d={partD} h={partH} capH={partCapH} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} />
+                    <FlatPatternSVG partType={partType} w={partW} d={partD} h={partH} capH={partCapH} colorHex={colorObj.hex} outletShape={outletShape} flangeW={flangeW} flangeD={flangeD} outletDiameter={outletDiameter} outletLength={outletLength} topTrim={topTrim} bodyTaper={bodyTaper} taperStart={taperStart} taperLength={taperLength} flangeTapered={flangeTapered} scupOutlet={scupOutlet} scupFlange={scupFlange} scupProj={scupProj} scupPlateW={scupPlateW} scupPlateH={scupPlateH} scupDsLen={scupDsLen} scupRoofMode={scupRoofMode} scupDeckLeg={scupDeckLeg} />
                   )}
                 </div>
 
@@ -6568,7 +7079,20 @@ export default function ShopOrderApp() {
                           </div>
                         )}
                         <div style={{ marginTop: 10 }}>
-                          {roofKit.map((it) => {
+                          {kitEntries.map((entry) => {
+                            if (entry.head) return (
+                              <div key={entry.head} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "16px 0 3px" }}>
+                                <span className="mono" style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: theme.textSecondary }}>{entry.head}</span>
+                                {entry.tidy && outOfPlace > 0 && (
+                                  <button type="button" onClick={() => setBoxOrder(roofBoxSel)} data-testid="box-tidy" title="Re-sort the list around what you have ticked — nothing moves until you ask, so a row never slides out from under you mid-tick"
+                                    style={{ fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 999, border: `1px solid ${SAFETY}`, background: "transparent", color: SAFETY, cursor: "pointer" }}>
+                                    ↑ Move {outOfPlace} up
+                                  </button>
+                                )}
+                              </div>
+                            );
+                            const row = entry.row;
+                            const it = row.kind === "family" ? famShownIt(row) : row.it;
                             if (it.tool3d) return ( // built in the 3D tool — the row is the way there
                               <div key={it.id} data-testid={`box-row-${it.id}`} className="box-row" style={{ padding: "8px 0", borderTop: `1px solid ${theme.border}` }}>
                                 <span aria-hidden="true" />
@@ -6590,25 +7114,65 @@ export default function ShopOrderApp() {
                             );
                             const qty = roofBoxSel[it.id] || 0;
                             const on = qty > 0;
-                            const inOrder = basket.filter((b) => b.kit === it.id && +b.quantity > 0);
+                            // a family row answers for all its members, so it keeps showing what is
+                            // already on the order even after the chip moves to a different answer
+                            const rowKitIds = row.kind === "family" ? row.members.map((m) => m.it.id) : [it.id];
+                            const inOrder = basket.filter((b) => rowKitIds.includes(b.kit) && +b.quantity > 0);
                             const inOrderPcs = inOrder.reduce((sum, b) => sum + (+b.quantity || 0), 0);
                             const g = profileGirth(it.points, it.hemStart, it.hemEnd);
                             const pps = piecesPerSheet(sheetWidthNum, g);
                             return (
-                              <div key={it.id} data-testid={`box-row-${it.id}`} className="box-row" style={{ padding: "8px 0", borderTop: `1px solid ${theme.border}`, opacity: on ? 1 : 0.72 }}>
+                              <div key={row.key} data-testid={`box-row-${it.id}`} className="box-row" style={{ padding: "8px 0", borderTop: `1px solid ${theme.border}`, opacity: on ? 1 : 0.72 }}>
                                 <input type="checkbox" checked={on} aria-label={`Include ${it.name}`}
-                                  onChange={(e) => setRoofBoxSel((sel) => ({ ...sel, [it.id]: e.target.checked ? 1 : 0 }))} style={{ width: 16, height: 16, cursor: "pointer" }} />
+                                  onChange={(e) => setRoofBoxSel((sel) => {
+                                    const next = { ...sel, [it.id]: e.target.checked ? 1 : 0 };
+                                    if (e.target.checked && row.kind === "family" && row.fam.exclusive) for (const m of row.members) if (m.it.id !== it.id) next[m.it.id] = 0;
+                                    return next;
+                                  })} style={{ width: 16, height: 16, cursor: "pointer" }} />
                                 <div style={{ background: INK, borderRadius: 6, padding: 3, display: "flex" }}>
                                   <ShapeThumb order={{ type: "trim", points: it.points, hemStart: it.hemStart, hemEnd: it.hemEnd, colorHex: colorObj.hex }} size={48} />
                                 </div>
                                 <div style={{ minWidth: 0 }}>
-                                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>{it.name} <span className="mono" style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 500 }}>{it.dims}</span>
+                                  <div style={{ fontSize: 13, fontWeight: 700, color: theme.text }}>
+                                    {row.alsoOf && <span className="mono" title="A second answer to the same question as the row above" style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.07em", color: theme.textSecondary, border: `1px solid ${theme.border}`, borderRadius: 999, padding: "1px 6px", marginRight: 6 }}>ALSO</span>}
+                                    {it.name} <span className="mono" style={{ fontSize: 10, color: theme.textSecondary, fontWeight: 500 }}>{it.dims}</span>
                                     {inOrder.length > 0 && <span className="mono" data-testid="box-row-in-order" style={{ marginLeft: 8, fontSize: 9.5, fontWeight: 700, letterSpacing: "0.06em", color: SAFETY, border: `1px solid ${SAFETY}`, borderRadius: 999, padding: "1px 7px" }}>IN ORDER · {inOrderPcs} pc{inOrderPcs === 1 ? "" : "s"}</span>}
                                   </div>
                                   <div style={{ fontSize: 11, color: theme.textSecondary, lineHeight: 1.4 }}>{it.where}</div>
+                                  {row.kind === "family" && (
+                                    <div style={{ display: "flex", flexWrap: "wrap", gap: 5, marginTop: 5 }}>
+                                      {row.members.map((m) => {
+                                        const showing = m.it.id === it.id, mOn = (roofBoxSel[m.it.id] || 0) > 0;
+                                        return (
+                                          <button key={m.it.id} type="button" data-testid={`box-var-${m.it.id}`} title={mOn ? `${m.it.name} — already in the box` : `${m.it.name} — tap to take this one as well`}
+                                            onClick={() => {
+                                              setFamShow((f) => ({ ...f, [row.fam.key]: m.it.id }));
+                                              // The chips are the row's answer to one question, so picking a different
+                                              // answer carries the tick with it. Without this, tapping a chip flips the
+                                              // checkbox to unticked and reads as though you just lost the piece.
+                                              setRoofBoxSel((sel) => {
+                                                if ((sel[m.it.id] || 0) > 0) return sel; // already in — this is just a look at it
+                                                const next = { ...sel, [m.it.id]: 1 };
+                                                if (row.fam.exclusive) for (const x of row.members) if (x.it.id !== m.it.id) next[x.it.id] = 0;
+                                                return next;
+                                              });
+                                            }}
+                                            style={{
+                                              padding: "6px 11px", borderRadius: 999, fontSize: 11, fontWeight: showing ? 700 : 600, cursor: "pointer", lineHeight: 1.15,
+                                              border: `1px solid ${showing ? INK : mOn ? SAFETY : theme.border}`,
+                                              background: showing ? INK : theme.inputBg, color: showing ? "#fff" : theme.text,
+                                            }}>
+                                            {mOn && <span style={{ color: SAFETY, fontWeight: 700 }}>✓ </span>}{m.short}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                  {on && (
                                   <div className="mono" style={{ fontSize: 10, color: theme.textSecondary, marginTop: 2 }}>
                                     Girth {fmtIn(g)}" · {Math.max(0, it.points.length - 2)} bend{it.points.length === 3 ? "" : "s"} · {pps} pcs/sheet · one {lengthPerPiece} ft piece per {lengthPerPiece} ft of {it.per}
                                   </div>
+                                  )}
                                 </div>
                                 <div className="box-controls">
                                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -7182,6 +7746,9 @@ export default function ShopOrderApp() {
                         {(a.panel_types || []).join(" · ")}
                         {(a.gauges || []).length > 0 && <span style={{ color: theme.textSecondary }}> — {(a.gauges || []).join(", ")}</span>}
                       </div>
+                      {privateLabelSummary(a.details) && (
+                        <div style={{ fontSize: 10, color: SAFETY, fontWeight: 700, marginTop: 3 }}>{privateLabelSummary(a.details)}</div>
+                      )}
                       {(a.plants || a.colorchart_url || a.notes) && (
                         <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 3 }}>
                           {a.plants && <span>Plants: {a.plants.split("\n").join("; ")} </span>}
@@ -7915,7 +8482,7 @@ export default function ShopOrderApp() {
                                     {o.type === "metal"
                                       ? `Flat ${o.flatWidth}" × ${(o.flatLength / 12).toFixed(1)}' + Coil ${o.coilWidth}" × ${(o.coilLength / 12).toFixed(0)}'`
                                       : o.type === "part3d"
-                                      ? `${PART3D_LABELS[o.partType] || o.partType}${o.capStyle ? ` (${CAP_STYLE_LABELS[o.capStyle] || o.capStyle})` : ""} — ${o.partW}"W × ${o.partD}"D${o.partType === "chimney" ? ` · ${o.partShelf ?? 3}" shelf, ${o.partLeg ?? 3}" leg, ${o.partPostH ?? 6}" posts, ${o.partCapH}" rise, ${o.partOverhang ?? 2}" overhang, ${o.capRibs === false ? "smooth" : "standing seam ribs"}` : ` × ${o.partH}"H`}`
+                                      ? part3dSummary(o)
                                       : `Trim profile — ${o.lengthPerPiece} ft/pc`} · Qty {o.quantity}
                                   </>
                                 )}

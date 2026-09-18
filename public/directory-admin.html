@@ -126,7 +126,13 @@
 const SUPA="https://znueitseoqijhkkvdomc.supabase.co";
 const KEY="sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
 const ABILITIES=["Coil & flat sheet","Painted coil — PVDF / Kynar","Painted coil — SMP","Bare — Galvalume · G90 · bonderized","Copper","1″ mechanical lock","1.5″ snap-lock","1.75″ snap-lock","1.5″ mechanical lock (single)","1.5″ mechanical lock (double)","2″ mechanical lock","1″ nail strip","1.5″ nail strip","T-panel (138T)","T-panel (238T)","Batten seam","2.5″ trapezoidal","3″ trapezoidal structural","Exposed fastener","Flush wall & soffit","Board & batten","Trim & flashing","3D parts — boxes · scuppers · caps","On-site roll forming","On-site gutter roll forming","Turnkey — supply · fabrication · labor"];
-const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated","1/2″ corrugated (low-profile)","5V-crimp","Ag panel / tuff rib","U-panel","M-panel / box-rib (wall)"];
+const EF_PANELS=["R-panel / PBR","7.2 panel (structural rib)","7/8″ corrugated","1/2″ corrugated (low-profile)","5V-crimp","Ag panel / tuff rib","U-panel / PBU","M-panel / box-rib (wall)"];
+// "U-panel" was renamed "U-panel / PBU" after shops were already listed, so the old
+// spelling still sits in their Supabase rows. It reads as the new canonical everywhere
+// and the next save migrates the row.
+const RENAMED_ABILITIES={"u-panel":"U-panel / PBU","u panel":"U-panel / PBU","pbu-panel":"U-panel / PBU","pbu panel":"U-panel / PBU"};
+const canonAbility=a=>{const k=String(a==null?"":a).trim().toLowerCase();return Object.prototype.hasOwnProperty.call(RENAMED_ABILITIES,k)?RENAMED_ABILITIES[k]:a};
+const canonAbilities=list=>(Array.isArray(list)?list:[]).map(canonAbility);
 const GUTTER_PROFILES=["5″ K-style gutter","6″ K-style gutter","7″ K-style gutter","5″ half-round gutter","6″ half-round gutter","6″ box gutter","7″ box gutter","8″ box gutter","6″ euro box gutter","Fascia gutter","Straight-face / square gutter"];
 const GUTTER_MATERIALS=["Gutter — .027 aluminum","Gutter — .032 aluminum","Gutter — 26 ga painted steel","Gutter — 24 ga painted steel","Gutter — galvalume","Gutter — galvanized / bonderized (paint-grip)","Gutter — copper (16 / 20 oz)"];
 const ALL_CANON=[...ABILITIES,...EF_PANELS,...GUTTER_PROFILES,...GUTTER_MATERIALS];
@@ -232,6 +238,7 @@ async function loadApps(){
       +((d.colors||[]).length?'\nown colors: '+d.colors.join(', '):'')
       +(d.extra_colors?' + '+d.extra_colors:'')
       +((d.brands||[]).length||d.extra_brands?'\nstocks brands: '+[...(d.brands||[]),d.extra_brands].filter(Boolean).join(', '):'')
+      +plReviewLine(d.private_label)
       +(d.licensed_states?'\nlicensed in: '+d.licensed_states:'')
       +(a.notes?'\nnotes: '+a.notes:'');
     meta.style.whiteSpace='pre-line';card.appendChild(meta);
@@ -289,6 +296,30 @@ function setChips(sel,values){
   $$(sel+' .seg').forEach(b=>b.classList.toggle('sel',want.includes(b.dataset.v.toLowerCase())));
 }
 
+// A private-label shop sells under its own name on somebody else's coil. Staff always
+// see whose coil it is; whether the public card may name it is the applicant's call.
+// plPublicLine's wording is previewed back to the applicant by plPreview() in
+// get-listed.html — keep the two in lock-step or that preview starts lying.
+// details comes straight off an unauthenticated form post, so nothing in it is trusted
+// to be the shape it should be — a bad blob must render as nothing, never throw.
+function plLabel(pl){return (pl&&typeof pl.label==='string')?pl.label.trim():''}
+function plSource(pl){
+  const list=Array.isArray(pl&&pl.sources)?pl.sources.filter(x=>typeof x==='string'):[];
+  const extra=(pl&&typeof pl.extra_sources==='string')?pl.extra_sources:'';
+  return [...list,extra].map(x=>x.trim()).filter(Boolean).join(', ');
+}
+function plPublicLine(pl){
+  const label=plLabel(pl);if(!label)return'';
+  const src=plSource(pl);
+  return pl.show_source===true&&src
+    ? 'Private label — panels go out under their own '+label+' name, on '+src+' coil.'
+    : 'Private label — panels go out under their own '+label+' name.';
+}
+function plReviewLine(pl){
+  const label=plLabel(pl);if(!label)return'';
+  return '\nprivate label: '+label+' on '+(plSource(pl)||'source not given')
+    +(pl.show_source===true?' (cleared to name the source on the card)':' (SOURCE IS STAFF-ONLY — keep it off the card)');
+}
 function prefillFromApp(a){
   const d=a.details||{};
   editingId=null;
@@ -298,7 +329,7 @@ function prefillFromApp(a){
   $('#e-lic').value=(a.details&&a.details.licensed_states)||'';
   $('#e-featured').classList.remove('sel');$('#e-logobg').value='';
   $('#e-orders').classList.remove('sel');$('#e-orderemail').value='';
-  const abil=d.abilities||a.panel_types||[];
+  const abil=canonAbilities(d.abilities||a.panel_types);
   setChips('#e-abilities',abil);
   setChips('#e-efpanels',abil);
   setChips('#e-gutters',abil);
@@ -309,7 +340,7 @@ function prefillFromApp(a){
   // structured locations from the new form arrive pre-geocoded; older
   // applications only have the plants text, one City, ST per line
   const appLocs=(d.locations||[]).filter(L=>L&&(L.address||L.city));
-  if(appLocs.length)setAdmLocs(appLocs);
+  if(appLocs.length)setAdmLocs(appLocs.map(L=>(L&&Array.isArray(L.abilities)&&L.abilities.length)?{...L,abilities:canonAbilities(L.abilities)}:L));
   else setAdmLocs((a.plants||'').split('\n').map(s=>s.trim()).filter(Boolean).map(city=>({city})));
   const cities=[...elocs.children].map(r=>r.querySelector('.al-city').value).join(' ');
   $('#e-area').value=((cities+' '+(d.service_area||'')).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim());
@@ -319,7 +350,7 @@ function prefillFromApp(a){
   $('#e-bcoil').classList.toggle('sel',hasCoil);
   $('#e-bfab').classList.toggle('sel',hasFab);
   $('#e-bturnkey').classList.toggle('sel',abil.some(x=>/turn[- ]?key/i.test(String(x))));
-  $('#e-coildesc').value='';$('#e-fabdesc').value='';
+  $('#e-coildesc').value=plPublicLine(d.private_label);$('#e-fabdesc').value='';
   $('#e-website').value=safeUrl(a.website)||'';
   $('#e-phone').value=a.phone||'';
   $('#e-chart').value=safeUrl(a.colorchart_url,true)||'';
@@ -359,7 +390,7 @@ function extractAbilities(t){
   if(has(/\b5[- ]?v\b|5v[- ]?crimp|double[- ]?rib/i))out.push("5V-crimp");
   if(has(/\bm[- ]?(36|42|panel)\b|box[- ]?rib|multi[- ]?v\b/i))out.push("M-panel / box-rib (wall)");
   if(has(/1\/2["″ ]?\s?corrugated|\bm[- ]?cor\b|low[- ]?profile corrugated/i))out.push("1/2″ corrugated (low-profile)");
-  if(has(/\bu[- ]?panel|\bpbu\b/i))out.push("U-panel");
+  if(has(/\bu[- ]?panel|\bpbu\b/i))out.push("U-panel / PBU");
   if(has(/\bag[- ]?panel|tuff[- ]?rib|max[- ]?rib/i))out.push("Ag panel / tuff rib");
   if(EF_PANELS.some(p=>out.includes(p))&&!out.includes("Exposed fastener"))out.push("Exposed fastener");
   if(has(/flush wall|soffit/i))out.push("Flush wall & soffit");
@@ -564,7 +595,7 @@ $('#e-save').onclick=async()=>{
   // approved custom profiles: whatever staff leave in the box joins the listing;
   // anything matching a standard chip is canonicalized instead of duplicated
   $('#e-moreabilities').value.split(',').map(s=>s.replace(/\|/g,' ').replace(/\s+/g,' ').trim()).filter(Boolean).forEach(c=>{
-    const canon=ALL_CANON.find(s=>s.toLowerCase()===c.toLowerCase())||c;
+    const canon=ALL_CANON.find(s=>s.toLowerCase()===c.toLowerCase())||canonAbility(c);
     if(!abilities.some(x=>x.toLowerCase()===canon.toLowerCase()))abilities.push(canon);
   });
   if(!abilities.length){note.textContent='Pick at least one ability or nothing can find this listing.';note.classList.add('errline');return}
@@ -699,14 +730,15 @@ function openListing(l){
   $('#e-orders').classList.toggle('sel',!!l.accepts_orders);$('#e-orderemail').value=l.order_email||'';
   $('#e-area').value=l.area_keywords||'';
   $('#e-gmaps').value=l.gmaps_url||'';
-  setChips('#e-abilities',l.abilities||[]);
-  setChips('#e-efpanels',l.abilities||[]);
-  setChips('#e-gutters',l.abilities||[]);
-  setChips('#e-gutmats',l.abilities||[]);
+  const abil=canonAbilities(l.abilities);
+  setChips('#e-abilities',abil);
+  setChips('#e-efpanels',abil);
+  setChips('#e-gutters',abil);
+  setChips('#e-gutmats',abil);
   // subsets render from the company chips, so set locations after them
-  setAdmLocs((Array.isArray(l.locations)&&l.locations.length)?l.locations
+  setAdmLocs((Array.isArray(l.locations)&&l.locations.length)?l.locations.map(L=>(L&&Array.isArray(L.abilities)&&L.abilities.length)?{...L,abilities:canonAbilities(L.abilities)}:L)
     :[{address:l.address||'',city:l.city||'',lat:l.lat,lng:l.lng}]);
-  $('#e-moreabilities').value=(l.abilities||[]).filter(a=>!ALL_CANON.includes(a)).join(', ');
+  $('#e-moreabilities').value=abil.filter(a=>!ALL_CANON.includes(a)).join(', ');
   setChips('#e-colors',l.colors||[]);
   $('#e-morecolors').value=(l.colors||[]).filter(c=>!STOCK_COLORS.includes(c)).join(', ');
   $('#e-coildesc').value=l.coil_desc||'';$('#e-fabdesc').value=l.fab_desc||'';
@@ -793,6 +825,7 @@ async function applyEdit(e){
       const out=[];
       v.forEach(x=>{
         x=x.replace(/\|/g,' ').replace(/\s+/g,' ').trim();if(!x)return;
+        if(k==='abilities')x=canonAbility(x);
         const hit=CANON.find(s=>s.toLowerCase()===x.toLowerCase())||x;
         if(!out.some(o=>o.toLowerCase()===hit.toLowerCase()))out.push(hit);
       });
