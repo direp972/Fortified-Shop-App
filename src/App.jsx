@@ -3913,7 +3913,7 @@ export default function ShopOrderApp() {
   const [taperLength, setTaperLength] = useState(6); // inches the taper itself spans before leveling into a straight shelf
   // Scupper: the sleeve is partW x partH clear opening through partD of wall. Everything
   // below is what happens at the two ends of it.
-  const [scupOutlet, setScupOutlet] = useState("collector"); // "faceplate" | "collector" — what is outside the wall under the spout, if anything is
+  const [scupOutlet, setScupOutlet] = useState("none"); // "none" | "faceplate" | "collector" — what is outside the wall under the spout, if anything is
   const [scupRoofMode, setScupRoofMode] = useState("field"); // "field" | "shop" — the roof plate is usually cut and welded on the roof
   const [scupDeckLeg, setScupDeckLeg] = useState(0);         // the plate's bottom turned out flat onto the deck; 0 stops it at the deck
   const [scupFlange, setScupFlange] = useState(6);  // TPO-clad roof plate the membrane welds to
@@ -4841,7 +4841,7 @@ export default function ShopOrderApp() {
     setOutletShape("box"); setFlangeW(4); setFlangeD(4); setOutletDiameter(4); setOutletLength(6); setFlangeTapered(true);
     setFlangeLength(4); setOutletRoundTapered(false);
     setTopTrim(false); setBodyTaper(false); setTaperStart(0); setTaperLength(6);
-    setScupOutlet("collector"); setScupRoofMode("field"); setScupDeckLeg(0); setScupFlange(6); setScupProj(2);
+    setScupOutlet("none"); setScupRoofMode("field"); setScupDeckLeg(0); setScupFlange(6); setScupProj(2);
     setScupPlateW(16); setScupPlateH(8); setScupBoxW(16); setScupBoxD(8); setScupBoxH(12);
     setScupDsSize("4×5"); setScupDsLen(10);
     setPoints(TRIM_PRESETS["Eave / Drip Edge"]); setPreset("Eave / Drip Edge");
