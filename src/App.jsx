@@ -689,7 +689,7 @@ function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4"
       where: "Along the low edge of the roof — bottom and front the gutter's size, the back an inch taller against the fascia so a gutter running full spills over the front and never behind it, a 1\" return across the top of the front, hemmed under, for stiffness and for the hangers to clip. Both edges hemmed. Drops to a downspout through an outlet cut in the bottom, or into a collector box.",
       points: [kitPt(G - 1, -G), kitPt(G, -G), kitPt(G, 0), kitPt(0, 0), kitPt(0, -(G + 1))], hemStart: "closed-left", hemEnd: "closed-left", paintSide: "right" },
     { id: "scupper", name: "Scupper", tool3d: "scupper", dims: "built to size in the 3D tool", per: "outlet through the parapet",
-      where: "Through-wall outlet that lets the roof drain out through the parapet — a sleeve closed on all four sides, the clear opening and the wall thickness its size. On the roof side it takes its own TPO-clad plate, white stock rather than the order's color, with the opening cut through it, so the membrane welds straight to it. Outside the wall it usually takes a collector box over the hole with a downspout under it, and the box's own back plate covers the opening, so a box means no face plate. A face plate in the order's color goes on instead where nothing under it is catching the water — usually an overflow, with no gutter below it, letting the water drop." },
+      where: "Through-wall outlet that lets the roof drain out through the parapet — a sleeve closed on all four sides, the clear opening and the wall thickness its size. On the roof side it takes its own TPO-clad plate, white stock rather than the order's color, with the opening cut through it, so the membrane welds straight to it. Outside the wall it takes one of three things. Usually a collector box over the hole with a downspout under it, its own back plate covering the opening, so a box means no face plate. A face plate in the order's color where nothing under it is catching the water — usually an overflow, with no gutter below it, letting the water drop. Or nothing at all: the sleeve on its own, with whatever hangs on it built in the field or ordered as its own Collector Box." },
     { id: "collector", name: "Collector Box", tool3d: "collector", dims: "built to size in the 3D tool", per: "drop",
       where: "The conductor head under a scupper or a gutter outlet — catches the water and feeds the downspout, with the outlet the downspout below fits." },
     { id: "downspout", name: `Downspout — ${downspout}"`, dims: `${D}" out × ${W}" on the wall · 1" lock flange · ½" pocket`, per: "drop", on: true,
@@ -779,7 +779,12 @@ function scupperSpec(o) {
     // the bottom of the roof plate can turn out flat onto the deck for the membrane to lap over;
     // zero leaves it stopping at the deck, which is the other way it gets done
     deckLeg: roofShop ? Math.max(0, n(o.scupDeckLeg, 0)) : 0,
+    // Three ways the outside of the wall can go, and only one of them is metal the shop sends
+    // with the sleeve. "none" is a bare sleeve: a box gets made in the field and added there,
+    // or ordered on its own as a Collector Box part.
+    outside: o.scupOutlet === "collector" ? "collector" : o.scupOutlet === "none" ? "none" : "faceplate",
     collector: o.scupOutlet === "collector",
+    faceplate: o.scupOutlet !== "collector" && o.scupOutlet !== "none",
     // a termination narrower than the hole it covers is not a thing, so the opening floors it
     plateW: Math.max(W + 1, n(o.scupPlateW, W + 4)),
     plateH: Math.max(H + 1, n(o.scupPlateH, H + 4)),
@@ -829,8 +834,10 @@ function part3dSummary(o) {
       bits.push(k.dsLen > 0
         ? `${k.dsSize}" downspout, ${formatDim(k.dsLen)} ft`
         : `no downspout on this order`);
-    } else {
+    } else if (k.faceplate) {
       bits.push(`face plate ${formatDim(k.plateW)} × ${formatDim(k.plateH)}" outside, in the order's color`);
+    } else {
+      bits.push(`nothing on the outside — sleeve only, anything that hangs on it is field-made`);
     }
     return bits.join(" · ");
   }
@@ -1340,7 +1347,7 @@ function computePrice(order, priceList, coilWidthScale) {
         sqin += k.boxW * k.boxD + k.boxW * k.boxH + 2 * k.boxD * k.boxH
           + (k.boxW * scupperBack(k).h - k.W * k.H);
         sqin += 2 * (k.dsOut + k.dsAcross) * k.dsLen * 12;
-      } else {
+      } else if (k.faceplate) {
         sqin += k.plateW * k.plateH - k.W * k.H;
       }
     } else {
@@ -3375,7 +3382,7 @@ function Part3DPreview({ partType, w, d, h, capH, postH, overhang, ribs, shelf, 
         dsMesh.position.set(0, botY - stub / 2, zFace + dsD / 2 + 0.25); // strapped tight to the wall
         addEdges(dsGeo, dsMesh);
         group.add(dsMesh);
-      } else {
+      } else if (k.faceplate) {
         // one flat plate on the wall face with the opening cut through it
         collar(zFace, k.plateW, k.plateH);
       }
@@ -3711,14 +3718,16 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
     };
     const onSheet = ["Sleeve"];
     if (k.flange > 0.01) { plateBlank(pad + RUN + pad, k.W + k.flange * 2, k.H + k.flange * 2, k.deckLeg); onSheet.push("TPO roof plate"); }
-    if (!k.collector) { plateBlank(vbW, k.plateW, k.plateH); onSheet.push("face plate"); }
+    if (k.faceplate) { plateBlank(vbW, k.plateW, k.plateH); onSheet.push("face plate"); }
     // Name what is on the sheet, not what usually is — a zero roof plate draws no blank, and a
     // caption that still promised one had the shop hunting for a piece that was never there.
     patternNote = onSheet.join(" · ")
       + (k.flange > 0.01
           ? " — the roof plate is clad stock, not the order's color" + (k.deckLeg > 0.01 ? ", bent out at the bottom onto the deck" : "")
           : " — roof plate is field-fabricated, not on this sheet")
-      + (k.collector ? (k.dsLen > 0 ? ". Collector box and downspout are bent separately" : ". Collector box is bent separately; no downspout on this order") : "");
+      + (k.collector
+          ? (k.dsLen > 0 ? ". Collector box and downspout are bent separately" : ". Collector box is bent separately; no downspout on this order")
+          : k.faceplate ? "" : ". Nothing goes on the outside — that is field work");
   } else {
     // Chimney cap: 4 side panels around a base rectangle, plus 4 triangular cap panels above.
     const pad = 4;
@@ -5498,7 +5507,7 @@ export default function ShopOrderApp() {
       // row was quoted, drawn and ticketed as. An item saved before the outlet choice existed
       // has no scupOutlet and was priced as a face plate; it does not pick up the new default.
       const sk = scupperSpec(p);
-      setScupOutlet(p.scupOutlet === "collector" ? "collector" : "faceplate");
+      setScupOutlet(sk.outside);
       setScupRoofMode(sk.roofShop ? "shop" : "field");
       setScupDeckLeg(sk.deckLeg);
       setScupFlange(sk.roofShop ? sk.flange : 6); // keep a sane number in the box for when they switch it on
@@ -6341,7 +6350,7 @@ export default function ShopOrderApp() {
                   return (
                     <>
                       <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>
-                        Opening width × height is the clear hole through the parapet. Wall thickness is how far the sleeve runs through it — measure it, don't take the nominal. The rough opening gets cut about ½" bigger all round than the sleeve. The face plate or a collector box goes outside; the roof side is usually field-made.
+                        Opening width × height is the clear hole through the parapet. Wall thickness is how far the sleeve runs through it — measure it, don't take the nominal. The rough opening gets cut about ½" bigger all round than the sleeve. Outside takes a face plate, a collector box, or nothing at all; the roof side is usually field-made.
                       </div>
                       <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                         <div style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
@@ -6379,16 +6388,17 @@ export default function ShopOrderApp() {
                         <div style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                           Outside the Wall
                           <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
-                            {[{ id: "faceplate", label: "Face Plate" }, { id: "collector", label: "Collector Box" }].map((o) => (
+                            {[{ id: "none", label: "Nothing" }, { id: "faceplate", label: "Face Plate" }, { id: "collector", label: "Collector Box" }].map((o) => (
                               <button key={o.id} type="button" data-testid={`scup-out-${o.id}`}
                                 onClick={() => {
                                   // Size the termination off the opening it has to cover, the way
                                   // Tapered Sides derives its taper from the body height — but only
                                   // on a real change, or re-tapping the chip you are already on
-                                  // throws away the sizes you just typed.
+                                  // throws away the sizes you just typed. Nothing to size for a
+                                  // bare sleeve, so it leaves both sets of numbers where they are.
                                   if (o.id !== scupOutlet) {
                                     if (o.id === "faceplate") { setScupPlateW((+partW || 12) + 4); setScupPlateH((+partH || 4) + 4); }
-                                    else { setScupBoxW((+partW || 12) + 4); setScupBoxD(Math.max(8, (+scupProj || 2) + 4)); }
+                                    else if (o.id === "collector") { setScupBoxW((+partW || 12) + 4); setScupBoxD(Math.max(8, (+scupProj || 2) + 4)); }
                                   }
                                   setScupOutlet(o.id);
                                 }}
@@ -6403,7 +6413,7 @@ export default function ShopOrderApp() {
                         </div>
                       </div>
                       <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 6 }}>
-                        A face plate is usually the overflow — no gutter and no box under it, so the water just drops. A collector box usually goes over the hole itself, with a downspout under it carrying the water down.
+                        Nothing sends the sleeve on its own — a box gets built in the field and hung there, or ordered by itself as a Collector Box part. A face plate is usually the overflow, no gutter and no box under it, so the water just drops. A collector box usually goes over the hole itself, with a downspout under it carrying the water down.
                       </div>
                       {scupOutlet === "faceplate" && (
                         <>
