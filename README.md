@@ -186,6 +186,16 @@ orders keep going to `ALERT_EMAIL_TO` and the shop text exactly as before.
   `owner_id`, `application_id` or `order_email`. The anon role's grant on the table itself
   is limited to those same columns, so a hand-written request can't read them either.
   Signed-in admin pages read the table.
+- **Shops claim their own listing.** A signed-in account with no listing sees the live
+  directory on Manage your listing and taps "This is my shop" (each prerendered supplier
+  page and the Get Listed form link straight to it). `claim_listing()` links the account
+  immediately when its confirmed email is at the listing's website domain and nobody owns
+  the listing yet; every other claim waits under **Listing claims** in Directory admin,
+  where `decide_listing_claim()` approves or dismisses it. The desk is emailed about a
+  pending claim and the claimant about the outcome (`listing-alert`, kinds `claim` and
+  `claim_decided`). Get Listed warns when the company or website is already on the
+  directory, and an application card in Directory admin flags the existing listing so the
+  changes go onto it instead of a second copy.
 - Every push and pull request runs the real build, prerender included, in GitHub Actions
   (`.github/workflows/build.yml`). Make it a required check on `main` so a red build can't
   be merged.

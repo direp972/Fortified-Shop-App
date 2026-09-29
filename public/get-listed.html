@@ -74,6 +74,7 @@
         <div class="fld"><label>Phone</label><input id="f-ph" inputmode="tel" placeholder="(555) 555-5555"></div>
       </div>
       <div class="fld"><label>Email *</label><input id="f-em" type="email" placeholder="you@company.com"></div>
+      <div id="f-already" class="err" style="display:none"></div>
     </div>
 
     <div class="step"><h3><span class="sn">2</span>Locations &amp; service area</h3>
@@ -459,6 +460,30 @@ async function uploadToBucket(f,prefix,co){
 }
 function showErr(m){const e=$("#f-err");e.textContent=m;e.style.display="block";e.scrollIntoView({block:"center"})}
 function hideErr(){$("#f-err").style.display="none"}
+
+/* Already on the directory? A shop that re-applies usually just wants to change its
+   listing, and a second application would become a second copy. The live directory is
+   public, so the check runs as the person types; it warns and points at the claim flow
+   but never blocks — a real second company with a similar name can still apply. */
+let liveDir=null,alreadyMatch=null;
+const hostOf=u=>{try{return new URL(/^https?:\/\//i.test(u)?u:'https://'+u).hostname.replace(/^www\./,'').toLowerCase()}catch(e){return ''}};
+const normName=n=>String(n||'').toLowerCase().replace(/\b(llc|inc|co|corp|ltd|company|the)\b/g,'').replace(/[^a-z0-9]/g,'');
+async function checkAlready(){
+  if(liveDir===null){
+    liveDir=[];
+    try{const r=await fetch(SUPA+"/rest/v1/directory_public?select=id,name,website",{headers:{apikey:KEY}});if(r.ok)liveDir=await r.json()}catch(e){}
+  }
+  const n=normName($("#f-co").value),h=hostOf($("#f-web").value.trim());
+  alreadyMatch=(n||h)?liveDir.find(l=>(n&&normName(l.name)===n)||(h&&hostOf(l.website||'')===h))||null:null;
+  const box=$("#f-already");
+  if(!alreadyMatch){box.style.display="none";box.textContent="";return}
+  box.textContent="";
+  box.append(alreadyMatch.name+" is already on the directory. To change that listing, claim it instead: ");
+  const a=document.createElement("a");a.href="/manage-listing.html#claim="+encodeURIComponent(alreadyMatch.id);a.textContent="Manage your listing →";a.style.cssText="color:inherit;font-weight:700";
+  box.append(a," Your email links it right away when it's at the shop's own website domain. A second application here would only create a second copy for us to sort out.");
+  box.style.display="block";
+}
+$("#f-co").addEventListener("blur",checkAlready);$("#f-web").addEventListener("blur",checkAlready);
 
 $("#f-go").onclick=async()=>{
   hideErr();
