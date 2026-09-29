@@ -44,11 +44,22 @@
   <a class="btn" href="/manage-listing.html">Refresh</a>
 </div>
 
-<div id="unlinked" class="lockmsg" style="display:none">
-  <p class="eyebrow" style="justify-content:center">No listing linked</p>
-  <p>You're signed in, but no directory listing is linked to this account yet.</p>
-  <p style="font-size:14px">Already listed on RoofCoil? Email <a href="mailto:orders@roofcoil.com" style="color:var(--copper);font-weight:600">orders@roofcoil.com</a> from your company email and ask us to link your listing to this account — it takes a minute on our side. Not listed yet? <a href="/get-listed.html" style="color:var(--copper);font-weight:600">Get listed free</a>.</p>
-  <a class="btn" href="/suppliers.html">Back to the directory</a>
+<div id="unlinked" class="mlwrap" style="display:none">
+  <p class="eyebrow">Which shop is yours?</p>
+  <h1 class="disp" style="font-size:clamp(24px,3.5vw,34px);margin:0 0 6px" id="c-title">Claim your listing</h1>
+  <p style="color:#4E6273;font-size:14.5px;max-width:70ch;margin:0 0 18px" id="c-intro">You're signed in, but no directory listing is linked to this account yet. Find your shop below and claim it. If your email address is at the shop's own website domain it links right away; otherwise the RoofCoil shop checks the claim, usually within a business day.</p>
+  <div class="step"><h3><span class="sn">1</span>Find your shop</h3>
+    <div class="fld"><label>Search the directory</label><input id="c-q" placeholder="Company name, city or website" autocomplete="off"></div>
+    <div id="c-results"><p style="color:var(--steel);font-size:13px">Loading the directory…</p></div>
+  </div>
+  <div class="step"><h3><span class="sn">2</span>Claim it</h3>
+    <p style="color:#4E6273;font-size:13.5px;margin:0 0 12px" id="c-picked">Tap a shop above first.</p>
+    <div class="fld"><label>Anything that helps us verify it's you (optional)</label><input id="c-note" maxlength="500" placeholder="Your name and role at the shop"></div>
+    <button class="btn" style="width:100%" id="c-send" disabled>This is my shop — link it to this account</button>
+    <div class="okline" id="c-note-line"></div>
+  </div>
+  <div class="step" id="c-pending-step" style="display:none"><h3><span class="sn">✓</span>Claims waiting for review</h3><div id="c-pending"></div></div>
+  <p style="color:var(--steel);font-size:13px;margin-top:18px">Not on the directory yet? <a href="/get-listed.html" style="color:var(--copper);font-weight:600">Get listed free</a>. Stuck? Email <a href="mailto:orders@roofcoil.com" style="color:var(--copper);font-weight:600">orders@roofcoil.com</a> or call <a href="tel:+19729447963" style="color:var(--copper);font-weight:600">972-944-7963</a>.</p>
 </div>
 
 <div id="manage" class="mlwrap" style="display:none">
@@ -101,6 +112,7 @@
   <div class="step" style="margin-top:26px"><h3><span class="sn">✓</span><span id="edits-title">Your edit requests</span></h3>
     <div id="myedits"><p style="color:var(--steel);font-size:13px">Loading…</p></div>
   </div>
+  <p style="color:var(--steel);font-size:13px;margin-top:14px">Run another shop that's on the directory? <a href="#claim" id="c-another" style="color:var(--copper);font-weight:600">Claim that listing too</a>.</p>
 </div>
 
 <script>
@@ -168,7 +180,7 @@ document.addEventListener('rc:auth',async e=>{
   // a fetch failure is NOT "no listing" — show a retry state instead
   try{myListings=await api('/rest/v1/directory_listings?select=id,name,status,phone,website,gmaps_url,licensed_states,coil_desc,fab_desc,colors,abilities,accepts_orders,order_email&owner_id=eq.'+me+'&order=name.asc')}
   catch(x){$('#loaderr').style.display='block';return}
-  if(!myListings.length){$('#unlinked').style.display='block';return}
+  if(!myListings.length||/^#claim(=|$)/.test(location.hash)){showClaim();if(!myListings.length)return}
   $('#manage').style.display='block';
   if(myListings.length>1){
     const row=$('#pickrow');row.style.display='flex';
@@ -326,6 +338,87 @@ async function loadMyEdits(){
       del.onclick=async()=>{try{await api('/rest/v1/listing_edits?id=eq.'+r.id,{method:'DELETE'});loadMyEdits()}catch(x){alert('Could not withdraw: '+x.message)}};
       card.appendChild(del);
     }
+    box.appendChild(card);
+  });
+}
+
+/* ── claim a listing ───────────────────────────────────────────────────────
+   An account with no listing (or one that runs a second shop) picks a live
+   listing and calls claim_listing(). The database links it on the spot when
+   the account's email is at the listing's website domain; anything else
+   waits for staff in the directory admin. Both outcomes are emailed.       */
+let directory=[],picked=null,claimsLoaded=false;
+const hostOf=u=>{try{return new URL(/^https?:\/\//i.test(u)?u:'https://'+u).hostname.replace(/^www\./,'').toLowerCase()}catch(e){return ''}};
+function showClaim(){
+  $('#unlinked').style.display='block';
+  if(myListings.length){$('#c-title').textContent='Claim another listing';$('#c-intro').textContent='Pick the shop below. If your email address is at its website domain it links right away; otherwise the RoofCoil shop checks the claim, usually within a business day.'}
+  if(!claimsLoaded){claimsLoaded=true;loadDirectory();loadMyClaims()}
+  $('#unlinked').scrollIntoView({behavior:'smooth',block:'start'});
+}
+$('#c-another').onclick=e=>{e.preventDefault();showClaim()};
+async function loadDirectory(){
+  const box=$('#c-results');
+  try{directory=await api('/rest/v1/directory_public?select=id,name,city,address,website&order=name.asc')}
+  catch(x){box.textContent='Could not load the directory — refresh this page.';return}
+  const m=location.hash.match(/^#claim=([0-9a-f-]{36})$/i);
+  if(m){const hit=directory.find(d=>d.id===m[1]);if(hit){$('#c-q').value=hit.name;pick(hit)}}
+  renderResults();
+}
+function renderResults(){
+  const box=$('#c-results');box.textContent='';
+  const q=$('#c-q').value.trim().toLowerCase();
+  const mine=new Set(myListings.map(l=>l.id));
+  const rows=directory.filter(d=>!mine.has(d.id)&&(!q||[d.name,d.city,d.address,hostOf(d.website||'')].join(' ').toLowerCase().includes(q))).slice(0,12);
+  if(!rows.length){const p=document.createElement('p');p.style.cssText='color:var(--steel);font-size:13px';p.textContent=q?'No listing matches that. Try just the company name, or get listed below.':'No listings to show.';box.appendChild(p);return}
+  rows.forEach(d=>{
+    const card=document.createElement('div');card.className='ecard';card.style.cursor='pointer';
+    if(picked&&picked.id===d.id)card.style.borderColor='var(--gold)';
+    const b=document.createElement('b');b.style.fontSize='14px';b.textContent=d.name;card.appendChild(b);
+    const meta=document.createElement('div');meta.className='meta';meta.textContent=[d.city,hostOf(d.website||'')].filter(Boolean).join(' · ');card.appendChild(meta);
+    card.onclick=()=>pick(d);
+    box.appendChild(card);
+  });
+}
+$('#c-q').addEventListener('input',renderResults);
+function pick(d){
+  picked=d;renderResults();
+  const host=hostOf(d.website||''),dom=(myEmail||'').split('@')[1]||'';
+  const match=host&&dom&&(dom===host||dom.endsWith('.'+host));
+  $('#c-picked').textContent=d.name+(match?' — your email is at '+host+', so this links right away.':host?' — your email isn\'t at '+host+', so the RoofCoil shop will check this claim first.':' — this listing has no website on file, so the RoofCoil shop will check this claim first.');
+  $('#c-send').disabled=false;
+}
+$('#c-send').onclick=async()=>{
+  const line=$('#c-note-line');line.classList.remove('errline');line.textContent='';
+  if(!picked){line.textContent='Tap your shop in the list first.';line.classList.add('errline');return}
+  const btn=$('#c-send');btn.disabled=true;btn.textContent='Linking…';
+  try{
+    const res=await api('/rest/v1/rpc/claim_listing',{method:'POST',body:JSON.stringify({p_listing_id:picked.id,p_note:$('#c-note').value.trim()||null})});
+    if(res==='linked'||res==='already-yours'){
+      line.textContent='✓ Linked — loading your listing…';
+      history.replaceState(null,'',location.pathname);
+      setTimeout(()=>location.reload(),700);return;
+    }
+    line.textContent='✓ Claim sent. We\'ll check it, usually within a business day, and email you either way.';
+    picked=null;$('#c-note').value='';renderResults();$('#c-picked').textContent='Tap a shop above first.';
+    loadMyClaims();
+  }catch(x){
+    // the database raises plain sentences; PostgREST wraps them as {"message":...}
+    let msg=x.message||'Could not send the claim.';try{const j=JSON.parse(msg);if(j.message)msg=j.message}catch(e){}
+    line.textContent=msg;line.classList.add('errline');
+  }
+  btn.disabled=!picked;btn.textContent='This is my shop — link it to this account';
+};
+async function loadMyClaims(){
+  let rows=[];
+  try{rows=await api('/rest/v1/listing_claims?select=id,listing_id,status,created_at&status=eq.pending&order=created_at.desc')}catch(x){return}
+  const step=$('#c-pending-step'),box=$('#c-pending');box.textContent='';
+  step.style.display=rows.length?'':'none';
+  rows.forEach(r=>{
+    const d=directory.find(x=>x.id===r.listing_id);
+    const card=document.createElement('div');card.className='ecard';
+    const b=document.createElement('b');b.style.fontSize='13px';b.textContent=d?d.name:'Listing';card.appendChild(b);
+    const st=document.createElement('span');st.className='stat pending';st.textContent='waiting for review';card.appendChild(st);
+    const meta=document.createElement('div');meta.className='meta';meta.textContent='sent '+new Date(r.created_at).toLocaleDateString();card.appendChild(meta);
     box.appendChild(card);
   });
 }

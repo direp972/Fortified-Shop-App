@@ -61,6 +61,7 @@
 
   <div class="cols">
     <div>
+      <div class="panel"><h2>Listing claims <span class="cnt" id="cl-count">…</span></h2><div id="claims"><p class="empty">Loading…</p></div></div>
       <div class="panel"><h2>Supplier edits <span class="cnt" id="se-count">…</span></h2><div id="sedits"><p class="empty">Loading…</p></div></div>
       <div class="panel"><h2>Applications <span class="cnt" id="app-count">…</span></h2><div id="apps"><p class="empty">Loading…</p></div></div>
       <div class="panel"><h2>Listings <span class="cnt" id="l-count">…</span></h2><div id="listings"><p class="empty">Loading…</p></div></div>
@@ -207,8 +208,7 @@ document.addEventListener('rc:auth',async e=>{
   if(!staff.length){$('#locked').style.display='block';return}
   me=s.user.id;
   $('#admin').style.display='block';
-  loadApps();
-  loadOwners().then(loadListings).then(loadEdits);
+  loadOwners().then(loadListings).then(()=>{loadApps();loadEdits();loadClaims()});
 });
 
 /* ── applications ──────────────────────────────────────────────────────── */
@@ -235,6 +235,14 @@ async function loadApps(){
       +(d.licensed_states?'\nlicensed in: '+d.licensed_states:'')
       +(a.notes?'\nnotes: '+a.notes:'');
     meta.style.whiteSpace='pre-line';card.appendChild(meta);
+    // a shop that is already listed usually re-applies because it had no way to edit:
+    // steer the changes onto the existing listing instead of building a second one
+    const dup=existingListingFor(a);
+    if(dup){
+      const warn=document.createElement('div');warn.className='meta';warn.style.color='#B3261E';
+      warn.textContent='⚠ Already on the directory as "'+dup.name+'" ('+dup.status+(ownerEmails[dup.id]?', owner '+ownerEmails[dup.id]:', no owner account linked')+'). Apply their changes to that listing and link their account — Build listing would create a second copy.';
+      card.appendChild(warn);
+    }
     const chartUrl=safeUrl(a.colorchart_url,true);
     if(chartUrl){
       const link=document.createElement('a');link.href=chartUrl;link.target='_blank';link.rel='noopener';
@@ -274,8 +282,12 @@ async function loadApps(){
       card.appendChild(strip);
     }
     const row=document.createElement('div');row.className='row';
-    const build=document.createElement('button');build.className='mini gold';build.textContent='Build listing →';
-    build.onclick=()=>prefillFromApp(a);row.appendChild(build);
+    if(dup){
+      const openEx=document.createElement('button');openEx.className='mini gold';openEx.textContent='Open existing listing';
+      openEx.onclick=()=>openListing(dup);row.appendChild(openEx);
+    }
+    const build=document.createElement('button');build.className=dup?'mini':'mini gold';build.textContent='Build listing →';
+    build.onclick=()=>{if(dup&&!confirm(dup.name+' is already on the directory. Build a second listing anyway?'))return;prefillFromApp(a)};row.appendChild(build);
     const del=document.createElement('button');del.className='mini red';del.textContent='Delete';
     del.onclick=async()=>{if(!confirm('Delete this application? This cannot be undone.'))return;
       try{await api('/rest/v1/manufacturer_applications?id=eq.'+a.id,{method:'DELETE'});loadApps()}catch(x){alert('Delete failed: '+x.message)}};
@@ -818,6 +830,55 @@ async function decideEdit(e,status){
     await api('/rest/v1/listing_edits?id=eq.'+e.id,{method:'PATCH',body:JSON.stringify({status,reviewed_at:new Date().toISOString(),reviewed_by:me})});
     loadEdits();
   }catch(x){alert('Update failed: '+x.message)}
+}
+
+/* ── listing claims (from /manage-listing.html) ────────────────────────────
+   A signed-in supplier picked a listing and asked to manage it. Claims whose
+   email is at the listing's website domain were linked by the database
+   already and never show here; the rest wait for a decision.             */
+const hostOf=u=>{try{return new URL(/^https?:\/\//i.test(u)?u:'https://'+u).hostname.replace(/^www\./,'').toLowerCase()}catch(e){return ''}};
+const normName=n=>String(n||'').toLowerCase().replace(/\b(llc|inc|co|corp|ltd|company|the)\b/g,'').replace(/[^a-z0-9]/g,'');
+function existingListingFor(a){
+  const n=normName(a.company),h=hostOf(a.website||'');
+  return listings.find(l=>(n&&normName(l.name)===n)||(h&&hostOf(l.website||'')===h))||null;
+}
+async function loadClaims(){
+  const box=$('#claims');box.textContent='';
+  let rows=[];
+  try{rows=await api('/rest/v1/listing_claims?select=*&status=eq.pending&order=created_at.asc')}
+  catch(x){box.textContent='Could not load claims.';$('#cl-count').textContent='!';return}
+  $('#cl-count').textContent=rows.length;
+  if(!rows.length){const p=document.createElement('p');p.className='empty';p.textContent='No claims waiting — suppliers whose email matches their website domain are linked automatically.';box.appendChild(p);return}
+  rows.forEach(c=>{
+    const l=listings.find(x=>x.id===c.listing_id);
+    const card=document.createElement('div');card.className='appcard';
+    const b=document.createElement('b');b.textContent=l?l.name:'(listing gone)';card.appendChild(b);
+    const meta=document.createElement('div');meta.className='meta';meta.style.whiteSpace='pre-line';
+    const em=String(c.email||'').replace(/\s+/g,' ').slice(0,120);
+    const host=l?hostOf(l.website||''):'';
+    const own=l?ownerEmails[l.id]:null;
+    meta.textContent='from '+em+' · '+new Date(c.created_at).toLocaleString()
+      +'\nlisting website: '+(host||'none on file')+' · email domain: '+(em.split('@')[1]||'?')
+      +(own?'\n⚠ already owned by '+own+' — approving replaces them':'')
+      +(l&&l.phone?'\ncall to verify: '+l.phone:'')
+      +(c.note?'\nnote: '+String(c.note).replace(/\s+/g,' ').slice(0,500):'');
+    card.appendChild(meta);
+    const row=document.createElement('div');row.className='row';
+    const ok=document.createElement('button');ok.className='mini gold';ok.textContent='Approve — link account';
+    ok.onclick=()=>decideClaim(c,true);row.appendChild(ok);
+    if(l){const open=document.createElement('button');open.className='mini';open.textContent='Open in editor';open.onclick=()=>openListing(l);row.appendChild(open)}
+    const no=document.createElement('button');no.className='mini red';no.textContent='Dismiss';
+    no.onclick=()=>decideClaim(c,false);row.appendChild(no);
+    card.appendChild(row);
+    box.appendChild(card);
+  });
+}
+async function decideClaim(c,approve){
+  if(!approve&&!confirm('Dismiss this claim? They will be emailed that it was not linked.'))return;
+  try{
+    await api('/rest/v1/rpc/decide_listing_claim',{method:'POST',body:JSON.stringify({p_claim_id:c.id,p_approve:approve})});
+    await loadOwners();loadListings().then(()=>{loadClaims();loadEdits()});
+  }catch(x){alert('Could not decide the claim: '+x.message)}
 }
 
 /* ── owner linking ─────────────────────────────────────────────────────── */

@@ -8,6 +8,11 @@
 //                   published, with the links to manage it.
 //   edit_decided  — listing_edit_decided_alert: a proposed edit was applied or dismissed.
 //                   Emails whoever proposed it.
+//   claim         — listing_claim_alert: a signed-in account asked to manage a listing and
+//                   its email didn't match the listing's website domain. Emails the desk to
+//                   approve or dismiss it in the directory admin.
+//   claim_decided — listing_claim_alert: a claim was approved (by the domain match or by
+//                   staff) or dismissed. Emails the claimant.
 //
 // Settings come from the function's environment first, then from Supabase Vault
 // through public.get_secret (service role only), so each can be set with one SQL
@@ -135,10 +140,61 @@ async function editDecided(record: Record<string, any>) {
   console.log("listing-alert edit_decided", name, record?.status, await sendMail(to, subject, body));
 }
 
+async function claim(record: Record<string, any>) {
+  const name = record?.listing_name || "a listing";
+  const from = isEmail(record?.email) ? record.email : "someone";
+  const subject = `Listing claim — ${name}`;
+  const body = [
+    `${from} says they run ${name} and wants to manage its RoofCoil.com listing.`,
+    ``,
+    `Their email address is not at the listing's website domain (${record?.listing_website || "no website on file"}), so it needs a look: check the domain, or call the shop's public number and ask.`,
+    record?.note ? `Their note: ${record.note}` : null,
+    ``,
+    `Approve or dismiss it under Listing claims:`,
+    `${SITE}/directory-admin.html`,
+  ].filter((l) => l !== null).join("\n");
+  const to = (await setting("LISTING_ALERT_TO")) ?? "orders@roofcoil.com";
+  console.log("listing-alert claim", name, await sendMail(to, subject, body));
+}
+
+async function claimDecided(record: Record<string, any>) {
+  const to = isEmail(record?.email) ? record.email : null;
+  const name = record?.listing_name || "your listing";
+  if (!to) { console.log("listing-alert claim_decided: no email for", name); return; }
+  const approved = record?.status === "approved";
+  const subject = approved ? `You're now managing ${name} on RoofCoil.com` : `About your claim on ${name}`;
+  const body = (approved
+    ? [
+      `${name} is now linked to this account.`,
+      record?.method === "domain"
+        ? `Your email address is at the shop's own website domain, so it was linked automatically.`
+        : `A RoofCoil staff member approved your claim.`,
+      ``,
+      `Manage your listing: ${SITE}/manage-listing.html`,
+      `Change the phone, website, abilities, colors and the two card sentences there and send them in. We review edits, usually within a business day.`,
+      ``,
+      `Want to take orders through RoofCoil? Switch it on in step 5 of Manage your listing and contractors can send trim, panel and 3D-part orders to your shop from the Panel & Trim app.`,
+      ``,
+      `Questions? Reply here or call ${PHONE}.`,
+      ``,
+      `RoofCoil.com · Fortified Metals · ${PHONE}`,
+    ]
+    : [
+      `We couldn't link ${name} to this account.`,
+      ``,
+      `If you do run this shop, reply to this email from a company address or call ${PHONE} and we'll sort it out.`,
+      ``,
+      `RoofCoil.com · Fortified Metals · ${PHONE}`,
+    ]).join("\n");
+  console.log("listing-alert claim_decided", name, record?.status, await sendMail(to, subject, body));
+}
+
 async function process(kind: string, record: Record<string, any>) {
   try {
     if (kind === "listing_live") await listingLive(record);
     else if (kind === "edit_decided") await editDecided(record);
+    else if (kind === "claim") await claim(record);
+    else if (kind === "claim_decided") await claimDecided(record);
     else await application(record);
   } catch (e) {
     console.error("listing-alert failed", kind, e);

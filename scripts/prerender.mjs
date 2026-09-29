@@ -364,7 +364,7 @@ ${NAV("Directory")}
     </div>
     <div class="step"><h3>Is this your shop?</h3>
       <p>Keep the listing current — abilities, colors, photos and locations — and contractors searching by what the job needs will keep finding you.</p>
-      <a class="btn dark" href="/manage-listing.html">Manage this listing</a>
+      <a class="btn dark" href="/manage-listing.html#claim=${l.id}">Manage this listing</a>
     </div>
   </div>
 </div>
