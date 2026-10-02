@@ -23,6 +23,8 @@
 <link rel="stylesheet" href="/styles.css">
 <script src="/auth.js" defer></script>
 <script defer src="/_vercel/insights/script.js"></script>
+<script src="/site-config.js"></script>
+<script src="/places.js"></script>
 <style>
 .chipgrid{display:flex;flex-wrap:wrap;gap:8px}
 .filebox{border:1.5px dashed rgba(15,61,92,.28);border-radius:var(--r-sm);padding:18px;text-align:center;cursor:pointer;transition:border-color .15s,background .15s;background:var(--paper)}
@@ -395,6 +397,20 @@ function addLocRow(){
     if(on)syncLocChips(row);
   };
   row.querySelector(".l-x").onclick=()=>{row.remove();syncLocLabels()};
+  // Google suggests as they type (when site-config.js carries a key). A picked street
+  // address fills City, State and pins the row, so the geocoder check at submit is
+  // skipped for it; a picked city only pins the fallback. Typing again after a pick
+  // drops the pin, so a hand-edited address is checked like any other.
+  const addrIn=row.querySelector(".l-addr"),cityIn=row.querySelector(".l-city");
+  if(window.rcPlaces&&rcPlaces.enabled){
+    rcPlaces.attach(addrIn,{kind:"address",onPick:p=>{
+      if(p.cityState)cityIn.value=p.cityState;
+      if(p.lat!=null&&p.street){row.dataset.lat=p.lat;row.dataset.lng=p.lng}else{delete row.dataset.lat;delete row.dataset.lng}
+    }});
+    rcPlaces.attach(cityIn,{kind:"region",onPick:p=>{if(p.lat!=null){row.dataset.cityLat=p.lat;row.dataset.cityLng=p.lng}}});
+    addrIn.addEventListener("input",()=>{delete row.dataset.lat;delete row.dataset.lng});
+    cityIn.addEventListener("input",()=>{delete row.dataset.cityLat;delete row.dataset.cityLng});
+  }
   locsBox.appendChild(row);syncLocLabels();
   return row;
 }
@@ -527,21 +543,26 @@ $("#f-go").onclick=async()=>{
       const sel=[...row.querySelectorAll(".l-abil .seg.sel")].map(b=>b.dataset.v).filter(v=>allAbilities.includes(v));
       if(sel.length&&sel.length<allAbilities.length)sub=sel;
     }
-    locs.push({address,city,lat:null,lng:null,verified:false,abilities:sub});
+    const pinned=row.dataset.lat?{lat:+row.dataset.lat,lng:+row.dataset.lng}:null;
+    const cityPin=row.dataset.cityLat?{lat:+row.dataset.cityLat,lng:+row.dataset.cityLng}:null;
+    locs.push({address,city,lat:pinned?pinned.lat:null,lng:pinned?pinned.lng:null,verified:!!pinned,abilities:sub,_cityPin:cityPin});
   }
   if(!locs.length||!locs[0].address||!locs[0].city){showErr("Your main location needs a street address and City, State — that's what puts you on distance search.");return}
   for(let i=1;i<locs.length;i++){if(!locs[i].city){showErr("Location "+(i+1)+" needs at least City, State.");return}}
   const btn=$("#f-go");btn.disabled=true;btn.textContent="Checking your address…";
   try{
+    let asked=0;
     for(let i=0;i<locs.length;i++){
-      if(i)await new Promise(res=>setTimeout(res,1100)); // one polite geocoder request at a time
       const L=locs[i];
+      if(L.verified)continue; // pinned by a Google pick — nothing to check
+      if(asked++)await new Promise(res=>setTimeout(res,1100)); // one polite geocoder request at a time
       let hit=L.address?await geocode(L.address+", "+L.city):null;
       if(hit){L.lat=hit.lat;L.lng=hit.lng;L.verified=true;continue}
-      hit=await geocode(L.city);
+      hit=L._cityPin||await geocode(L.city);
       if(hit){L.lat=hit.lat;L.lng=hit.lng}
     }
   }catch(x){/* geocoder unreachable — never lose an application over it */}
+  locs.forEach(L=>{if(!L.lat&&L._cityPin){L.lat=L._cityPin.lat;L.lng=L._cityPin.lng}delete L._cityPin});
   const unverified=locs.filter(L=>!L.verified&&L.address).map(L=>L.address+", "+L.city);
   const geoFp=JSON.stringify(locs.map(L=>[L.address,L.city]));
   if(unverified.length&&geoFp!==lastGeoWarn){
