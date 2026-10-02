@@ -4187,17 +4187,26 @@ export default function ShopOrderApp() {
     || (FAB_COMPANIES.find((c) => c.name.split(" ")[0].toLowerCase() === fabricatorCo.split(" ")[0].toLowerCase()) || FAB_COMPANIES[0]).bases;
 
   // Look up one-way driving miles from the chosen fabricator's NEAREST base to the
-  // job site — geocode via OpenStreetMap, route via OSRM, straight-line ×1.25 fallback.
-  const lookupJobSiteMiles = async () => {
-    const addr = jobSiteAddress.trim();
+  // job site — coordinates from the Google pick when there was one, else geocode via
+  // OpenStreetMap; route via OSRM, straight-line ×1.25 fallback. A newer lookup always
+  // wins over an older one still in flight (blur fires a text lookup as a pick lands).
+  const lookupSeq = useRef(0);
+  const lookupJobSiteMiles = async (picked) => {
+    const coords = picked && typeof picked.lat === "number" && typeof picked.lng === "number" ? picked : null;
+    const addr = coords ? (picked.label || jobSiteAddress.trim()) : jobSiteAddress.trim();
     if (!addr) { setMilesLookupNote("Enter the job site address first."); return; }
+    const my = ++lookupSeq.current;
     setMilesLookupBusy(true);
     setMilesLookupNote("");
     try {
-      const g = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=${encodeURIComponent(addr)}`);
-      const gj = await g.json();
-      if (!gj || !gj[0]) throw new Error("not found");
-      const lat = +gj[0].lat, lon = +gj[0].lon;
+      let lat, lon;
+      if (coords) { lat = coords.lat; lon = coords.lng; }
+      else {
+        const g = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=${encodeURIComponent(addr)}`);
+        const gj = await g.json();
+        if (!gj || !gj[0]) throw new Error("not found");
+        lat = +gj[0].lat; lon = +gj[0].lon;
+      }
       let best = null;
       for (const base of fabBases) {
         let miles = null;
@@ -4210,13 +4219,28 @@ export default function ShopOrderApp() {
         if (est) miles = havMiles(base.lat, base.lng, lat, lon) * 1.25;
         if (!best || miles < best.miles) best = { miles, name: base.name, est };
       }
+      if (my !== lookupSeq.current) return;
       const rounded = Math.max(1, Math.round(best.miles));
       setJobSiteMiles(rounded);
       setMilesLookupNote(`${rounded} mi one way from the ${best.name} shop${best.est ? " (estimated)" : ""}`);
     } catch (e) {
+      if (my !== lookupSeq.current) return;
       setMilesLookupNote("Couldn't find that address — type the one-way miles in yourself.");
     }
-    setMilesLookupBusy(false);
+    if (my === lookupSeq.current) setMilesLookupBusy(false);
+  };
+  // The job site input mounts and unmounts with the Shop / Job Site switch, so Google's
+  // suggestions attach through a callback ref; the ref below keeps the pick handler on
+  // the latest lookup (its fabricator bases change with the shop picker).
+  const lookupRef = useRef(lookupJobSiteMiles);
+  lookupRef.current = lookupJobSiteMiles;
+  const attachJobSitePlaces = (el) => {
+    if (!el || el.dataset.rcPlaces || !window.rcPlaces || !window.rcPlaces.enabled) return;
+    window.rcPlaces.attach(el, { kind: "address", onPick: (p) => {
+      const label = p.formatted || el.value;
+      setJobSiteAddress(label);
+      lookupRef.current({ lat: p.lat, lng: p.lng, label });
+    } });
   };
 
   // Switching fabricators moves the home bases, so refresh the mileage lookup.
@@ -6887,7 +6911,7 @@ export default function ShopOrderApp() {
                   <>
                     <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 10 }}>
                       Job Site Address
-                      <input value={jobSiteAddress} onChange={(e) => setJobSiteAddress(e.target.value)} onBlur={lookupJobSiteMiles}
+                      <input ref={attachJobSitePlaces} value={jobSiteAddress} onChange={(e) => setJobSiteAddress(e.target.value)} onBlur={() => lookupJobSiteMiles()}
                         placeholder="Street address, city, state"
                         style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
                     </label>

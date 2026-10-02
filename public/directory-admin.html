@@ -9,6 +9,8 @@
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
 <script src="/auth.js" defer></script>
+<script src="/site-config.js"></script>
+<script src="/places.js"></script>
 <style>
 .admwrap{max-width:1100px;margin:0 auto;padding:clamp(18px,3vw,34px) var(--gut) 60px}
 .cols{display:grid;grid-template-columns:1fr 1.2fr;gap:22px;align-items:start}
@@ -498,6 +500,19 @@ function addAdmLoc(pref){
   row.querySelector('.al-city').value=pref.city||'';
   row.querySelector('.al-lat').value=pref.lat==null?'':pref.lat;
   row.querySelector('.al-lng').value=pref.lng==null?'':pref.lng;
+  // Google suggests as staff type (when site-config.js carries a key): a picked street
+  // address fills City, State and both coordinates; a picked city pins only when the
+  // address is blank. The Geocode button stays as the OpenStreetMap fallback.
+  if(window.rcPlaces&&rcPlaces.enabled){
+    rcPlaces.attach(row.querySelector('.al-addr'),{kind:'address',onPick:p=>{
+      if(p.cityState)row.querySelector('.al-city').value=p.cityState;
+      if(p.lat!=null){row.querySelector('.al-lat').value=p.lat;row.querySelector('.al-lng').value=p.lng}
+      const note=$('#geo-note');note.classList.remove('errline');note.textContent='✓ Pinned from Google: '+(p.formatted||p.name);
+    }});
+    rcPlaces.attach(row.querySelector('.al-city'),{kind:'region',onPick:p=>{
+      if(p.lat!=null&&!row.querySelector('.al-addr').value.trim()){row.querySelector('.al-lat').value=p.lat;row.querySelector('.al-lng').value=p.lng}
+    }});
+  }
   row.querySelector('.al-geo').onclick=async()=>{
     const note=$('#geo-note');note.classList.remove('errline');
     const addr=row.querySelector('.al-addr').value.trim(),city=row.querySelector('.al-city').value.trim();

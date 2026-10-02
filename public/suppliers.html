@@ -30,6 +30,8 @@
 <link rel="stylesheet" href="/styles.css">
 <script src="/auth.js" defer></script>
 <script defer src="/_vercel/insights/script.js"></script>
+<script src="/site-config.js"></script>
+<script src="/places.js"></script>
 <style>
 .finder{background:linear-gradient(180deg,var(--night),var(--ink) 130%);color:#EAF1F6;border-radius:var(--r);padding:26px 28px;margin-bottom:26px;box-shadow:var(--shadow-2)}
 .finder .fq{font-family:var(--disp);font-size:20px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;margin:0 0 4px}
@@ -316,6 +318,8 @@ function miles(a,b){
 // nearest one. A location may carry its own ability subset — the radius
 // filter only counts a location that can actually run what was asked for.
 // Listings without coordinates sort last and never match a radius filter.
+// Where distance is measured from: a place picked in the City or area box, else GPS.
+const here=()=>state.origin||state.me;
 function cardLocs(c){
   if(c._locs)return c._locs;
   let raw=[];
@@ -351,7 +355,7 @@ const cardMiles=(c,wants)=>{
   let m=Infinity;
   for(const l of cardLocs(c)){
     if(wants&&wants.length&&l.abilities&&!wants.every(a=>hasAbility(l.abilities,a)))continue;
-    const d=miles(state.me,l);if(d<m)m=d;
+    const d=miles(here(),l);if(d<m)m=d;
   }
   return m;
 };
@@ -379,18 +383,20 @@ function apply(){
     const have=c.dataset.abilities.split('|');
     let ok=wants.every(a=>hasAbility(have,a));
     if(ok&&color){const cols=c.dataset.colors?c.dataset.colors.split('|'):[];ok=cols.includes(color)}
-    if(ok&&locq){ok=(c.dataset.city+' '+c.dataset.area).toLowerCase().includes(locq)}
-    if(ok&&radius&&state.me){ok=cardMiles(c,wants)<=radius}
+    // a place picked from Google's suggestions is a point, not a keyword: distance
+    // does the narrowing (and the radius box), the text match only runs for typed words
+    if(ok&&locq&&!state.origin){ok=(c.dataset.city+' '+c.dataset.area).toLowerCase().includes(locq)}
+    if(ok&&radius&&here()){ok=cardMiles(c,wants)<=radius}
     c.style.display=ok?'':'none';if(ok)shown++;
     // shown and sorted by the nearest branch that can run what was asked for
-    const mi=state.me?cardMiles(c,wants):null;
+    const mi=here()?cardMiles(c,wants):null;
     c.querySelector('.dist').textContent=(mi!==null&&isFinite(mi))?' · ~'+Math.round(mi)+' mi':'';
   });
-  if(state.me)[...cards].sort((a,b)=>cardMiles(a,wants)-cardMiles(b,wants)).forEach(c=>dir.appendChild(c));
+  if(here())[...cards].sort((a,b)=>cardMiles(a,wants)-cardMiles(b,wants)).forEach(c=>dir.appendChild(c));
   const any=wants.length||color||locq||radius;
   $('#rcount').textContent=cards.length?shown+' of '+cards.length+' listed shops'+(any?' match':''):'Loading listed shops…';
   $('#noresults').style.display=(shown||!cards.length)?'none':'block';
-  $('#fclear').style.display=(any||state.me)?'inline':'none';
+  $('#fclear').style.display=(any||here())?'inline':'none';
   $$('.fsel select').forEach(s=>s.classList.toggle('set',!!s.value));
   $('#loc-q').classList.toggle('set',!!locq);
   if(window.rcState&&any)rcState.merge({lastDirectorySearch:{needs:wants,color,loc:locq,radius}});
@@ -399,11 +405,19 @@ function apply(){
 // Every added answer narrows the list — and the first one asks for GPS so
 // distance can narrow and sort it too.
 $$('.fsel select').forEach(s=>s.addEventListener('change',()=>{requestGeo();apply()}));
+// Typing in the box again means the picked point no longer describes it.
+$('#loc-q').addEventListener('input',()=>{state.origin=null});
 $('#loc-q').addEventListener('input',apply);
+if(window.rcPlaces&&rcPlaces.enabled)rcPlaces.attach($('#loc-q'),{kind:'region',onPick:p=>{
+  if(p.lat==null)return;
+  state.origin={lat:p.lat,lng:p.lng};
+  $('#gnote').textContent='Sorted closest to '+$('#loc-q').value+' — straight-line miles shown on each shop.';
+  apply();
+}});
 $('#loc-me').onclick=()=>{state.geoAsked=false;requestGeo()};
 $('#fclear').onclick=()=>{
   $$('.fsel select').forEach(s=>s.value='');
-  $('#loc-q').value='';
+  $('#loc-q').value='';state.origin=null;
   apply();
 };
 

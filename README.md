@@ -186,6 +186,15 @@ orders keep going to `ALERT_EMAIL_TO` and the shop text exactly as before.
   `owner_id`, `application_id` or `order_email`. The anon role's grant on the table itself
   is limited to those same columns, so a hand-written request can't read them either.
   Signed-in admin pages read the table.
+- **Address fields suggest as you type** (Get Listed locations, the directory's "City or
+  area" box, the admin editor's locations, the app's Job Site Address) through Google
+  Places API (New), shared in `public/places.js`. The browser key goes in
+  `public/site-config.js`; restrict it in Google Cloud by HTTP referrer (roofcoil.com,
+  www.roofcoil.com, shop.roofcoil.com, fortifiedmetals.com, www.fortifiedmetals.com,
+  localhost) and by API (Maps JavaScript API, Places API (New)). A picked address carries
+  its coordinates, so the OpenStreetMap check at submit is skipped for it; with the key
+  empty every field behaves as before. One autocomplete session is billed per address
+  picked, not per keystroke.
 - **Shops claim their own listing.** A signed-in account with no listing sees the live
   directory on Manage your listing and taps "This is my shop" (each prerendered supplier
   page and the Get Listed form link straight to it). `claim_listing()` links the account
