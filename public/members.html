@@ -178,8 +178,8 @@ body.in-apps footer{display:none}
 <script>
 const COLORS=[["Regal White","#E3E1DC"],["Almond","#D9C9AE"],["Sandstone","#C7BEB0"],["Surrey Beige","#A9906F"],["Ash Gray","#9C9088"],["Slate Gray","#706A66"],["Burnished Slate","#565B5E"],["Charcoal","#55504C"],["Medium Bronze","#4A3E36"],["Mansard Brown","#3E2A24"],["Dark Bronze","#3A322C"],["Matte Black","#26262A"],["Regal Blue","#1C5C7A"],["Evergreen","#1F3D2E"],["Copper Metallic","#A0602E"],["Colonial Red","#7A2422"],["Patina Green","#4E8C74"],["Galvalume","#D8D6D0"],["Texas Silver","#B0B4B7"],["Terra Cotta","#B5623E"]];
 const SEAMN={snap:"Snap-lock",mech:"Mechanical"};
-const FORT_EXCLUDE=["Terra Cotta","Sandstone","Patina Green","Regal Blue","Colonial Red","Burnished Slate"];
-const FORT_EXTRA=[["Patrician Bronze","#4B4641"],["PaintGrip Ultra","#AEB4B6"],["Bonderized / Paint Grip","#7E837F"],["Bare Copper","#B87333"]];
+const FORT_EXCLUDE=["Terra Cotta","Sandstone","Patina Green","Regal Blue","Colonial Red"];
+const FORT_EXTRA=[["PaintGrip Ultra","#AEB4B6"],["Bonderized / Paint Grip","#7E837F"],["Bare Copper","#B87333"]];
 const brandColors=b=>b&&b.id==="fortified"?COLORS.filter(c=>!FORT_EXCLUDE.includes(c[0])).concat(FORT_EXTRA):COLORS;
 const BRANDS=[
 {id:"fortified",name:"Fortified Sheet Metal",tg:"Coil, flats, panel & trim",sig:"#A0602E",finishes:["PVDF","SMP","PaintGrip Ultra","Bonderized"],
