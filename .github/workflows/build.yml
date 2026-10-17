@@ -2,6 +2,10 @@
 # prerender reads the live public directory with the publishable key, so a broken anonymous
 # read (the September 16 outage) fails here before anything merges. Make this check required
 # on main under Settings > Branches to stop a red build from being merged.
+#
+# The build needs the same two public values the app is built with. They live as repository
+# variables (Settings > Secrets and variables > Actions > Variables), not in the code, so a
+# build can't silently point at the wrong project: VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.
 name: build
 on:
   push:
@@ -18,3 +22,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}

@@ -200,7 +200,7 @@ sheet over the chooser.
   Function: the app shows the estimate as the person types, and on Send the function
   prices the order again at that account's tier against the shop's live Price List, writes
   the row itself and replies with the real price. Once the build that calls it is live,
-  apply `supabase/migrations/20261017120000_orders_server_priced.sql`, which drops the
+  apply `supabase/migrations/20261017200506_orders_server_priced.sql`, which drops the
   browser's insert right on `orders`, so a tampered page can't send a price of its own.
   `node scripts/pricing-check.mjs` checks the tier math against the seed price list.
 - The first staff member is added by SQL (step 7). After that, staff can grant or revoke
@@ -233,7 +233,10 @@ sheet over the chooser.
   changes go onto it instead of a second copy.
 - Every push and pull request runs the real build, prerender included, in GitHub Actions
   (`.github/workflows/build.yml`). Make it a required check on `main` so a red build can't
-  be merged.
+  be merged. The workflow reads `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from the
+  repository's Actions **variables** (Settings > Secrets and variables > Actions > Variables)
+  — the same two public values as `.env`. The prerender has no built-in fallback for them,
+  so a build without them fails on purpose rather than pointing at the wrong project.
 - The public forms are throttled in the database: Get Listed applications stop at 3 an hour
   from one address and 20 an hour overall, leads at 10 and 60, uploads at 60 an hour, and
   sign-ups at 3 an hour per inbox and 10 per connection.

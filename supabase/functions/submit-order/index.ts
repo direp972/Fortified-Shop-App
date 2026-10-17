@@ -15,7 +15,7 @@
 //
 // Auth: the signed-in customer's access token in the Authorization header. Rows are written
 // with the service role, so public.orders needs no insert policy for customers any more —
-// see migration 20261017120000_orders_server_priced.sql.
+// see migration 20261017200506_orders_server_priced.sql.
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { computePrice, sellTierFor, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE } from "../_shared/pricing.mjs";
