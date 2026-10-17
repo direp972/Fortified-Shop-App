@@ -4039,6 +4039,9 @@ export default function ShopOrderApp() {
   // with a same-origin postMessage ({type:"rc:view"}) so a half-drawn profile isn't
   // lost to a reload when the member flips tabs.
   const openTool = useCallback((view) => {
+    // members.html switches tools mid-session with the same calls; a sheet left open
+    // over the old tool would hide the new one
+    if (view !== "color") setColorSheet(false);
     if (view === "color") { setTab("order"); setColorSheet(true); }
     else if (view === "trim" || view === "panel" || view === "metal") { setTab("order"); setShapeType(view); setOrderStep("details"); }
     // same reset the 3D Parts tile does, so a deep link starts as clean as a tap does
@@ -6085,7 +6088,7 @@ export default function ShopOrderApp() {
                       <div style={{ fontSize: 12, color: theme.textSecondary, marginTop: 2 }}>For {whereLabel}. Done takes you straight back to it.</div>
                     </div>
                     <button type="button" onClick={closeColorSheet} aria-label="Close" data-testid="finish-close"
-                      style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>×</button>
+                      style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 20, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>✕</button>
                   </div>
                   <div style={{ overflowY: "auto", padding: "12px 16px 16px" }}>{renderFinishPicker()}</div>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderTop: `1px solid ${theme.border}`, background: theme.card }}>
