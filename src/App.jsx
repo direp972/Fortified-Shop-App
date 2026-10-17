@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase, Package, Pencil, Building2, Folder, FolderOpen } from "lucide-react";
 import * as THREE from "three";
-import { storage } from "./lib/storage";
+import { storage, shopStorage } from "./lib/storage";
 import { supabase } from "./lib/supabaseClient";
 import { useAuth } from "./lib/AuthProvider";
 import { GAUGE_OPTIONS, COPPER_WEIGHT_OPTIONS, G90_GAUGE_OPTIONS, GALVALUME_GAUGE_OPTIONS, BONDERIZED_GAUGE_OPTIONS, PAINT_OPTIONS, COLORS_BY_BRAND, scupperSpec, scupperBack, MILEAGE_FREE, MILEAGE_RATE, mileageCharge, getColorsForBrand, findColor, findGauge, coilPriceForWidth, findFabItem, getSellRates, computePrice, sellRate, sellTierFor, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE } from "../supabase/functions/_shared/pricing.mjs";
@@ -3404,10 +3404,7 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
 
 /* ---------------------------------- main app ---------------------------------- */
 export default function ShopOrderApp() {
-  const { user, customer, isStaff, ownedShops, signOut } = useAuth();
-  // Every estimate and every order is priced at the tier the shop assigned to this account
-  // (retail until staff change it). submit-order prices the order again at the same tier.
-  const sellTier = sellTierFor(customer);
+  const { user, customer, isStaff, memberShops, signOut } = useAuth();
   // Signed out, the tools are open to anyone as a demo: draw trim, size a panel
   // run, try colours. What an account is for — pricing, sending an order to a
   // shop, and the saved-job tabs — stays locked, and every locked control raises
@@ -3417,9 +3414,10 @@ export default function ShopOrderApp() {
   // Money the demo visitor may not see. Kept as one helper so a price can never
   // reach the screen by being formatted somewhere new.
   const priceText = (n) => (isDemo ? "—" : money(n));
-  const [customers, setCustomers] = useState([]); // staff-only: every registered customer, for tier assignment
+  const [customers, setCustomers] = useState([]); // the selected shop's customers (shop_customers), for its people to assign tiers
   const [customersLoaded, setCustomersLoaded] = useState(false);
-  const [staffIds, setStaffIds] = useState([]);
+  const [staffIds, setStaffIds] = useState([]); // platform admins (public.staff), platform staff only
+  const [memberIds, setMemberIds] = useState([]); // the selected shop's people (shop_members)
   const [siteLeads, setSiteLeads] = useState([]); // staff-only: signups from the roofcoil.com member gate
   const [siteLeadsLoaded, setSiteLeadsLoaded] = useState(false);
   const [mfrApps, setMfrApps] = useState([]); // staff-only: manufacturer "get listed" applications from the site
@@ -3430,8 +3428,22 @@ export default function ShopOrderApp() {
   // shop and its owner account sees the job on its own Shop Floor.
   const [shops, setShops] = useState([]);
   const [shopId, setShopId] = useState(null);
-  const ownedShopIds = (ownedShops || []).map((s) => s.id);
-  const canRunShopFloor = isStaff || (ownedShops || []).some((s) => s.accepts_orders);
+  // A shop picked by hand (the picker, or a job reopened from the Vault) stays picked when
+  // the list reloads; a shop the app chose on its own gives way to a better default.
+  const shopPicked = useRef(false);
+  const pickShop = (id) => { shopPicked.current = true; setShopId(id); };
+  // The shops this account runs (shop_members). A member manages the selected shop's Price
+  // List backend, costs, coil scale, presets, materials board, customer tiers and Shop
+  // Floor; platform staff (public.staff) manage every shop.
+  const memberShopIds = (memberShops || []).map((s) => s.id);
+  const canManageShop = isStaff || (!!shopId && memberShopIds.includes(shopId));
+  const isShopOwner = isStaff || (memberShops || []).some((s) => s.id === shopId && s.role === "owner");
+  const canRunShopFloor = isStaff || memberShopIds.length > 0;
+  // Every estimate and every order is priced at the tier the selected shop assigned to this
+  // account (retail until the shop changes it). submit-order prices the order again at the
+  // same tier, from the same shop_customers row.
+  const [shopTier, setShopTier] = useState(null);
+  const sellTier = sellTierFor(shopTier);
   const [orderStep, setOrderStep] = useState("type"); // "type" | "details" — finish & color is a sheet over either, see colorSheet
   const [colorSheet, setColorSheet] = useState(false); // Finish & color, open as a sheet over whatever screen is up
   const [showColorMatch, setShowColorMatch] = useState(false);
@@ -3445,10 +3457,10 @@ export default function ShopOrderApp() {
   const [priceListView, setPriceListView] = useState("customer"); // "backend" | "customer"
   const [priceListTier, setPriceListTier] = useState("tier1"); // which tier the customer view shows
 
-  // Non-staff customers always see their own assigned tier, not whatever was last selected.
+  // Customers always see their own assigned tier at this shop, not whatever was last selected.
   useEffect(() => {
-    if (!isStaff && customer?.tier) setPriceListTier(customer.tier);
-  }, [isStaff, customer]);
+    if (!canManageShop) setPriceListTier(sellTier);
+  }, [canManageShop, sellTier]);
   const [materialCosts, setMaterialCosts] = useState([]);
   const [materialCostsLoaded, setMaterialCostsLoaded] = useState(false);
   const [productionCosts, setProductionCosts] = useState([]);
@@ -3805,20 +3817,20 @@ export default function ShopOrderApp() {
     storage.set("last-tab", tab, false).catch((e) => console.error("storage error", e));
   }, [tab, tabLoaded]);
 
-  // Shop Floor is for staff and for shops that take orders here — if anyone else's saved
+  // Shop Floor is for platform staff and for the people of a shop — if anyone else's saved
   // "last tab" points there (or they navigate there directly), bounce them back to New Order.
-  // The Master Materials List is the Fortified shop's own board, so it stays staff-only.
+  // The Master Materials List is the selected shop's own board, so it is for its people.
   useEffect(() => {
     if (tab === "dashboard" && !canRunShopFloor) { setTab("order"); dropTabs(); }
     if (isDemo && tab !== "order") { setTab("order"); dropTabs(); }
   }, [tab, canRunShopFloor, isDemo]);
   useEffect(() => {
-    if (shopFloorView === "materials" && !isStaff) setShopFloorView("jobs");
-  }, [shopFloorView, isStaff]);
+    if (shopFloorView === "materials" && !canManageShop) setShopFloorView("jobs");
+  }, [shopFloorView, canManageShop]);
 
   useEffect(() => {
-    if (priceListView === "backend" && !isStaff) setPriceListView("customer");
-  }, [priceListView, isStaff]);
+    if (priceListView === "backend" && !canManageShop) setPriceListView("customer");
+  }, [priceListView, canManageShop]);
 
   // Orders live in their own table (not the shared app_storage blob) — RLS shows
   // customers only their own orders, staff see everything.
@@ -3832,8 +3844,11 @@ export default function ShopOrderApp() {
     })();
   }, []);
 
-  // Shops that take orders through RoofCoil. ?shop=<listing id> (a shop's own site linking
-  // to the app) preselects that shop; otherwise Fortified, else the first one listed.
+  // Shops that take orders through RoofCoil: the public directory's, plus any shop this
+  // account runs (even one whose listing is hidden). ?shop=<listing id> (a shop's own site
+  // linking to the app) preselects that shop, found through ordering_shop() when its
+  // listing is not live; otherwise a member's own shop; otherwise the platform's default
+  // shop (Fortified); otherwise the first one listed.
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase.from("directory_public")
@@ -3841,12 +3856,25 @@ export default function ShopOrderApp() {
         .eq("accepts_orders", true)
         .order("featured", { ascending: false }).order("name", { ascending: true });
       if (error || !data) { console.error("shops load error", error); return; }
-      setShops(data);
+      const list = [...data];
+      const add = (s) => { if (s && s.id && !list.some((x) => x.id === s.id)) list.push(s); };
+      (memberShops || []).forEach(add);
       const want = new URLSearchParams(window.location.search).get("shop");
-      const pick = data.find((s) => s.id === want) || data.find((s) => /fortified/i.test(s.name)) || data[0] || null;
-      setShopId((cur) => (cur && data.some((s) => s.id === cur) ? cur : (pick ? pick.id : null)));
+      if (want && !list.some((s) => s.id === want)) {
+        const { data: wanted } = await supabase.rpc("ordering_shop", { p_id: want });
+        if (Array.isArray(wanted)) wanted.forEach(add);
+      }
+      let fallback = null;
+      if (!list.some((s) => s.id === want) && !list.some((s) => memberShopIds.includes(s.id))) {
+        const { data: d } = await supabase.rpc("default_shop_id");
+        fallback = typeof d === "string" ? d : null;
+      }
+      setShops(list);
+      const pick = list.find((s) => s.id === want) || list.find((s) => memberShopIds.includes(s.id)) || list.find((s) => s.id === fallback) || list[0] || null;
+      setShopId((cur) => (cur && shopPicked.current && list.some((s) => s.id === cur) ? cur : (pick ? pick.id : null)));
     })();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memberShops]);
 
   // Orders go through the submit-order Edge Function, which prices each part again at this
   // account's tier against the shop's live Price List and writes the rows itself — the price
@@ -4004,31 +4032,47 @@ export default function ShopOrderApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [priceList, profile]);
 
-  // Staff read the price list as stored. Everyone else gets it through customer_price_list(),
-  // which strips the cost column; the tier prices stay because estimates are computed here.
+  // This account's tier at the selected shop: its own shop_customers row, none meaning retail.
   useEffect(() => {
+    if (!user || !shopId) { setShopTier(null); return; }
+    let stale = false;
+    supabase.from("shop_customers").select("tier").eq("shop_id", shopId).eq("user_id", user.id).maybeSingle()
+      .then(({ data }) => { if (!stale) setShopTier(data || null); });
+    return () => { stale = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, shopId]);
+
+  // The selected shop's Price List. Its people read it as stored; everyone else gets it
+  // through customer_price_list(shop), which strips the cost column; the tier prices stay
+  // because estimates are computed here. A shop that has saved nothing prices from the code
+  // defaults. Signed out there is no list to read, and the demo shows no prices anyway.
+  useEffect(() => {
+    if (!shopId) return;
+    let stale = false;
     (async () => {
       try {
         let parsed = null;
-        if (isStaff) {
-          const res = await storage.get("shop-price-list", true);
+        if (user && canManageShop) {
+          const res = await shopStorage.get(shopId, "price-list");
           if (res?.value) parsed = JSON.parse(res.value);
-        } else {
-          const { data, error } = await supabase.rpc("customer_price_list");
+        } else if (user) {
+          const { data, error } = await supabase.rpc("customer_price_list", { p_shop: shopId });
           if (error) throw error;
           parsed = Array.isArray(data) ? data : null;
         }
-        setPriceList(parsed ? parsed.map((p) => ({ cost: 0, ...p })) : DEFAULT_PRICE_LIST);
-      } catch (e) { setPriceList(DEFAULT_PRICE_LIST); }
-      setPriceListLoaded(true);
+        if (!stale) setPriceList(parsed ? parsed.map((p) => ({ cost: 0, ...p })) : DEFAULT_PRICE_LIST);
+      } catch (e) { if (!stale) setPriceList(DEFAULT_PRICE_LIST); }
+      if (!stale) setPriceListLoaded(true);
     })();
-  }, [isStaff]);
+    return () => { stale = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shopId, canManageShop, user?.id]);
 
   const savePriceList = async (next) => {
     setPriceList(next);
     const attempt = async () => {
       try {
-        const res = await storage.set("shop-price-list", JSON.stringify(next), true);
+        const res = await shopStorage.set(shopId, "price-list", JSON.stringify(next));
         return !!res; // storage.set can resolve to null on failure without throwing
       } catch (e) {
         console.error("storage error", e);
@@ -4061,41 +4105,85 @@ export default function ShopOrderApp() {
     setToast(`Restored ${missing.length} item${missing.length === 1 ? "" : "s"} back to the price list.`);
   };
 
-  // Staff-only: load every registered customer so their pricing tier can be assigned,
-  // plus the current admin (staff) list for the toggle.
-  useEffect(() => {
-    if (!isStaff) return;
-    (async () => {
-      const { data, error } = await supabase.from("customers").select("*").order("created_at", { ascending: false });
-      if (!error) setCustomers(data || []);
+  // The selected shop's customers, for its people to assign tiers: every account with a
+  // shop_customers row for this shop (RLS shows a shop only its own), newest first, plus
+  // the shop's member list for the Admin toggle. Platform staff also get the platform
+  // admin list for the Platform toggle.
+  const loadShopCustomers = useCallback(async () => {
+    if (!shopId || !canManageShop) { setCustomers([]); setMemberIds([]); return; }
+    const { data, error } = await supabase.from("shop_customers")
+      .select("user_id, tier, created_at, customers(name, email)")
+      .eq("shop_id", shopId).order("created_at", { ascending: false });
+    if (!error) setCustomers((data || []).map((r) => ({ id: r.user_id, tier: r.tier, name: r.customers?.name || "", email: r.customers?.email || "" })));
+    else console.error("shop customers load error", error);
+    const { data: memberRows } = await supabase.from("shop_members").select("user_id").eq("shop_id", shopId);
+    if (memberRows) setMemberIds(memberRows.map((m) => m.user_id));
+    if (isStaff) {
       const { data: staffRows } = await supabase.from("staff").select("id");
       if (staffRows) setStaffIds(staffRows.map((s) => s.id));
-      setCustomersLoaded(true);
-    })();
-  }, [isStaff]);
+    }
+    setCustomersLoaded(true);
+  }, [shopId, canManageShop, isStaff]);
+  useEffect(() => { loadShopCustomers(); }, [loadShopCustomers]);
 
   const updateCustomerTier = async (customerId, tier) => {
     setCustomers((prev) => prev.map((c) => (c.id === customerId ? { ...c, tier } : c)));
-    const { error } = await supabase.from("customers").update({ tier }).eq("id", customerId);
+    const { error } = await supabase.from("shop_customers")
+      .upsert({ shop_id: shopId, user_id: customerId, tier, updated_at: new Date().toISOString() }, { onConflict: "shop_id,user_id" });
     if (error) {
       setToast("Couldn't save that — try again.");
       console.error(error);
     }
   };
 
-  // Staff-only: load the shared materials pull board.
+  // A shop's people add an account to the tier panel by email before its first order.
+  const [addCustomerEmail, setAddCustomerEmail] = useState("");
+  const addShopCustomer = async () => {
+    const email = addCustomerEmail.trim();
+    if (!email) return;
+    const { data, error } = await supabase.rpc("add_shop_customer", { p_shop: shopId, p_email: email });
+    if (error) { setToast("Couldn't add that account — try again."); setTimeout(() => setToast(""), 3500); console.error(error); return; }
+    if (data === "no-account") { setToast("No confirmed RoofCoil account has that email yet."); setTimeout(() => setToast(""), 4000); return; }
+    setAddCustomerEmail("");
+    setToast(data === "already" ? "That account is already on the list." : "Added — set their tier below.");
+    setTimeout(() => setToast(""), 3500);
+    loadShopCustomers();
+  };
+
+  // The selected shop's materials pull board, for its people.
   useEffect(() => {
-    if (!isStaff) return;
+    if (!shopId || !canManageShop) { setMatStatus({}); return; }
+    let stale = false;
     (async () => {
       try {
-        const res = await storage.get("shop-material-status", true);
-        if (res?.value) setMatStatus(JSON.parse(res.value));
-      } catch (e) { /* no board yet */ }
+        const res = await shopStorage.get(shopId, "material-status");
+        if (!stale) setMatStatus(res?.value ? JSON.parse(res.value) : {});
+      } catch (e) { if (!stale) setMatStatus({}); }
     })();
-  }, [isStaff]);
+    return () => { stale = true; };
+  }, [shopId, canManageShop]);
 
-  // Staff-only: grant or revoke backend admin access. RLS also blocks removing yourself.
+  // Shop owners and platform staff: make an account one of this shop's people (its Price
+  // List backend, costs, tiers, board and Shop Floor), or stop it being one. RLS also
+  // blocks removing yourself.
   const toggleAdmin = async (customerId) => {
+    if (customerId === user?.id) { setToast("That's you — you can't remove your own admin access."); setTimeout(() => setToast(""), 3500); return; }
+    const isMember = memberIds.includes(customerId);
+    setMemberIds((prev) => (isMember ? prev.filter((id) => id !== customerId) : [...prev, customerId]));
+    const { error } = isMember
+      ? await supabase.from("shop_members").delete().eq("shop_id", shopId).eq("user_id", customerId)
+      : await supabase.from("shop_members").insert({ shop_id: shopId, user_id: customerId, role: "staff" });
+    if (error) {
+      setMemberIds((prev) => (isMember ? [...prev, customerId] : prev.filter((id) => id !== customerId)));
+      setToast("Couldn't change admin access — try again.");
+      setTimeout(() => setToast(""), 3500);
+      console.error(error);
+    }
+  };
+
+  // Platform staff only: grant or revoke platform admin (public.staff), which runs every
+  // shop, the directory and the site's leads. RLS also blocks removing yourself.
+  const togglePlatformAdmin = async (customerId) => {
     if (customerId === user?.id) { setToast("That's you — you can't remove your own admin access."); setTimeout(() => setToast(""), 3500); return; }
     const isAdmin = staffIds.includes(customerId);
     setStaffIds((prev) => (isAdmin ? prev.filter((id) => id !== customerId) : [...prev, customerId]));
@@ -4227,23 +4315,28 @@ export default function ShopOrderApp() {
     { id: "m4", name: "20 oz Copper (per sq ft)", costPerSqft: 0, lastUpdated: null },
   ];
 
+  // The selected shop's raw material costs, for its people only (RLS keeps costs in the shop).
   useEffect(() => {
-    if (!isStaff) { setMaterialCosts(DEFAULT_MATERIAL_COSTS); setMaterialCostsLoaded(true); return; }
+    if (!shopId || !canManageShop) { setMaterialCosts(DEFAULT_MATERIAL_COSTS); setMaterialCostsLoaded(true); return; }
+    let stale = false;
     (async () => {
+      let next = DEFAULT_MATERIAL_COSTS;
       try {
-        const res = await storage.get("shop-material-costs", true);
+        const res = await shopStorage.get(shopId, "material-costs");
         if (res?.value) {
           const parsed = JSON.parse(res.value);
-          setMaterialCosts(parsed.map((m) => { const { unit, coilWidth, ...rest } = m; return rest; }));
-        } else setMaterialCosts(DEFAULT_MATERIAL_COSTS);
-      } catch (e) { setMaterialCosts(DEFAULT_MATERIAL_COSTS); }
-      setMaterialCostsLoaded(true);
+          next = parsed.map((m) => { const { unit, coilWidth, ...rest } = m; return rest; });
+        }
+      } catch (e) { /* fall back to the defaults */ }
+      if (!stale) { setMaterialCosts(next); setMaterialCostsLoaded(true); }
     })();
-  }, [isStaff]);
+    return () => { stale = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shopId, canManageShop]);
 
   const saveMaterialCosts = async (next) => {
     setMaterialCosts(next);
-    try { await storage.set("shop-material-costs", JSON.stringify(next), true); }
+    try { await shopStorage.set(shopId, "material-costs", JSON.stringify(next)); }
     catch (e) { console.error("storage error", e); }
   };
 
@@ -4258,21 +4351,25 @@ export default function ShopOrderApp() {
     { id: "pc3", name: "Plastic (per LF)", cost: 0, lastUpdated: null },
   ];
 
+  // The selected shop's production costs, for its people only.
   useEffect(() => {
-    if (!isStaff) { setProductionCosts(DEFAULT_PRODUCTION_COSTS); setProductionCostsLoaded(true); return; }
+    if (!shopId || !canManageShop) { setProductionCosts(DEFAULT_PRODUCTION_COSTS); setProductionCostsLoaded(true); return; }
+    let stale = false;
     (async () => {
+      let next = DEFAULT_PRODUCTION_COSTS;
       try {
-        const res = await storage.get("shop-production-costs", true);
-        if (res?.value) setProductionCosts(JSON.parse(res.value));
-        else setProductionCosts(DEFAULT_PRODUCTION_COSTS);
-      } catch (e) { setProductionCosts(DEFAULT_PRODUCTION_COSTS); }
-      setProductionCostsLoaded(true);
+        const res = await shopStorage.get(shopId, "production-costs");
+        if (res?.value) next = JSON.parse(res.value);
+      } catch (e) { /* fall back to the defaults */ }
+      if (!stale) { setProductionCosts(next); setProductionCostsLoaded(true); }
     })();
-  }, [isStaff]);
+    return () => { stale = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shopId, canManageShop]);
 
   const saveProductionCosts = async (next) => {
     setProductionCosts(next);
-    try { await storage.set("shop-production-costs", JSON.stringify(next), true); }
+    try { await shopStorage.set(shopId, "production-costs", JSON.stringify(next)); }
     catch (e) { console.error("storage error", e); }
   };
 
@@ -4281,20 +4378,26 @@ export default function ShopOrderApp() {
     saveProductionCosts(productionCosts.map((p) => (p.id === id ? { ...p, cost: value, lastUpdated: today } : p)));
   };
 
+  // The selected shop's coil width scale: sell prices every signed-in account may read, so
+  // coil estimates follow the shop. Signed out (the demo) the seed scale is shown.
   useEffect(() => {
+    if (!shopId || !user) { setCoilWidthScale(DEFAULT_COIL_WIDTH_SCALE); setCoilWidthScaleLoaded(true); return; }
+    let stale = false;
     (async () => {
+      let next = DEFAULT_COIL_WIDTH_SCALE;
       try {
-        const res = await storage.get("shop-coil-width-scale", true);
-        if (res?.value) setCoilWidthScale(JSON.parse(res.value));
-        else setCoilWidthScale(DEFAULT_COIL_WIDTH_SCALE);
-      } catch (e) { setCoilWidthScale(DEFAULT_COIL_WIDTH_SCALE); }
-      setCoilWidthScaleLoaded(true);
+        const res = await shopStorage.get(shopId, "coil-width-scale");
+        if (res?.value) next = JSON.parse(res.value);
+      } catch (e) { /* fall back to the seed scale */ }
+      if (!stale) { setCoilWidthScale(next); setCoilWidthScaleLoaded(true); }
     })();
-  }, []);
+    return () => { stale = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shopId, user?.id]);
 
   const saveCoilWidthScale = async (next) => {
     setCoilWidthScale(next);
-    try { await storage.set("shop-coil-width-scale", JSON.stringify(next), true); }
+    try { await shopStorage.set(shopId, "coil-width-scale", JSON.stringify(next)); }
     catch (e) { console.error("storage error", e); }
   };
 
@@ -4308,19 +4411,25 @@ export default function ShopOrderApp() {
     saveCoilWidthScale(coilWidthScale.filter((c) => c.id !== id));
   };
 
+  // The selected shop's saved trim presets, shown to everyone signed in who orders from it.
   useEffect(() => {
+    if (!shopId || !user) { setCustomPresets([]); setCustomPresetsLoaded(true); return; }
+    let stale = false;
     (async () => {
+      let next = [];
       try {
-        const res = await storage.get("shop-custom-trim-presets", true);
-        if (res?.value) setCustomPresets(JSON.parse(res.value));
+        const res = await shopStorage.get(shopId, "custom-trim-presets");
+        if (res?.value) next = JSON.parse(res.value);
       } catch (e) { /* none saved yet */ }
-      setCustomPresetsLoaded(true);
+      if (!stale) { setCustomPresets(Array.isArray(next) ? next : []); setCustomPresetsLoaded(true); }
     })();
-  }, []);
+    return () => { stale = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shopId, user?.id]);
 
   const saveCustomPresets = async (next) => {
     setCustomPresets(next);
-    try { await storage.set("shop-custom-trim-presets", JSON.stringify(next), true); }
+    try { await shopStorage.set(shopId, "custom-trim-presets", JSON.stringify(next)); }
     catch (e) { console.error("storage error", e); }
   };
 
@@ -5181,7 +5290,7 @@ export default function ShopOrderApp() {
       setJobSiteAddress(p.jobSiteAddress || "");
       setJobSiteMiles(p.jobSiteMiles ?? "");
       setSupplierCo(p.metalSupplier || "Fortified Metal");
-      if (p.shopId && shops.some((s) => s.id === p.shopId)) setShopId(p.shopId);
+      if (p.shopId && shops.some((s) => s.id === p.shopId)) pickShop(p.shopId);
     } else if (kind === "metal") {
       if (p.flatWidth != null) setFlatWidth(p.flatWidth);
       if (p.flatLength != null) setFlatLength(p.flatLength);
@@ -5273,12 +5382,12 @@ export default function ShopOrderApp() {
     }
     setMatStatus(nextMap);
     matSaveChain.current = matSaveChain.current
-      .then(() => storage.set("shop-material-status", JSON.stringify(nextMap), true))
+      .then(() => shopStorage.set(shopId, "material-status", JSON.stringify(nextMap)))
       .catch((e) => console.error("storage error", e));
   };
 
-  // Staff see every order; a shop owner's Shop Floor shows only the orders sent to their shop.
-  const floorOrders = isStaff ? orders : orders.filter((o) => o.shopId && ownedShopIds.includes(o.shopId));
+  // Platform staff see every order; a shop's people see the orders sent to their shops.
+  const floorOrders = isStaff ? orders : orders.filter((o) => o.shopId && memberShopIds.includes(o.shopId));
   const visibleOrders = statusFilter === "All" ? floorOrders : floorOrders.filter((o) => o.status === statusFilter);
 
   // "Send this order to": every shop that takes orders through RoofCoil. With one shop the
@@ -5292,7 +5401,7 @@ export default function ShopOrderApp() {
       Send this order to
       <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
         {shops.map((c) => (
-          <button key={c.id} type="button" onClick={() => setShopId(c.id)}
+          <button key={c.id} type="button" onClick={() => pickShop(c.id)}
             style={{
               flex: "1 1 45%", padding: "7px", borderRadius: 6, fontSize: 12, cursor: "pointer",
               border: `1px solid ${shopId === c.id ? INK : "#D9D5C7"}`,
@@ -5597,7 +5706,7 @@ export default function ShopOrderApp() {
           {!isDemo && <div style={{ textAlign: "right", marginRight: 4, maxWidth: 150, overflow: "hidden" }}>
             <div style={{ color: "#fff", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{customer?.name || user?.email}</div>
             <div style={{ color: theme.textSecondary, fontSize: 9.5 }}>
-              {isStaff ? "Staff" : `Tier: ${customer?.tier === "tier1" ? "Tier 1" : customer?.tier === "greenleaf" ? "Greenleaf" : "Tier 2"}`}
+              {isStaff ? "Staff" : canManageShop ? "Shop staff" : `Tier: ${sellTier === "tier1" ? "Tier 1" : sellTier === "greenleaf" ? "Greenleaf" : "Tier 2"}`}
             </div>
           </div>}
           <button onClick={isDemo ? () => openAuth("signin") : signOutEverywhere}
@@ -7430,7 +7539,7 @@ export default function ShopOrderApp() {
         </div>
       ) : tab === "pricelist" ? (
         <div style={{ padding: 16, maxWidth: 640, margin: "0 auto" }}>
-          {isStaff && (
+          {canManageShop && (
             <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
               {[{ id: "customer", label: "Customer View" }, { id: "backend", label: "Backend (Edit)" }].map((v) => (
                 <button key={v.id} onClick={() => setPriceListView(v.id)}
@@ -7446,16 +7555,28 @@ export default function ShopOrderApp() {
 
           {!priceListLoaded ? (
             <div style={{ color: theme.textSecondary, fontSize: 13, textAlign: "center", padding: 40 }}>Loading price list…</div>
-          ) : priceListView === "backend" && !isStaff ? (
+          ) : priceListView === "backend" && !canManageShop ? (
             <div style={{ color: theme.textSecondary, fontSize: 13, textAlign: "center", padding: 40 }}>You don't have access to this view.</div>
           ) : priceListView === "backend" ? (
             <>
               <div style={{ marginBottom: 18 }}>
                 <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>Customer Pricing Tiers</div>
+                <div style={{ fontSize: 9.5, color: theme.textSecondary, marginBottom: 6 }}>
+                  Accounts that have ordered from {selectedShop ? selectedShop.name : "this shop"} or were added here. Add one by email to set its tier before its first order.
+                </div>
+                <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
+                  <input type="email" value={addCustomerEmail} onChange={(e) => setAddCustomerEmail(e.target.value)} placeholder="customer@example.com"
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addShopCustomer(); } }}
+                    style={{ flex: 1, minWidth: 0, padding: 8, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: theme.inputBg, color: theme.text }} />
+                  <button onClick={addShopCustomer}
+                    style={{ padding: "8px 12px", borderRadius: 6, border: "none", background: INK, color: "#fff", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+                    Add
+                  </button>
+                </div>
                 {!customersLoaded ? (
                   <div style={{ color: theme.textSecondary, fontSize: 12, padding: 10 }}>Loading…</div>
                 ) : customers.length === 0 ? (
-                  <div style={{ color: theme.textSecondary, fontSize: 12, padding: 10 }}>No customers have registered yet.</div>
+                  <div style={{ color: theme.textSecondary, fontSize: 12, padding: 10 }}>No customers yet — they appear here after their first order, or add one by email.</div>
                 ) : (
                   customers.map((c) => (
                     <div key={c.id} style={{ background: theme.card, borderRadius: 8, padding: 10, marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
@@ -7469,22 +7590,39 @@ export default function ShopOrderApp() {
                         <option value="greenleaf">Greenleaf</option>
                         <option value="tier2">Tier 2 — Retail</option>
                       </select>
-                      <button onClick={() => toggleAdmin(c.id)}
-                        title={c.id === user?.id ? "That's you — you can't remove your own admin access" : staffIds.includes(c.id) ? "Tap to remove backend admin access" : "Tap to grant backend admin access"}
-                        style={{
-                          padding: "6px 11px", borderRadius: 999, fontSize: 10, fontWeight: 700, whiteSpace: "nowrap",
-                          cursor: c.id === user?.id ? "default" : "pointer", opacity: c.id === user?.id ? 0.75 : 1,
-                          border: `1px solid ${staffIds.includes(c.id) ? SAFETY : theme.border}`,
-                          background: staffIds.includes(c.id) ? SAFETY : "transparent",
-                          color: staffIds.includes(c.id) ? "#fff" : theme.textSecondary,
-                        }}>
-                        {staffIds.includes(c.id) ? "Admin ✓" : "Admin"}
-                      </button>
+                      {isShopOwner && (
+                        <button onClick={() => toggleAdmin(c.id)}
+                          title={c.id === user?.id ? "That's you — you can't remove your own admin access" : memberIds.includes(c.id) ? "Tap to remove this shop's backend access" : "Tap to give this account this shop's backend access"}
+                          style={{
+                            padding: "6px 11px", borderRadius: 999, fontSize: 10, fontWeight: 700, whiteSpace: "nowrap",
+                            cursor: c.id === user?.id ? "default" : "pointer", opacity: c.id === user?.id ? 0.75 : 1,
+                            border: `1px solid ${memberIds.includes(c.id) ? SAFETY : theme.border}`,
+                            background: memberIds.includes(c.id) ? SAFETY : "transparent",
+                            color: memberIds.includes(c.id) ? "#fff" : theme.textSecondary,
+                          }}>
+                          {memberIds.includes(c.id) ? "Admin ✓" : "Admin"}
+                        </button>
+                      )}
+                      {isStaff && (
+                        <button onClick={() => togglePlatformAdmin(c.id)}
+                          title={c.id === user?.id ? "That's you — you can't remove your own admin access" : staffIds.includes(c.id) ? "Tap to remove platform admin (every shop, the directory, site leads)" : "Tap to make this account a platform admin"}
+                          style={{
+                            padding: "6px 11px", borderRadius: 999, fontSize: 10, fontWeight: 700, whiteSpace: "nowrap",
+                            cursor: c.id === user?.id ? "default" : "pointer", opacity: c.id === user?.id ? 0.75 : 1,
+                            border: `1px solid ${staffIds.includes(c.id) ? INK : theme.border}`,
+                            background: staffIds.includes(c.id) ? INK : "transparent",
+                            color: staffIds.includes(c.id) ? "#fff" : theme.textSecondary,
+                          }}>
+                          {staffIds.includes(c.id) ? "Platform ✓" : "Platform"}
+                        </button>
+                      )}
                     </div>
                   ))
                 )}
               </div>
 
+              {/* The site's leads, applications and idea box are RoofCoil's, not a shop's: platform staff only. */}
+              {isStaff && (<>
               <div style={{ marginBottom: 18 }}>
                 <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>🌐 RoofCoil Site Leads</div>
                 <div style={{ fontSize: 9.5, color: theme.textSecondary, marginBottom: 6 }}>
@@ -7587,6 +7725,7 @@ export default function ShopOrderApp() {
                   ))
                 )}
               </div>
+              </>)}
 
               <div style={{ marginBottom: 18 }}>
                 <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>Raw Material Cost (per sq ft)</div>
@@ -7815,7 +7954,7 @@ export default function ShopOrderApp() {
             </>
           ) : (
             <>
-              {isStaff ? (
+              {canManageShop ? (
                 <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
                   {[
                     { id: "tier1", label: "Tier 1 — Preferred" },
@@ -8035,7 +8174,7 @@ export default function ShopOrderApp() {
       ) : (
         <div style={{ padding: 16, maxWidth: 640, margin: "0 auto" }}>
           <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-            {[{ id: "jobs", label: "Jobs" }, ...(isStaff ? [{ id: "materials", label: "Master Materials List" }] : [])].map((v) => (
+            {[{ id: "jobs", label: "Jobs" }, ...(canManageShop ? [{ id: "materials", label: "Master Materials List" }] : [])].map((v) => (
               <button key={v.id} onClick={() => setShopFloorView(v.id)}
                 style={{
                   flex: 1, padding: "9px 6px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
@@ -8048,7 +8187,8 @@ export default function ShopOrderApp() {
 
           {shopFloorView === "materials" ? (
             (() => {
-              const activeOrders = orders.filter((o) => o.status !== "Completed");
+              // The board is the selected shop's: its active jobs only, saved under that shop.
+              const activeOrders = orders.filter((o) => o.status !== "Completed" && (o.shopId || null) === shopId);
               const materials = computeJobMaterials(activeOrders);
               return !loaded ? (
                 <div style={{ color: theme.textSecondary, fontSize: 13, textAlign: "center", padding: 40 }}>Loading orders…</div>

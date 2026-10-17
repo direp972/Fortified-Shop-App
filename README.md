@@ -164,6 +164,37 @@ Any directory listing can take orders from the Panel & Trim app:
 Fortified Sheet Metal's own listing has ordering switched on with no order email, so its
 orders keep going to `ALERT_EMAIL_TO` and the shop text exactly as before.
 
+## Shops as tenants
+
+Every listing that takes orders is a **shop** on the platform (`public.shops`, same id as
+the listing — a database trigger creates it the moment ordering is switched on), and the
+listing's owner account is the shop's first **member** (`public.shop_members`, roles
+`owner` and `staff`). A shop's people get, for their shop only: Price List → Backend (Edit)
+with costs and margins, the coil width scale, saved trim presets, the Master Materials
+List, the Customer Pricing Tiers panel and Shop Floor. Everything a shop saves lives in
+`public.shop_settings` (one row per shop per key) and its tiers in `public.shop_customers`
+(one row per shop per customer; no row means Tier 2), all isolated by RLS — a shop can
+never read another shop's prices, costs, presets, board, members or customers. Platform
+staff (`public.staff`) keep every power across every shop. Design and the reasoning:
+`docs/phase1-tenant-design.md`; the two-shop checklist: `docs/phase1-two-shop-test-plan.md`.
+
+- The app follows one **selected shop**: `?shop=<listing id>` picks it (also a shop whose
+  listing is hidden, through `ordering_shop()`), otherwise a member's own shop, otherwise
+  the platform's default shop (Fortified). The picker under "Send this order to" changes
+  it; the price list, coil scale, presets, the account's tier and the backend all follow.
+- `submit-order` reprices against the **order's shop**: that shop's price list and coil
+  scale (the code defaults until the shop has saved its own) at the tier that shop gave
+  the account. The first order an account sends a shop puts it on that shop's tier panel
+  at Tier 2; a shop can also add an account by email before its first order.
+- In Customer Pricing Tiers, **Admin** makes an account one of the selected shop's people
+  (shop owners and platform staff can tap it); **Platform** (platform staff only) makes it
+  a platform admin.
+- Fortified Sheet Metal is shop #1 and the default shop: its people are the platform staff,
+  its tiers are every account's tier as assigned before, and new sign-ups keep appearing
+  on its tier panel. The six old `app_storage` keys (`shop-price-list`, …) were copied into
+  `shop_settings` by migration `20261017213414_shops_tenant.sql` and are no longer read;
+  a later cleanup migration removes them and the legacy `customers.tier` column.
+
 ## How the New Order tab moves
 
 Two steps and a sheet. **What do you need** picks the tool (panel, trim, a kit, metal, 3D
@@ -185,15 +216,16 @@ sheet over the chooser.
 
 - **Anyone signed in** (staff or customer) can submit orders and see the Price List
   Customer View with their own assigned pricing.
-- **Only staff** can see Shop Floor (all orders from every customer) and Backend
-  Pricing (raw costs, margins, and the tier-assignment panel).
+- **Platform staff and a shop's people** see Shop Floor and Backend Pricing (raw costs,
+  margins, and the tier-assignment panel): platform staff for every shop, a shop's people
+  for their own shop only (see *Shops as tenants*).
 - **Customers cannot change their own tier** — that's enforced at the database level
   (Row Level Security), not just hidden in the UI, so it can't be bypassed by someone
   poking at the browser's dev tools.
-- **Raw costs never leave the shop.** Only staff can read the backend price list and the
-  material and production cost keys; customers get the price list through
-  `customer_price_list()`, which drops the cost column. The tier prices stay in that
-  payload because the app computes every estimate in the browser.
+- **Raw costs never leave the shop.** Only a shop's people and platform staff can read
+  that shop's backend price list and its material and production cost rows; customers get
+  the price list through `customer_price_list(shop)`, which drops the cost column. The
+  tier prices stay in that payload because the app computes every estimate in the browser.
 - **Every estimate and order is priced at the account's assigned tier**, and the order's
   price is set on the server. The pricing code and the catalog it needs live in
   `supabase/functions/_shared/pricing.mjs`, shared by the app and the `submit-order` Edge
@@ -203,8 +235,10 @@ sheet over the chooser.
   apply `supabase/migrations/20261017200506_orders_server_priced.sql`, which drops the
   browser's insert right on `orders`, so a tampered page can't send a price of its own.
   `node scripts/pricing-check.mjs` checks the tier math against the seed price list.
-- The first staff member is added by SQL (step 7). After that, staff can grant or revoke
-  admin access from the **Customer Pricing Tiers** panel; nobody can grant it to themselves.
+- The first staff member is added by SQL (step 7). After that, platform staff grant or
+  revoke platform admin with the **Platform** button in the **Customer Pricing Tiers**
+  panel, and a shop's owners give their own people the shop's backend with **Admin**;
+  nobody can grant either to themselves or remove their own.
 - Every confirmed account gets its `customers` row from a database trigger the moment it
   is confirmed, so it shows up in the tiers panel whether or not it has opened the app.
 - Anonymous readers (the directory page, the home-page counter, the prerender step and

@@ -78,3 +78,47 @@ async function list(prefix = "", shared = false) {
 }
 
 export const storage = { get, set, delete: del, list };
+
+// Per-shop settings (public.shop_settings): the shop's price list, costs, coil width scale,
+// trim presets and materials board, one row per shop per key. Same shape as storage.get/set
+// so the call sites in App.jsx keep their JSON.parse / JSON.stringify lines: get resolves
+// { value: <JSON string> } or null, set takes the JSON string. The column itself is jsonb.
+// RLS decides who may read or write which key for which shop (see the shops_tenant
+// migration); a shop's people write, everyone signed in may read the two sell-price keys.
+const SHOP_TABLE = "shop_settings";
+
+async function shopGet(shopId, key) {
+  if (!shopId) return null;
+  const { data, error } = await supabase
+    .from(SHOP_TABLE)
+    .select("value")
+    .eq("shop_id", shopId)
+    .eq("key", key)
+    .maybeSingle();
+  if (error) {
+    console.error("shopStorage.get error", error);
+    return null;
+  }
+  if (!data) return null;
+  return { key, shopId, value: JSON.stringify(data.value) };
+}
+
+async function shopSet(shopId, key, value) {
+  if (!shopId) return null;
+  let parsed;
+  try { parsed = JSON.parse(value); } catch (e) {
+    console.error("shopStorage.set: value is not JSON", key, e);
+    return null;
+  }
+  const { data: { session } } = await supabase.auth.getSession();
+  const { error } = await supabase
+    .from(SHOP_TABLE)
+    .upsert({ shop_id: shopId, key, value: parsed, updated_at: new Date().toISOString(), updated_by: session?.user?.id || null }, { onConflict: "shop_id,key" });
+  if (error) {
+    console.error("shopStorage.set error", error);
+    return null;
+  }
+  return { key, shopId, value };
+}
+
+export const shopStorage = { get: shopGet, set: shopSet };
