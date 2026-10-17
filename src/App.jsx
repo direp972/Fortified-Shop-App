@@ -4,6 +4,7 @@ import * as THREE from "three";
 import { storage } from "./lib/storage";
 import { supabase } from "./lib/supabaseClient";
 import { useAuth } from "./lib/AuthProvider";
+import { GAUGE_OPTIONS, COPPER_WEIGHT_OPTIONS, G90_GAUGE_OPTIONS, GALVALUME_GAUGE_OPTIONS, BONDERIZED_GAUGE_OPTIONS, PAINT_OPTIONS, COLORS_BY_BRAND, scupperSpec, scupperBack, MILEAGE_FREE, MILEAGE_RATE, mileageCharge, getColorsForBrand, findColor, findGauge, coilPriceForWidth, findFabItem, getSellRates, computePrice, sellRate, sellTierFor, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE } from "../supabase/functions/_shared/pricing.mjs";
 
 /* ---------------------------------- tokens ---------------------------------- */
 const INK = "#0F3D5C";        // blueprint ink
@@ -39,39 +40,6 @@ const MATERIAL_DENSITIES = {
   aluminum: { label: "Aluminum", density: 0.098 },
   copper: { label: "Copper", density: 0.323 },
 };
-
-const GAUGE_OPTIONS = [
-  { id: "24ga", label: "24 Gauge", panelSqft: 3.75, trimFt: 2.75 },
-  { id: "26ga", label: "26 Gauge", panelSqft: 3.00, trimFt: 2.20 },
-];
-
-const COPPER_WEIGHT_OPTIONS = [
-  { id: "16oz", label: "16 oz Copper", panelSqft: 14.50, trimFt: 10.75 },
-  { id: "20oz", label: "20 oz Copper", panelSqft: 17.75, trimFt: 13.25 },
-];
-
-const G90_GAUGE_OPTIONS = [
-  { id: "16ga", label: "16 Gauge", panelSqft: 6.25, trimFt: 4.60 },
-  { id: "18ga", label: "18 Gauge", panelSqft: 5.35, trimFt: 3.95 },
-  { id: "20ga", label: "20 Gauge", panelSqft: 4.55, trimFt: 3.35 },
-  { id: "22ga", label: "22 Gauge", panelSqft: 4.05, trimFt: 3.00 },
-  { id: "24ga", label: "24 Gauge", panelSqft: 3.35, trimFt: 2.50 },
-];
-
-const GALVALUME_GAUGE_OPTIONS = [
-  { id: "24ga", label: "24 Gauge", panelSqft: 3.45, trimFt: 2.55 },
-  { id: "26ga", label: "26 Gauge", panelSqft: 2.85, trimFt: 2.10 },
-];
-
-const BONDERIZED_GAUGE_OPTIONS = [
-  { id: "24ga", label: "24 Gauge", panelSqft: 3.60, trimFt: 2.65 },
-  { id: "26ga", label: "26 Gauge", panelSqft: 3.00, trimFt: 2.20 },
-];
-
-const PAINT_OPTIONS = [
-  { id: "pvdf", label: "PVDF (Kynar 500)", mult: 1.15 },
-  { id: "smp", label: "40YR SMP", mult: 1.0 },
-];
 
 const BRAND_GROUPS = {
   Painted: ["Fortified Metal", "Una-Clad", "Adax Metals", "Berridge"],
@@ -387,140 +355,6 @@ function distanceMiles(a, b) {
 }
 
 
-const COLORS_BY_BRAND = {
-  "Fortified Metal": [
-    { name: "Regal White", hex: "#E3E1DC" },
-    { name: "Almond", hex: "#D9C9AE" },
-    { name: "Sandstone", hex: "#C7BEB0" },
-    { name: "Surrey Beige", hex: "#A9906F" },
-    { name: "Ash Gray", hex: "#9C9088" },
-    { name: "Slate Gray", hex: "#706A66" },
-    { name: "Burnished Slate", hex: "#565B5E", premium: true },
-    { name: "Charcoal Gray", hex: "#55504C" },
-    { name: "Medium Bronze", hex: "#4A3E36" },
-    { name: "Aged Bronze", hex: "#4A3B34" },
-    { name: "Mansard Brown", hex: "#3E2A24" },
-    { name: "Dark Bronze", hex: "#3A322C" },
-    { name: "Matte Black", hex: "#26262A" },
-    { name: "Regal Blue", hex: "#1C5C7A", premium: true },
-    { name: "Evergreen", hex: "#1F3D2E", premium: true },
-    { name: "Copper Metallic", hex: "#A0602E", premium: true },
-    { name: "Paint Grip Ultra SMP", hex: "#8B8B8B", premium: true },
-    { name: "Galvalume", hex: "#D8D6D0", premium: true },
-    { name: "Texas Silver Metallic", hex: "#B0B4B7", premium: true },
-  ],
-  "Una-Clad": [
-    { name: "Stone White", hex: "#EDEBE3" },
-    { name: "Bone White", hex: "#EDE8DD" },
-    { name: "Almond", hex: "#D9C9A8" },
-    { name: "Sandstone", hex: "#C2A97E" },
-    { name: "Slate Gray", hex: "#5C6268" },
-    { name: "Cityscape", hex: "#7C7F82" },
-    { name: "Charcoal Gray", hex: "#4A4E52" },
-    { name: "Sierra Tan", hex: "#B79A6E" },
-    { name: "Medium Bronze", hex: "#5C4A38" },
-    { name: "Dark Bronze", hex: "#4A3B2E" },
-    { name: "Extra Dark Bronze", hex: "#332920" },
-    { name: "Matte Black", hex: "#2B2B2B" },
-    { name: "Mountain Black", hex: "#1E1E1E", premium: true },
-    { name: "Brandywine", hex: "#6E2F28" },
-    { name: "Colonial Red", hex: "#7B2B25" },
-    { name: "Terra Cotta", hex: "#B5623E" },
-    { name: "Mansard Brown", hex: "#4A3826" },
-    { name: "Regal Red", hex: "#8C2A28", premium: true },
-    { name: "Award Blue", hex: "#2E5C8C", premium: true },
-    { name: "Sky Blue", hex: "#6E9FBF" },
-    { name: "Electric Blue", hex: "#2A5FA8" },
-    { name: "Regal Blue", hex: "#2E4A66", premium: true },
-    { name: "Amazon Blue", hex: "#1F4A5C", premium: true },
-    { name: "Teal", hex: "#2E6E6A", premium: true },
-    { name: "Patina Green", hex: "#5C8264" },
-    { name: "Dark Ivy", hex: "#2A3F2C" },
-    { name: "Sherwood Green", hex: "#38513B" },
-    { name: "Hartford Green", hex: "#1F3D2B", premium: true },
-    { name: "Hemlock Green", hex: "#445940" },
-    { name: "Tropical Patina", hex: "#4E8C74", premium: true },
-    { name: "Aged Zinc", hex: "#9096A0", premium: true },
-    { name: "Vintage", hex: "#8A9088", premium: true },
-    { name: "Burnished Slate", hex: "#565B5E", premium: true },
-    { name: "Silver Metallic", hex: "#B7BABD", premium: true },
-    { name: "Classic Copper", hex: "#A05A3A", premium: true },
-    { name: "Champagne Metallic", hex: "#C8B98A", premium: true },
-  ],
-  "Adax Metals": [
-    { name: "Regal White", hex: "#E3E1DC" },
-    { name: "Almond", hex: "#D9C9AE" },
-    { name: "Sandstone", hex: "#C7BEB0" },
-    { name: "Surrey Beige", hex: "#A9906F" },
-    { name: "Ash Gray", hex: "#9C9088" },
-    { name: "Slate Gray", hex: "#706A66" },
-    { name: "Charcoal Gray", hex: "#55504C" },
-    { name: "Medium Bronze", hex: "#4A3E36" },
-    { name: "Aged Bronze", hex: "#4A3B34" },
-    { name: "Mansard Brown", hex: "#3E2A24" },
-    { name: "Dark Bronze", hex: "#3A322C" },
-    { name: "Matte Black", hex: "#26262A" },
-    { name: "Colonial Red", hex: "#7A2422", premium: true },
-    { name: "Regal Blue", hex: "#1C5C7A", premium: true },
-    { name: "Evergreen", hex: "#1F3D2E", premium: true },
-    { name: "Copper Metallic", hex: "#A0602E", premium: true },
-    { name: "Pre-Weathered Galvalume", hex: "#8B8D8A", premium: true },
-    { name: "Paint Grip Ultra SMP", hex: "#8B8B8B", premium: true },
-    { name: "Crimson Red SMP", hex: "#A31F1F", premium: true },
-    { name: "Galvalume", hex: "#D8D6D0", premium: true },
-  ],
-  "Copper": [
-    { name: "Natural Copper (Mill Finish)", hex: "#B87333" },
-  ],
-  "G90 Galvanized": [
-    { name: "G90 Galvanized (Mill Finish)", hex: "#B8BCC0" },
-  ],
-  "Galvalume": [
-    { name: "Galvalume (Mill Finish)", hex: "#C4C7C6" },
-  ],
-  "Bonderized": [
-    { name: "Bonderized (Mill Finish)", hex: "#A8A398" },
-  ],
-  "Berridge": [
-    // Standard Colors
-    { name: "Buckskin", hex: "#8A7B65" },
-    { name: "Parchment", hex: "#D9D6C9" },
-    { name: "Almond", hex: "#E4E6D3" },
-    { name: "Aged Bronze", hex: "#3E2E22" },
-    { name: "Shasta White", hex: "#EDEDE8" },
-    { name: "Forest Green", hex: "#1F4739" },
-    { name: "Patina Green", hex: "#5F9384" },
-    { name: "Sierra Tan", hex: "#B9AD8B" },
-    { name: "Medium Bronze", hex: "#4B3A2B" },
-    { name: "Charcoal Grey", hex: "#3D3D3F" },
-    { name: "Hemlock Green", hex: "#5C7B6C" },
-    { name: "Bristol Blue", hex: "#3A6E85" },
-    { name: "Terra-Cotta", hex: "#B0562F" },
-    { name: "Dark Bronze", hex: "#2E2318" },
-    { name: "Zinc Grey", hex: "#75797C" },
-    { name: "Hartford Green", hex: "#1D3B33" },
-    { name: "Royal Blue", hex: "#1B4863" },
-    { name: "Colonial Red", hex: "#7A2E2A" },
-    { name: "Copper Brown", hex: "#3A2A20" },
-    { name: "Matte Black", hex: "#232324" },
-    { name: "Teal Green", hex: "#2E7266" },
-    { name: "Burgundy", hex: "#4A1F22" },
-    { name: "Deep Red", hex: "#A32030" },
-    // Premium Colors
-    { name: "Natural White", hex: "#F5F3EA", premium: true },
-    { name: "Award Blue", hex: "#1B3E6F", premium: true },
-    // Metallic Colors
-    { name: "Champagne", hex: "#A99C86", premium: true },
-    { name: "Copper-Cote", hex: "#B5652C", premium: true },
-    { name: "Antique Copper-Cote", hex: "#8C8A6E", premium: true },
-    { name: "Zinc-Cote", hex: "#8B8D8E", premium: true },
-    { name: "Lead-Cote", hex: "#6E6F71", premium: true },
-    { name: "Preweathered Galvalume", hex: "#8C8D8A", premium: true },
-    // Natural Metal Finish
-    { name: "Acrylic-Coated Galvalume", hex: "#C9CACA" },
-  ],
-};
-
 
 /* --------------------------------- Residential Kit --------------------------------- */
 // The standard trim set for a 24 ga standing seam roof, drawn to the roof's pitch and the
@@ -760,52 +594,6 @@ const CAP_STYLES = [
 ];
 const CAP_STYLE_LABELS = Object.fromEntries(CAP_STYLES.map((s) => [s.id, s.label]));
 
-// One resolved set of scupper numbers, shared by the model, the blank, the price and the
-// ticket. They used to be defaulted and clamped separately in each, so a plate typed
-// narrower than its own opening was drawn at one size, priced at a second and printed at a
-// third — and the shop builds from the printed one.
-function scupperSpec(o) {
-  const n = (v, d) => (Number.isFinite(+v) ? +v : d);
-  const W = Math.max(1, n(o.partW, 12)), H = Math.max(1, n(o.partH, 4)), WT = Math.max(1, n(o.partD, 8));
-  const proj = Math.max(0.25, n(o.scupProj, 2));
-  // The roof-side plate is usually cut and welded in the field, so the shop only makes one when
-  // the order says so. An order written before that was a choice has no scupRoofMode: it was
-  // priced with whatever flange it carried, so that is what it keeps.
-  const roofShop = o.scupRoofMode ? o.scupRoofMode === "shop" : Math.max(0, n(o.scupFlange, 6)) > 0.01;
-  const flange = roofShop ? Math.max(0, n(o.scupFlange, 6)) : 0;
-  const dsRaw = String(o.scupDsSize || "4×5").split("×").map(Number);
-  return {
-    W, H, WT, proj, flange, roofShop,
-    // the bottom of the roof plate can turn out flat onto the deck for the membrane to lap over;
-    // zero leaves it stopping at the deck, which is the other way it gets done
-    deckLeg: roofShop ? Math.max(0, n(o.scupDeckLeg, 0)) : 0,
-    // Three ways the outside of the wall can go, and only one of them is metal the shop sends
-    // with the sleeve. "none" is a bare sleeve: a box gets made in the field and added there,
-    // or ordered on its own as a Collector Box part.
-    outside: o.scupOutlet === "collector" ? "collector" : o.scupOutlet === "none" ? "none" : "faceplate",
-    collector: o.scupOutlet === "collector",
-    faceplate: o.scupOutlet !== "collector" && o.scupOutlet !== "none",
-    // a termination narrower than the hole it covers is not a thing, so the opening floors it
-    plateW: Math.max(W + 1, n(o.scupPlateW, W + 4)),
-    plateH: Math.max(H + 1, n(o.scupPlateH, H + 4)),
-    boxW: Math.max(W + 1, n(o.scupBoxW, W + 4)),
-    // the box has to reach past the spout or the stream lands in front of it
-    boxD: Math.max(1, proj + 2, n(o.scupBoxD, proj + 4)),
-    boxH: Math.max(2, n(o.scupBoxH, 12)),
-    dsSize: o.scupDsSize || "4×5",
-    dsOut: Math.max(1, dsRaw[0] || 4), dsAcross: Math.max(1, dsRaw[1] || 5),
-    dsLen: Math.max(0, n(o.scupDsLen, 0)),
-    gap: 1.5, // free fall under the spout, so a hard rain can't dam back into the wall
-  };
-}
-
-// The back plate of the collector box, derived from the spec so the model, the price and the
-// ticket describe the same piece of metal. It runs from the box bottom up past the spout,
-// with the sleeve pierced through it.
-function scupperBack(k) {
-  return { h: k.H + 2 + k.gap + k.boxH, pierceW: k.W, pierceH: k.H };
-}
-
 // The one line describing a 3D part wherever it is listed. A scupper reads differently from
 // a box: its three shared numbers are a clear opening and a wall thickness, not W×D×H, and
 // the shop cannot build it without knowing what hangs on the outside of the wall.
@@ -897,13 +685,11 @@ function shopBases(shop) {
   }
   return pts.length ? pts : null;
 }
-const MILEAGE_FREE = 40, MILEAGE_RATE = 2;
 const havMiles = (a, b, c, d) => {
   const r = (x) => (x * Math.PI) / 180;
   const s = Math.sin(r(c - a) / 2) ** 2 + Math.cos(r(a)) * Math.cos(r(c)) * Math.sin(r(d - b) / 2) ** 2;
   return 2 * 3959 * Math.asin(Math.sqrt(s));
 };
-const mileageCharge = (miles) => Math.max(0, (+miles || 0) - MILEAGE_FREE) * MILEAGE_RATE;
 
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 const snap = (v, step = 0.05) => Math.round(v / step) * step;
@@ -931,29 +717,6 @@ function insideAngle(prev, cur, next) {
   if (m1 === 0 || m2 === 0) return 0;
   const cos = Math.max(-1, Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1]) / (m1 * m2)));
   return (Math.acos(cos) * 180) / Math.PI;
-}
-
-// Most brands have one flat color list. Some (Quality Metals, currently delisted) have
-// different palettes for PVDF vs SMP, stored as { pvdf: [...], smp: [...] } instead —
-// this always returns a flat array either way.
-function getColorsForBrand(brand, paintId) {
-  const entry = COLORS_BY_BRAND[brand];
-  if (!entry) return [];
-  if (Array.isArray(entry)) return entry;
-  return entry[paintId] || entry.pvdf || entry.smp || [];
-}
-
-function findColor(name, brand, paintId) {
-  const preferred = getColorsForBrand(brand, paintId).find((c) => c.name === name);
-  if (preferred) return preferred;
-  for (const entry of Object.values(COLORS_BY_BRAND)) {
-    const lists = Array.isArray(entry) ? [entry] : Object.values(entry);
-    for (const list of lists) {
-      const hit = list.find((c) => c.name === name);
-      if (hit) return hit;
-    }
-  }
-  return null;
 }
 
 function hexToRgb(hex) {
@@ -1038,18 +801,6 @@ function findSimilarColorsAcrossBrands(hex, excludeBrand, limit = 8) {
   }
   results.sort((a, b) => a.distance - b.distance);
   return results.slice(0, limit);
-}
-
-// Gauge IDs (e.g. "24ga") are reused across different material option sets with different
-// prices, so lookup has to pick the right set by brand FIRST, then find within it — a plain
-// id-only search would silently match the wrong table.
-function findGauge(gaugeId, brand) {
-  const set = brand === "Copper" ? COPPER_WEIGHT_OPTIONS
-    : brand === "G90 Galvanized" ? G90_GAUGE_OPTIONS
-    : brand === "Galvalume" ? GALVALUME_GAUGE_OPTIONS
-    : brand === "Bonderized" ? BONDERIZED_GAUGE_OPTIONS
-    : GAUGE_OPTIONS;
-  return set.find((g) => g.id === gaugeId) || set[0] || GAUGE_OPTIONS[0];
 }
 
 // Rolls a job's line items up into "what raw stock do I need to pull to run this job":
@@ -1232,158 +983,6 @@ function computeJobMaterials(items) {
     coil: [...coilByWidth.values()].map((c) => ({ ...c, pos: [...c.pos].sort() })).sort((a, b) => b.feet - a.feet),
     accessories: [...accByLabel.values()].map((a) => ({ ...a, pos: [...a.pos].sort() })).sort((a, b) => b.qty - a.qty),
   };
-}
-
-/* ---------------------------------- pricing ---------------------------------- */
-// Pulls live sell rates from the Price List (Greenleaf tier) instead of the old
-// hardcoded GAUGE_OPTIONS table, so editing prices in the Price List tab actually
-// changes what New Order shows. Price List panel rates are $/linear ft at a specific
-// coil width (that item's own "Coverage Width"), so they get converted to a $/sqft
-// basis using that same width — trim rates are already $/linear ft, no conversion
-// needed. Falls back to the old hardcoded rates for materials the Price List doesn't
-// have a matching entry for yet (Copper only if no matching entry, G90/Galvalume/
-// Bonderized always, since those aren't in the Price List at all currently).
-// Coil sells in width BRACKETS, not on a sliding scale: each scale point means
-// "anything up to this width costs this much per LF". With points at 16/21/24,
-// a 15" coil prices at the 16" rate, 16.01"–21" at the 21" rate, 21.01"–24" at
-// the 24" rate. Wider than the top bracket uses the top bracket's price.
-// Returns null when the scale is empty so callers can fall back to flat-rate.
-function coilPriceForWidth(widthIn, scale) {
-  if (!scale || scale.length === 0 || !widthIn) return null;
-  const sorted = [...scale].sort((a, b) => a.width - b.width);
-  const bracket = sorted.find((p) => widthIn <= p.width) || sorted[sorted.length - 1];
-  return Math.max(0, bracket.pricePerFt);
-}
-
-// Fabrication $/LF from the Price List — a profile-specific row (name starting with
-// the profile code, e.g. "FWQ100 Fabrication") beats the generic "Panel Fabrication".
-function findFabItem(priceList, profile) {
-  const fabItems = (priceList || []).filter((p) => p.category === "Roof Panel" && p.name.toLowerCase().includes("fabrication") && typeof p.greenleaf === "number");
-  const code = profile ? profile.split(" ")[0].toLowerCase() : "";
-  return (code && fabItems.find((p) => p.name.toLowerCase().startsWith(code))) || fabItems.find((p) => p.name.toLowerCase().startsWith("panel")) || fabItems[0] || null;
-}
-
-function getSellRates(gaugeId, brand, priceList, profile) {
-  const gauge = findGauge(gaugeId, brand);
-  const fallback = { coilSqft: gauge.panelSqft, panelSqft: gauge.panelSqft, fabSqft: 0, trimFt: gauge.trimFt };
-  if (!priceList || priceList.length === 0) return fallback;
-
-  if (brand === "Copper") {
-    const item = priceList.find((p) => p.category === "Copper" && p.name.toLowerCase().includes(gauge.label.toLowerCase()) && typeof p.greenleaf === "number");
-    const coilSqft = item ? item.greenleaf : fallback.coilSqft;
-    return { coilSqft, panelSqft: coilSqft, fabSqft: 0, trimFt: fallback.trimFt };
-  }
-  if (["G90 Galvanized", "Galvalume", "Bonderized"].includes(brand)) {
-    return fallback; // not in the Price List yet
-  }
-
-  const gaugeLabel = gauge.label; // "24 Gauge" or "26 Gauge"
-  // "24/26 Gauge Coil" is the raw material rate. "Panel Fabrication" is the separate
-  // per-linear-ft charge for actually roll-forming that coil into a finished panel —
-  // raw coil/flat metal orders should only ever be charged the coil rate, never
-  // fabrication, since nothing's being formed.
-  const coilItem = priceList.find((p) => p.category === "Roof Panel" && p.name.startsWith(gaugeLabel) && typeof p.greenleaf === "number");
-  const fabItem = findFabItem(priceList, profile);
-  const trimItem = priceList.find((p) => p.category === "Trim / Flashing" && p.name.startsWith(gaugeLabel) && typeof p.greenleaf === "number");
-
-  const coilWidthIn = coilItem?.coverageWidth || 12;
-  const coilSqft = coilItem ? coilItem.greenleaf / (coilWidthIn / 12) : fallback.coilSqft;
-  const fabSqft = fabItem ? fabItem.greenleaf / (coilWidthIn / 12) : 0;
-  const panelSqft = coilSqft + fabSqft;
-  const trimFt = trimItem ? trimItem.greenleaf : fallback.trimFt;
-  return { coilSqft, panelSqft, fabSqft, trimFt };
-}
-
-function computePrice(order, priceList, coilWidthScale) {
-  const rates = getSellRates(order.gaugeId, order.brand, priceList, order.profile);
-  const paint = order.brand === "Copper" ? { mult: 1 } : (PAINT_OPTIONS.find((p) => p.id === order.paintId) || PAINT_OPTIONS[0]);
-  const colorObj = findColor(order.colorName, order.brand, order.paintId);
-  const premiumMult = colorObj?.premium ? 1.12 : 1;
-  if (order.type === "metal") {
-    const flatSqft = ((order.flatWidth || 0) * (order.flatLength || 0)) / 144;
-    // Flat sheets price as material ($/sq ft) + a flat processing fee per sheet, pulled
-    // from the Price List's "Flat Sheet Material" / "Flat Sheet Processing" items —
-    // falls back to the old gauge-derived rate (material only, no processing fee) if
-    // those items aren't in the Price List.
-    const flatMaterialItem = priceList?.find((p) => p.name.toLowerCase().includes("flat sheet material") && typeof p.greenleaf === "number");
-    const flatProcessingItem = priceList?.find((p) => p.name.toLowerCase().includes("flat sheet processing") && typeof p.greenleaf === "number");
-    const flatMaterialRate = flatMaterialItem ? flatMaterialItem.greenleaf : rates.coilSqft;
-    const flatProcessingFee = flatProcessingItem ? flatProcessingItem.greenleaf : 0;
-    const flatCost = (flatSqft * flatMaterialRate * paint.mult + flatProcessingFee) * order.quantity;
-    // Coil pricing prefers the real interpolated width scale (actual supplier price
-    // points) over the flat derived $/sqft rate, since coil doesn't price out linearly
-    // with width in the real world — falls back to the flat rate if there aren't at
-    // least 2 scale points to interpolate between. The scale points themselves are
-    // PVDF pricing, so they apply as-is for PVDF orders and get scaled down by the
-    // PVDF/SMP ratio for SMP orders, rather than getting the PVDF multiplier stacked
-    // on top of an already-PVDF price.
-    const interpolatedPerFt = coilPriceForWidth(order.coilWidth, coilWidthScale);
-    const pvdfMult = PAINT_OPTIONS.find((p) => p.id === "pvdf")?.mult || 1;
-    const coilFeet = (order.coilLength || 0) / 12;
-    const coilCost = interpolatedPerFt !== null
-      ? interpolatedPerFt * (paint.mult / pvdfMult) * coilFeet
-      : (((order.coilWidth || 0) * (order.coilLength || 0)) / 144) * rates.coilSqft * paint.mult;
-    const base = flatCost + coilCost;
-    return Math.max(15, base * premiumMult + 15);
-  } else if (order.type === "part3d") {
-    const W = order.partW || 0, D = order.partD || 0, H = order.partH || 0, CH = order.partCapH || 0;
-    let sqin;
-    if (order.partType === "chimney") {
-      const oh = order.partOverhang ?? 2, postH = order.partPostH ?? 6, shelf = order.partShelf ?? 3, leg = order.partLeg ?? 3;
-      const EW = W + 2 * oh, ED = D + 2 * oh;
-      const slant = Math.sqrt((Math.max(EW, ED) / 2) ** 2 + CH ** 2);
-      // the base (shelf + down leg + hem, all the way round) + four posts + the roof out to its eave + drip and seams
-      sqin = 2 * (W + D) * (shelf + leg + 0.5) + 4 * postH * 6 + 2 * (EW + ED) * slant * 1.1;
-    } else if (order.partType === "scupper") {
-      // the sleeve's girth over its run, plus the roof flange collar, plus whatever the
-      // spout runs into. Without this a face-plate scupper and a scupper with a head and
-      // ten feet of downspout under it quote to exactly the same number.
-      const k = scupperSpec(order);
-      sqin = 2 * (k.W + k.H) * (k.WT + k.proj)
-        + ((k.W + 2 * k.flange) * (k.H + 2 * k.flange) - k.W * k.H)
-        + (k.W + 2 * k.flange) * k.deckLeg; // the turned-out leg comes off the same blank
-      if (k.collector) {
-        // bottom, front, two sides, and the back the sleeve passes through
-        sqin += k.boxW * k.boxD + k.boxW * k.boxH + 2 * k.boxD * k.boxH
-          + (k.boxW * scupperBack(k).h - k.W * k.H);
-        sqin += 2 * (k.dsOut + k.dsAcross) * k.dsLen * 12;
-      } else if (k.faceplate) {
-        sqin += k.plateW * k.plateH - k.W * k.H;
-      }
-    } else {
-      sqin = 2 * (W + D) * H + W * D; // walls + bottom
-    }
-    const sqft = sqin / 144;
-    const fabItemName = order.partType === "collector" ? "collector box" : order.partType === "scupper" ? "scupper" : "chimney cap";
-    const feeFor = (name) => {
-      const it = priceList?.find((p) => p.category === "3D Parts" && p.name.toLowerCase().includes(name) && typeof p.greenleaf === "number");
-      return it ? it.greenleaf : 12; // per-piece fee for the extra seams/folds vs a flat panel
-    };
-    // A scupper with a head under it is two fabricated pieces on one line. The head's seams
-    // and its outlet are the same work the standalone Collector Box part is billed for, so
-    // without this the box and its downspout go out as raw coil with no labor on them.
-    let formingFee = feeFor(fabItemName);
-    if (order.partType === "scupper" && order.scupOutlet === "collector") formingFee += feeFor("collector box");
-    const base = sqft * rates.coilSqft * paint.mult * order.quantity + formingFee * order.quantity;
-    return Math.max(20, base * premiumMult + 20);
-  } else if (order.type === "panel") {
-    const sqft = (order.width * order.height) / 144;
-    const coilCost = sqft * rates.coilSqft * paint.mult * order.quantity;
-    const fabCost = sqft * (rates.fabSqft || 0) * paint.mult * order.quantity;
-    // Fabrication minimums: hauling the roll former to a job site floors the
-    // fabrication charge at $600; shop-rolled runs floor at $150.
-    const fabMin = order.runLocation === "Job Site" ? 600 : 200;
-    // $2/mile one way past 40 miles from the nearest roll-forming base
-    const mileage = order.runLocation === "Job Site" ? mileageCharge(order.jobSiteMiles) : 0;
-    const base = coilCost + Math.max(fabCost, fabMin) + mileage;
-    return Math.max(15, base * premiumMult + 15);
-  } else {
-    const points = order.points || [];
-    const bends = Math.max(0, points.length - 2);
-    const totalFt = order.lengthPerPiece * order.quantity;
-    const base = (totalFt * rates.trimFt * paint.mult) + bends * 2 * order.quantity;
-    return Math.max(10, base * premiumMult + 10);
-  }
 }
 
 /* ---------------------------------- shape thumbnail ---------------------------------- */
@@ -3796,6 +3395,9 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
 /* ---------------------------------- main app ---------------------------------- */
 export default function ShopOrderApp() {
   const { user, customer, isStaff, ownedShops, signOut } = useAuth();
+  // Every estimate and every order is priced at the tier the shop assigned to this account
+  // (retail until staff change it). submit-order prices the order again at the same tier.
+  const sellTier = sellTierFor(customer);
   // Signed out, the tools are open to anyone as a demo: draw trim, size a panel
   // run, try colours. What an account is for — pricing, sending an order to a
   // shop, and the saved-job tabs — stays locked, and every locked control raises
@@ -4235,20 +3837,38 @@ export default function ShopOrderApp() {
     })();
   }, []);
 
+  // Orders go through the submit-order Edge Function, which prices each part again at this
+  // account's tier against the shop's live Price List and writes the rows itself — the price
+  // computed here is only the estimate on screen. Resolves to the saved orders, carrying the
+  // server's prices, or false after telling the person what went wrong.
   const insertOrders = async (newOrders) => {
     // attach userId locally so a just-submitted order shows in Past Orders without a reload
     setOrders((prev) => [...newOrders.map((o) => ({ ...o, userId: user?.id || null })), ...prev]);
-    const rows = newOrders.map((o) => ({ id: o.id, user_id: user?.id || null, shop_id: o.shopId || null, data: o, created_at: o.createdAt }));
-    const { error } = await supabase.from("orders").insert(rows);
-    if (error) {
-      console.error("orders insert error", error);
+    let reply = null, saved = null;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/submit-order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", apikey: import.meta.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${session?.access_token || ""}` },
+        body: JSON.stringify({ orders: newOrders }),
+      });
+      reply = await r.json().catch(() => null);
+      if (r.ok && Array.isArray(reply?.orders)) saved = reply.orders;
+    } catch (e) {
+      console.error("submit-order error", e);
+    }
+    if (!saved) {
+      console.error("orders insert error", reply);
       const failed = new Set(newOrders.map((o) => o.id));
       setOrders((prev) => prev.filter((o) => !failed.has(o.id))); // undo the optimistic add
-      setToast("⚠️ Order didn't save — check your connection and try again.");
+      setToast(`⚠️ ${typeof reply?.error === "string" ? reply.error : "Order didn't save — check your connection and try again."}`);
       setTimeout(() => setToast(""), 4000);
       return false;
     }
-    return true;
+    // the price and tier on the row are the server's, so that is what the tabs show
+    const byId = new Map(saved.map((o) => [o.id, o]));
+    setOrders((prev) => prev.map((o) => (byId.has(o.id) ? { ...byId.get(o.id), userId: user?.id || null } : o)));
+    return saved;
   };
 
   const updateOrderRows = async (patched) => {
@@ -4364,68 +3984,14 @@ export default function ShopOrderApp() {
   // Fabrication $/LF reference follows the Price List — profile-specific rows
   // (e.g. FWQ100 Fabrication) beat the generic Panel Fabrication rate.
   const panelFabPerFt = () => {
-    const fabItem = findFabItem(priceList, profile);
-    return fabItem ? fabItem.greenleaf : null;
+    const fabItem = findFabItem(priceList, profile, sellTier);
+    return fabItem ? sellRate(fabItem, sellTier) : null;
   };
   useEffect(() => {
     const v = panelFabPerFt();
     if (v !== null) setFabPricePerFt(v);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [priceList, profile]);
-
-  const DEFAULT_PRICE_LIST = [
-    // Roof Panel
-    { id: "p1", category: "Roof Panel", name: '24 Gauge Coil (per linear ft)', derivedFromMaterialId: "m1", coverageWidth: 16, cost: 0, tier1: 4.10, tier2: 4.55, greenleaf: 3.95 },
-    { id: "p2", category: "Roof Panel", name: '26 Gauge Coil (per linear ft)', cost: 0, tier1: 3.30, tier2: 3.65, greenleaf: 3.15 },
-    { id: "p1f", category: "Roof Panel", name: 'Panel Fabrication (per linear ft)', cost: 0, tier1: 1.00, tier2: 1.15, greenleaf: 0.65 },
-    { id: "p1f2", category: "Roof Panel", name: 'FWQ100 Fabrication (per linear ft)', cost: 0, tier1: 1.75, tier2: 2.00, greenleaf: 1.50 },
-    { id: "p2b", category: "Roof Panel", name: "Flat Sheet Material (per sq ft)", cost: 0, tier1: 1.40, tier2: 1.40, greenleaf: 1.40 },
-    { id: "p2c", category: "Roof Panel", name: "Flat Sheet Processing (per sheet)", cost: 0, tier1: 7.50, tier2: 7.50, greenleaf: 7.50 },
-    // Trim / Flashing
-    { id: "p3", category: "Trim / Flashing", name: '24 Gauge Trim (per linear ft)', cost: 0, tier1: 3.00, tier2: 3.35, greenleaf: 2.90 },
-    { id: "p4", category: "Trim / Flashing", name: '26 Gauge Trim (per linear ft)', cost: 0, tier1: 2.40, tier2: 2.70, greenleaf: 2.30 },
-    // Copper
-    { id: "p5", category: "Copper", name: '16 oz Copper (per sq ft)', cost: 0, tier1: 15.75, tier2: 17.50, greenleaf: 15.25 },
-    { id: "p6", category: "Copper", name: '20 oz Copper (per sq ft)', cost: 0, tier1: 19.25, tier2: 21.50, greenleaf: 18.60 },
-    // Paint / Finish
-    { id: "p6a", category: "Paint / Finish", name: "PVDF Paint Upcharge (per sq ft)", cost: 0, tier1: 0.55, tier2: 0.65, greenleaf: 0.50 },
-    { id: "p6b", category: "Paint / Finish", name: "SMP Paint (per sq ft)", cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
-    { id: "p6c", category: "Paint / Finish", name: "Premium Color Upcharge (per sq ft)", cost: 0, tier1: 0.45, tier2: 0.55, greenleaf: 0.40 },
-    // Accessories
-    { id: "p7", category: "Accessories", name: '1" XLP Screws (each)', cost: 0, tier1: 0.18, tier2: 0.22, greenleaf: 0.16 },
-    { id: "p8", category: "Accessories", name: 'DP1 Screws (each)', cost: 0, tier1: 0.22, tier2: 0.27, greenleaf: 0.20 },
-    { id: "p9", category: "Accessories", name: 'DP3 Screws (each)', cost: 0, tier1: 0.26, tier2: 0.32, greenleaf: 0.24 },
-    { id: "p10", category: "Accessories", name: '3/8" Butyl Tape (per roll)', cost: 0, tier1: 6.50, tier2: 7.50, greenleaf: 6.00 },
-    { id: "p11", category: "Accessories", name: '1" Butyl Tape (per roll)', cost: 0, tier1: 8.25, tier2: 9.50, greenleaf: 7.75 },
-    { id: "p12a", category: "Accessories", name: 'Pipe Boot 1" (each)', cost: 0, tier1: 12.00, tier2: 14.00, greenleaf: 11.00 },
-    { id: "p12b", category: "Accessories", name: 'Pipe Boot 1.5" (each)', cost: 0, tier1: 13.00, tier2: 15.25, greenleaf: 12.00 },
-    { id: "p12c", category: "Accessories", name: 'Pipe Boot 2" (each)', cost: 0, tier1: 14.00, tier2: 16.50, greenleaf: 13.00 },
-    { id: "p12d", category: "Accessories", name: 'Pipe Boot 3" (each)', cost: 0, tier1: 15.50, tier2: 18.00, greenleaf: 14.25 },
-    { id: "p12e", category: "Accessories", name: 'Pipe Boot 4" (each)', cost: 0, tier1: 17.00, tier2: 19.75, greenleaf: 15.75 },
-    { id: "p12f", category: "Accessories", name: 'Pipe Boot 5" (each)', cost: 0, tier1: 19.00, tier2: 22.00, greenleaf: 17.50 },
-    { id: "p12g", category: "Accessories", name: 'Pipe Boot 6" (each)', cost: 0, tier1: 21.50, tier2: 25.00, greenleaf: 20.00 },
-    { id: "p12h", category: "Accessories", name: 'Pipe Boot 7" (each)', cost: 0, tier1: 24.00, tier2: 28.00, greenleaf: 22.25 },
-    { id: "p12i", category: "Accessories", name: 'Pipe Boot 8" (each)', cost: 0, tier1: 27.00, tier2: 31.50, greenleaf: 25.00 },
-    { id: "p13", category: "Accessories", name: 'Sealant, Color-Matched (per tube)', cost: 0, tier1: 9.00, tier2: 10.50, greenleaf: 8.50 },
-    // Dry In
-    { id: "pd1", category: "Accessories", name: 'Synthetic Underlayment 42" (1,000 sq ft roll)', cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
-    { id: "pd2", category: "Accessories", name: 'Plastic Cap Nails (2,000 ct box)', cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
-    { id: "pd3", category: "Accessories", name: 'Palisade SA-HT Ice & Water (2 sq roll)', cost: 0, tier1: 0, tier2: 0, greenleaf: 0 },
-    // Clips — priced PER CLIP; the backend shows the computed per-box price
-    // (per-clip × the box count from CLIP_SPECS) next to each row.
-    // Costs are BPD (bpdusa.com) listed per-clip prices as of 2026-08-21; sell
-    // prices are cost × 1.8, rounded to the cent.
-    { id: "pc1", category: "Clips", name: 'FG-100-24 Clip (per clip)', cost: 0.133, tier1: 0.24, tier2: 0.24, greenleaf: 0.24 },
-    { id: "pc2", category: "Clips", name: 'FG-158-24 Clip (per clip)', cost: 0.147, tier1: 0.26, tier2: 0.26, greenleaf: 0.26 },
-    { id: "pc3", category: "Clips", name: 'FG-218-24 Clip (per clip)', cost: 0.317, tier1: 0.57, tier2: 0.57, greenleaf: 0.57 },
-    { id: "pc4", category: "Clips", name: 'SG-114-24-SL Clip (per clip)', cost: 0.199, tier1: 0.36, tier2: 0.36, greenleaf: 0.36 },
-    { id: "pc5", category: "Clips", name: 'SG-178-18 Clip (per clip)', cost: 0.271, tier1: 0.49, tier2: 0.49, greenleaf: 0.49 },
-    { id: "p14", category: "Accessories", name: 'Clips (per 100, by profile)', cost: 0, tier1: 22.00, tier2: 26.00, greenleaf: 20.50 },
-    // 3D Parts
-    { id: "p15", category: "3D Parts", name: 'Collector Box (base fabrication fee)', cost: 0, tier1: 45.00, tier2: 55.00, greenleaf: 42.00 },
-    { id: "p16", category: "3D Parts", name: 'Scupper (base fabrication fee)', cost: 0, tier1: 40.00, tier2: 50.00, greenleaf: 37.00 },
-    { id: "p17", category: "3D Parts", name: 'Chimney Cap (base fabrication fee)', cost: 0, tier1: 50.00, tier2: 62.00, greenleaf: 47.00 },
-  ];
 
   // Staff read the price list as stored. Everyone else gets it through customer_price_list(),
   // which strips the cost column; the tier prices stay because estimates are computed here.
@@ -4704,12 +4270,6 @@ export default function ShopOrderApp() {
     saveProductionCosts(productionCosts.map((p) => (p.id === id ? { ...p, cost: value, lastUpdated: today } : p)));
   };
 
-  const DEFAULT_COIL_WIDTH_SCALE = [
-    { id: "cw1", width: 16, pricePerFt: 2.56 },
-    { id: "cw2", width: 21, pricePerFt: 3.03 },
-    { id: "cw3", width: 24, pricePerFt: 3.31 },
-  ];
-
   useEffect(() => {
     (async () => {
       try {
@@ -4908,12 +4468,12 @@ export default function ShopOrderApp() {
   const activeGauge = findGauge(gaugeId, brand);
   const activePaint = brand === "Copper" ? { mult: 1 } : (PAINT_OPTIONS.find((p) => p.id === paintId) || PAINT_OPTIONS[0]);
   const activePremiumMult = colorObj?.premium ? 1.12 : 1;
-  const activeRates = getSellRates(gaugeId, brand, priceList, profile);
+  const activeRates = getSellRates(gaugeId, brand, priceList, profile, sellTier);
   const ratePerSqft = activeRates.coilSqft * activePaint.mult * activePremiumMult;
-  const activeFlatMaterialItem = priceList?.find((p) => p.name.toLowerCase().includes("flat sheet material") && typeof p.greenleaf === "number");
-  const activeFlatProcessingItem = priceList?.find((p) => p.name.toLowerCase().includes("flat sheet processing") && typeof p.greenleaf === "number");
-  const activeFlatMaterialRate = activeFlatMaterialItem ? activeFlatMaterialItem.greenleaf : activeRates.coilSqft;
-  const activeFlatProcessingFee = activeFlatProcessingItem ? activeFlatProcessingItem.greenleaf : 0;
+  const activeFlatMaterialItem = priceList?.find((p) => p.name.toLowerCase().includes("flat sheet material") && sellRate(p, sellTier) !== undefined);
+  const activeFlatProcessingItem = priceList?.find((p) => p.name.toLowerCase().includes("flat sheet processing") && sellRate(p, sellTier) !== undefined);
+  const activeFlatMaterialRate = activeFlatMaterialItem ? sellRate(activeFlatMaterialItem, sellTier) : activeRates.coilSqft;
+  const activeFlatProcessingFee = activeFlatProcessingItem ? sellRate(activeFlatProcessingItem, sellTier) : 0;
   const flatSheetPrice = (((+flatWidth || 0) * (+flatLength || 0)) / 144) * activeFlatMaterialRate * activePaint.mult * activePremiumMult + activeFlatProcessingFee;
   const interpolatedCoilPerFt = coilPriceForWidth(+metalCoilWidth || 0, coilWidthScale);
   const pvdfMultRef = PAINT_OPTIONS.find((p) => p.id === "pvdf")?.mult || 1;
@@ -4959,7 +4519,7 @@ export default function ShopOrderApp() {
     : shapeType === "part3d"
     ? { type: "part3d", partType, partW, partD, partH, partCapH, partPostH, partOverhang, partShelf, partLeg, capRibs, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, scupOutlet, scupRoofMode, scupFlange, scupDeckLeg, scupProj, scupPlateW, scupPlateH, scupBoxW, scupBoxD, scupBoxH, scupDsSize, scupDsLen, quantity, gaugeId, paintId, brand, colorName }
     : { type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, brand, colorName };
-  const estimate = computePrice(draft, priceList, coilWidthScale);
+  const estimate = computePrice(draft, priceList, coilWidthScale, sellTier);
   const girth = profileGirth(points, hemStart, hemEnd); // legs plus the end folds — the width the shear cuts
   // Qty / sheet width are "" while a field is cleared for retyping — treat that as 0 so
   // this stays numeric (dropWidth.toFixed on "" used to white-screen the whole app).
@@ -5005,7 +4565,7 @@ export default function ShopOrderApp() {
       name: partName.trim() || base?.name || `Part ${basket.length + 1}`,
       points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
       girth, partsPerSheet, sheetsNeeded, dropWidth, photo: partPhoto, pitch: drawnPitch, ...own,
-      price: computePrice({ type: "trim", points, quantity, lengthPerPiece, ...own }, priceList, coilWidthScale),
+      price: computePrice({ type: "trim", points, quantity, lengthPerPiece, ...own }, priceList, coilWidthScale, sellTier),
     };
   };
   // Every part the order is made of: the list, plus the canvas draft as one more — or, while a
@@ -5178,7 +4738,7 @@ export default function ShopOrderApp() {
       quantity: qty, lengthPerPiece, sheetWidth: sheetWidthNum,
       girth: g, partsPerSheet: pps, sheetsNeeded: pps > 0 ? Math.ceil(qty / pps) : 0, dropWidth: pps > 0 ? Math.max(0, sheetWidthNum - pps * g) : sheetWidthNum,
       photo: null, pitch: it.pitch ?? roofBoxPitch, gaugeId: kitGaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
-      price: computePrice({ type: "trim", points: it.points, quantity: qty, lengthPerPiece, gaugeId: kitGaugeId, paintId, brand, colorName }, priceList, coilWidthScale),
+      price: computePrice({ type: "trim", points: it.points, quantity: qty, lengthPerPiece, gaugeId: kitGaugeId, paintId, brand, colorName }, priceList, coilWidthScale, sellTier),
     };
   };
   const roofBoxPicked = roofKit.filter((it) => !it.tool3d && (roofBoxSel[it.id] || 0) > 0).map((it) => roofBoxItem(it, Math.max(1, Math.round(+roofBoxSel[it.id] || 1))));
@@ -5334,13 +4894,13 @@ export default function ShopOrderApp() {
           status: "Pending",
           createdAt: new Date().toISOString(),
         };
-        order.price = computePrice(order, priceList, coilWidthScale);
+        order.price = computePrice(order, priceList, coilWidthScale, sellTier);
         return order;
       });
       const saved = await insertOrders(newOrders);
       setSubmitting(false);
       if (!saved) return; // insertOrders already said so — keep the parts so they can retry
-      const totalPrice = newOrders.reduce((s, o) => s + o.price, 0);
+      const totalPrice = saved.reduce((s, o) => s + o.price, 0);
       setToast(`Order sent — ${newOrders.length} part${newOrders.length === 1 ? "" : "s"}, estimate ${money(totalPrice)}. The shop will confirm final pricing.`);
       setBasket([]);
       resetForm();
@@ -5420,11 +4980,11 @@ export default function ShopOrderApp() {
       status: "Pending",
       createdAt: new Date().toISOString(),
     };
-    order.price = computePrice(order, priceList, coilWidthScale);
+    order.price = computePrice(order, priceList, coilWidthScale, sellTier);
     const saved = await insertOrders([order]);
     setSubmitting(false);
     if (!saved) return; // insertOrders already said so — keep the form so they can retry
-    setToast(`Order sent — estimate ${money(order.price)}. The shop will confirm final pricing.`);
+    setToast(`Order sent — estimate ${money(saved[0].price)}. The shop will confirm final pricing.`);
     if (box3dReturn) { // reached from the Commercial Kit: the trim order is still being built, so back to it — name, phone and notes kept
       dropNav("part3d"); setBox3dReturn(false); setBoxNote(`${PART3D_LABELS[partType]} sent as its own order — pick the next piece.`); openRoofBox("com");
     } else resetForm();
@@ -5432,7 +4992,7 @@ export default function ShopOrderApp() {
   };
 
   /* ---------- Job Vault ---------- */
-  const vaultCurrentPrice = (item) => computePrice(item.payload || {}, priceList, coilWidthScale);
+  const vaultCurrentPrice = (item) => computePrice(item.payload || {}, priceList, coilWidthScale, sellTier);
   // An item alerts when today's price is above the last price the member acknowledged
   // (or the price at save time, if they never dismissed an alert).
   const vaultIncrease = (item) => {
@@ -5541,7 +5101,7 @@ export default function ShopOrderApp() {
       job_name: jobName,
       kind: p.type,
       payload: p,
-      saved_price: computePrice(p, priceList, coilWidthScale),
+      saved_price: computePrice(p, priceList, coilWidthScale, sellTier),
     }));
     const { data, error } = await supabase.from("vault_items").insert(rows).select();
     setSavingVault(false);
