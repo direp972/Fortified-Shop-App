@@ -4088,7 +4088,7 @@ export default function ShopOrderApp() {
     else if (layer === "kit") { cur.roofBoxOpen = false; setRoofBoxOpen(false); }
     else if (layer === "part3d") { if (cur.box3dReturn) { cur.box3dReturn = false; cur.roofBoxOpen = true; setBox3dReturn(false); openRoofBox("com"); } }
     else if (layer === "details") { cur.orderStep = "type"; cur.roofBoxOpen = false; setRoofBoxOpen(false); setOrderStep("type"); }
-    else if (layer === "tab") { cur.tab = data.from; setTab(data.from); }
+    else if (layer === "tab") { cur.tab = data.from; setTab(data.from); if (data.from === "order" && data.step) { cur.orderStep = data.step; setOrderStep(data.step); } }
   };
   // Forward after Back: the layer comes back the way it opened.
   const redoLayer = ({ layer, data }) => {
@@ -4111,6 +4111,10 @@ export default function ShopOrderApp() {
       const depth = navStack.current.length;
       if (navBusy.current) navBusy.current -= 1;
       if (navSilent.current) { navSilent.current -= 1; navStack.current.length = Math.min(depth, target); return; }
+      if (!ours && st && typeof st.rcNav === "number") { // an entry an earlier load or mount pushed: nothing to undo, so hop over it
+        while (navStack.current.length) undoLayer(navStack.current.pop());
+        navGo(-1); return;
+      }
       if (target < depth) { while (navStack.current.length > target) undoLayer(navStack.current.pop()); }
       else if (target === depth + 1 && ours) { const entry = { layer: st.layer, data: st.data }; navStack.current.push(entry); redoLayer(entry); }
       else if (target > depth) { navGo(depth - target); } // a jump of several forward: back to where the app is
@@ -4127,26 +4131,29 @@ export default function ShopOrderApp() {
     // same-document traversals land within a frame; if one never does, the stack is on its own
     setTimeout(() => { if (navBusy.current) { navBusy.current = 0; navSilent.current = 0; } }, 1500);
   };
-  const navBackTo = (layer, fallback) => {
-    const i = navStack.current.map((x) => x.layer).lastIndexOf(layer);
-    if (embedded || i < 0) { fallback(); return; }
+  // Entries the app closes on its own go quietly: from index i up, nothing undone.
+  const dropFrom = (i) => {
+    if (embedded || i < 0 || i >= navStack.current.length || navBusy.current) return;
+    navSilent.current += 1; navGo(-(navStack.current.length - i));
+  };
+  const layers = () => navStack.current.map((x) => x.layer);
+  const dropNav = (layer) => dropFrom(layers().lastIndexOf(layer));         // that layer and anything above it
+  const dropWizard = () => dropFrom(layers().lastIndexOf("tab") + 1);       // the wizard's own entries; a tab entry beneath stays
+  const dropTabs = () => dropFrom(layers().indexOf("tab"));                 // every tab entry and what came after it
+  const navBackTo = (layer, fallback, unwindRest) => {
+    const i = layers().lastIndexOf(layer);
+    if (embedded || i < 0) { if (unwindRest) dropWizard(); fallback(); return; } // no entry to unwind: do it by hand
     if (navBusy.current) return;
     navGo(-(navStack.current.length - i));
-  };
-  // A layer the app closed on its own: its entry (and anything above it) goes quietly.
-  const dropNav = (layer) => {
-    const i = layer ? navStack.current.map((x) => x.layer).lastIndexOf(layer) : 0;
-    if (embedded || i < 0 || !navStack.current.length || navBusy.current) return;
-    navSilent.current += 1; navGo(-(navStack.current.length - i));
   };
   const openColorSheet = () => { if (navRefs.current.colorSheet) return; setColorSheet(true); pushNav("sheet"); };
   const closeColorSheet = () => { if (!navRefs.current.colorSheet) return; navBackTo("sheet", () => setColorSheet(false)); };
   const goDetails = (apply, shape) => { if (apply) apply(); const wasChooser = navRefs.current.orderStep !== "details"; setOrderStep("details"); if (wasChooser) pushNav("details", { shape: shape || navRefs.current.shapeType }); };
-  const goChooser = () => navBackTo("details", () => { setRoofBoxOpen(false); setOrderStep("type"); });
+  const goChooser = () => navBackTo("details", () => { setRoofBoxOpen(false); setBox3dReturn(false); setOrderStep("type"); }, true);
   const openKit = (kind) => { openRoofBox(kind); pushNav("kit", { kind }); };
   const closeKit = () => navBackTo("kit", () => setRoofBoxOpen(false));
   const backToKitFrom3d = () => navBackTo("part3d", () => { setBox3dReturn(false); openRoofBox("com"); });
-  const goTab = (to) => { const from = navRefs.current.tab; if (to === from) return; setTab(to); pushNav("tab", { from, to }); };
+  const goTab = (to) => { const from = navRefs.current.tab; if (to === from) return; setTab(to); pushNav("tab", { from, to, step: from === "order" ? navRefs.current.orderStep : undefined }); };
   // The sheet is modal: Escape closes it and the page behind it stops scrolling.
   useEffect(() => {
     if (!colorSheet) return;
@@ -4189,8 +4196,8 @@ export default function ShopOrderApp() {
   // "last tab" points there (or they navigate there directly), bounce them back to New Order.
   // The Master Materials List is the Fortified shop's own board, so it stays staff-only.
   useEffect(() => {
-    if (tab === "dashboard" && !canRunShopFloor) setTab("order");
-    if (isDemo && tab !== "order") setTab("order");
+    if (tab === "dashboard" && !canRunShopFloor) { setTab("order"); dropTabs(); }
+    if (isDemo && tab !== "order") { setTab("order"); dropTabs(); }
   }, [tab, canRunShopFloor, isDemo]);
   useEffect(() => {
     if (shopFloorView === "materials" && !isStaff) setShopFloorView("jobs");
@@ -4962,7 +4969,7 @@ export default function ShopOrderApp() {
   const dropWidth = partsPerSheet > 0 ? Math.max(0, sheetWidthNum - partsPerSheet * girth) : sheetWidthNum;
 
   const resetForm = () => {
-    dropNav(); // the order is sent: every entry the wizard pushed goes
+    dropWizard(); // the order is sent: every entry the wizard pushed goes; a tab entry beneath still leads back to its list
     setOrderStep("type");
     setShapeType("panel"); setWidth(16.88); setHeight(853.08); setCoilWidth(21); setProfile(PROFILES[0]); setRunLocation("Shop"); setJobSiteAddress(""); setJobSiteMiles(""); setMilesLookupNote(""); setSupplierCo("Fortified Metal"); setRibStyle(null); setClipRelief(null);
     setFlatWidth(48); setFlatLength(120); setMetalCoilWidth(21); setMetalCoilLength(12000);
@@ -7241,7 +7248,7 @@ export default function ShopOrderApp() {
                               {(boxStripAll ? basket : basket.slice(0, 8)).map((b) => {
                                 const editing = b.id === editingId;
                                 return (
-                                  <button key={b.id} type="button" onClick={() => (editing ? setRoofBoxOpen(false) : editBasketItem(b, true))} title={editing ? "This part is on the canvas now — back to it" : "Open this part on the canvas to change it"} data-testid="box-in-order-part"
+                                  <button key={b.id} type="button" onClick={() => (editing ? closeKit() : editBasketItem(b, true))} title={editing ? "This part is on the canvas now — back to it" : "Open this part on the canvas to change it"} data-testid="box-in-order-part"
                                     style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 8px 3px 3px", borderRadius: 999, border: `1px solid ${editing ? SAFETY : theme.border}`, background: editing ? "rgba(212,175,55,0.18)" : theme.inputBg, color: theme.text, fontSize: 11, cursor: "pointer" }}>
                                     <span style={{ background: INK, borderRadius: 4, padding: 2, display: "flex" }}><ShapeThumb order={{ type: "trim", points: b.points, hemStart: b.hemStart, hemEnd: b.hemEnd, colorHex: b.colorHex }} size={18} /></span>
                                     <span style={{ fontWeight: 600 }}>{b.name}</span><span className="mono" style={{ color: theme.textSecondary }}>×{b.quantity}{b.kit && PITCHED_KIT.has(b.kit) && b.pitch ? ` · ${fmtPitch(b.pitch)}` : ""}</span>
