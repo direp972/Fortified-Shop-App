@@ -164,6 +164,23 @@ Any directory listing can take orders from the Panel & Trim app:
 Fortified Sheet Metal's own listing has ordering switched on with no order email, so its
 orders keep going to `ALERT_EMAIL_TO` and the shop text exactly as before.
 
+## How the New Order tab moves
+
+Two steps and a sheet. **What do you need** picks the tool (panel, trim, a kit, metal, 3D
+parts); **Order details** is the tool itself. **Finish & color** is not a step you travel to:
+it opens as a sheet over whatever screen is up, and Done drops you back on it with the 3D
+model, the drawing and every typed number exactly as they were. A sticky bar at the top of
+the tab shows the three stops with what each holds (the part, the tool, the color) and each
+is a button, so the color is one tap away from the 3D tool and the chooser one tap away
+from a drawing.
+
+The browser's Back button and a phone's back gesture close the sheet, close a kit, return
+from the 3D tool to the Commercial Kit it was opened from, or step from a tool back to the
+chooser, instead of leaving the app. Only moves the person made by hand leave a history
+entry; deep links, the Job Vault and a kit opened after a send do not, and nothing is
+pushed when members.html embeds the app. `?view=color` (the Color Lab button) opens the
+sheet over the chooser.
+
 ## Notes on how access works
 
 - **Anyone signed in** (staff or customer) can submit orders and see the Price List

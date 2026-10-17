@@ -3820,7 +3820,8 @@ export default function ShopOrderApp() {
   const [shopId, setShopId] = useState(null);
   const ownedShopIds = (ownedShops || []).map((s) => s.id);
   const canRunShopFloor = isStaff || (ownedShops || []).some((s) => s.accepts_orders);
-  const [orderStep, setOrderStep] = useState("type"); // "color" | "type" | "details"
+  const [orderStep, setOrderStep] = useState("type"); // "type" | "details" — finish & color is a sheet over either, see colorSheet
+  const [colorSheet, setColorSheet] = useState(false); // Finish & color, open as a sheet over whatever screen is up
   const [showColorMatch, setShowColorMatch] = useState(false);
   const [materialCategory, setMaterialCategory] = useState("painted"); // "painted" | "unpainted"
   const [orders, setOrders] = useState([]);
@@ -4027,7 +4028,7 @@ export default function ShopOrderApp() {
   const [savingVault, setSavingVault] = useState(false);
 
   // Deep links from the site — these win over the saved last-tab restore below:
-  //   ?view=color  the Color Lab button opens straight to Pick Your Finish
+  //   ?view=color  the Color Lab button opens the Finish & color sheet over the chooser
   //   ?view=trim   "Trim drawing" on roofcoil.com/members.html opens the drawing tool
   //   ?view=panel  "Panel orders" opens the panel calculator
   //   ?view=box    "Open the Residential Kit" on sheet-metal-trim.html opens that kit
@@ -4038,7 +4039,10 @@ export default function ShopOrderApp() {
   // with a same-origin postMessage ({type:"rc:view"}) so a half-drawn profile isn't
   // lost to a reload when the member flips tabs.
   const openTool = useCallback((view) => {
-    if (view === "color") { setTab("order"); setOrderStep("color"); }
+    // members.html switches tools mid-session with the same calls; a sheet left open
+    // over the old tool would hide the new one
+    if (view !== "color") setColorSheet(false);
+    if (view === "color") { setTab("order"); setColorSheet(true); }
     else if (view === "trim" || view === "panel" || view === "metal") { setTab("order"); setShapeType(view); setOrderStep("details"); }
     // same reset the 3D Parts tile does, so a deep link starts as clean as a tap does
     else if (view === "part3d") { setTab("order"); setAccessories([]); setBox3dReturn(false); setShapeType("part3d"); setOrderStep("details"); }
@@ -4051,6 +4055,114 @@ export default function ShopOrderApp() {
     if (deepLinked) openTool(deepLinkView);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Screens the person opens by hand — a tool from the chooser, a kit, the 3D tool from
+  // the Commercial Kit, the Finish & color sheet, another tab — each leave a history entry
+  // tagged with the layer they opened, so the browser's Back and a phone's back gesture
+  // close that layer instead of leaving the app, and Forward opens it again. navStack
+  // mirrors those entries. The in-app Back buttons unwind down to the layer they name,
+  // through the browser, so the two never drift apart. Nothing is pushed when members.html
+  // embeds the app, whose own history this must not touch; deep links, the vault and the
+  // moves the app makes on its own push nothing; a layer the app closes by itself drops
+  // its entry quietly. Entries left by an earlier page load carry another token and count
+  // as nothing.
+  const embedded = window.parent !== window;
+  const navTok = useRef(Math.random().toString(36).slice(2));
+  const navStack = useRef([]);   // [{ layer, data }], bottom first
+  const navBusy = useRef(0);     // traversals asked for and not yet landed
+  const navSilent = useRef(0);   // …of which these only drop entries, undoing nothing
+  const navRefs = useRef({});
+  navRefs.current = { colorSheet, orderStep, tab, roofBoxOpen, box3dReturn, shapeType };
+  useEffect(() => {
+    if (!embedded && window.history.state && window.history.state.rcNav) window.history.replaceState(null, ""); // left by the last load; not ours
+  }, []);
+  const pushNav = (layer, data) => {
+    if (embedded || navBusy.current) return;
+    navStack.current.push({ layer, data: data || null });
+    window.history.pushState({ rcNav: navStack.current.length, layer, data: data || null, tok: navTok.current }, "");
+  };
+  // What closing a layer means. One the app already closed on its own is a no-op.
+  const undoLayer = ({ layer, data }) => {
+    const cur = navRefs.current;
+    if (layer === "sheet") { cur.colorSheet = false; setColorSheet(false); }
+    else if (layer === "kit") { cur.roofBoxOpen = false; setRoofBoxOpen(false); }
+    else if (layer === "part3d") { if (cur.box3dReturn) { cur.box3dReturn = false; cur.roofBoxOpen = true; setBox3dReturn(false); openRoofBox("com"); } }
+    else if (layer === "details") { cur.orderStep = "type"; cur.roofBoxOpen = false; setRoofBoxOpen(false); setOrderStep("type"); }
+    else if (layer === "tab") { cur.tab = data.from; setTab(data.from); if (data.from === "order" && data.step) { cur.orderStep = data.step; setOrderStep(data.step); } }
+  };
+  // Forward after Back: the layer comes back the way it opened.
+  const redoLayer = ({ layer, data }) => {
+    const cur = navRefs.current;
+    if (layer === "sheet") { cur.colorSheet = true; setColorSheet(true); }
+    else if (layer === "kit") { cur.roofBoxOpen = true; openRoofBox((data && data.kind) || undefined); }
+    else if (layer === "part3d") { cur.box3dReturn = true; cur.roofBoxOpen = false; setRoofBoxOpen(false); setBox3dReturn(true); setShapeType("part3d"); setOrderStep("details"); }
+    else if (layer === "details") { cur.orderStep = "details"; if (data && data.shape) setShapeType(data.shape); setOrderStep("details"); }
+    else if (layer === "tab") { cur.tab = data.to; setTab(data.to); }
+  };
+  const navDo = useRef({});
+  navDo.current = { undoLayer, redoLayer };
+  useEffect(() => {
+    if (embedded) return;
+    const onPop = (e) => {
+      const { undoLayer, redoLayer } = navDo.current;
+      const st = e.state;
+      const ours = !!(st && st.tok === navTok.current && typeof st.rcNav === "number");
+      const target = ours ? st.rcNav : 0;
+      const depth = navStack.current.length;
+      if (navBusy.current) navBusy.current -= 1;
+      if (navSilent.current) { navSilent.current -= 1; navStack.current.length = Math.min(depth, target); return; }
+      if (!ours && st && typeof st.rcNav === "number") { // an entry an earlier load or mount pushed: nothing to undo, so hop over it
+        while (navStack.current.length) undoLayer(navStack.current.pop());
+        navGo(-1); return;
+      }
+      if (target < depth) { while (navStack.current.length > target) undoLayer(navStack.current.pop()); }
+      else if (target === depth + 1 && ours) { const entry = { layer: st.layer, data: st.data }; navStack.current.push(entry); redoLayer(entry); }
+      else if (target > depth) { navGo(depth - target); } // a jump of several forward: back to where the app is
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Close the named layer and everything opened on top of it. With an entry to unwind the
+  // browser goes back and onPop does the closing; without one the fallback does it now.
+  // A second press while the browser is still on its way does nothing.
+  const navGo = (k) => {
+    navBusy.current += 1; window.history.go(k);
+    // same-document traversals land within a frame; if one never does, the stack is on its own
+    setTimeout(() => { if (navBusy.current) { navBusy.current = 0; navSilent.current = 0; } }, 1500);
+  };
+  // Entries the app closes on its own go quietly: from index i up, nothing undone.
+  const dropFrom = (i) => {
+    if (embedded || i < 0 || i >= navStack.current.length || navBusy.current) return;
+    navSilent.current += 1; navGo(-(navStack.current.length - i));
+  };
+  const layers = () => navStack.current.map((x) => x.layer);
+  const dropNav = (layer) => dropFrom(layers().lastIndexOf(layer));         // that layer and anything above it
+  const dropWizard = () => dropFrom(layers().lastIndexOf("tab") + 1);       // the wizard's own entries; a tab entry beneath stays
+  const dropTabs = () => dropFrom(layers().indexOf("tab"));                 // every tab entry and what came after it
+  const navBackTo = (layer, fallback, unwindRest) => {
+    const i = layers().lastIndexOf(layer);
+    if (embedded || i < 0) { if (unwindRest) dropWizard(); fallback(); return; } // no entry to unwind: do it by hand
+    if (navBusy.current) return;
+    navGo(-(navStack.current.length - i));
+  };
+  const openColorSheet = () => { if (navRefs.current.colorSheet) return; setColorSheet(true); pushNav("sheet"); };
+  const closeColorSheet = () => { if (!navRefs.current.colorSheet) return; navBackTo("sheet", () => setColorSheet(false)); };
+  const goDetails = (apply, shape) => { if (apply) apply(); const wasChooser = navRefs.current.orderStep !== "details"; setOrderStep("details"); if (wasChooser) pushNav("details", { shape: shape || navRefs.current.shapeType }); };
+  const goChooser = () => navBackTo("details", () => { setRoofBoxOpen(false); setBox3dReturn(false); setOrderStep("type"); }, true);
+  const openKit = (kind) => { openRoofBox(kind); pushNav("kit", { kind }); };
+  const closeKit = () => navBackTo("kit", () => setRoofBoxOpen(false));
+  const backToKitFrom3d = () => navBackTo("part3d", () => { setBox3dReturn(false); openRoofBox("com"); });
+  const goTab = (to) => { const from = navRefs.current.tab; if (to === from) return; setTab(to); pushNav("tab", { from, to, step: from === "order" ? navRefs.current.orderStep : undefined }); };
+  // The sheet is modal: Escape closes it and the page behind it stops scrolling.
+  useEffect(() => {
+    if (!colorSheet) return;
+    const onKey = (e) => { if (e.key === "Escape") closeColorSheet(); };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow; document.body.style.overflow = "hidden";
+    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [colorSheet]);
   useEffect(() => {
     if (window.parent === window) return; // not embedded — nobody to talk to
     const onMessage = (e) => {
@@ -4084,8 +4196,8 @@ export default function ShopOrderApp() {
   // "last tab" points there (or they navigate there directly), bounce them back to New Order.
   // The Master Materials List is the Fortified shop's own board, so it stays staff-only.
   useEffect(() => {
-    if (tab === "dashboard" && !canRunShopFloor) setTab("order");
-    if (isDemo && tab !== "order") setTab("order");
+    if (tab === "dashboard" && !canRunShopFloor) { setTab("order"); dropTabs(); }
+    if (isDemo && tab !== "order") { setTab("order"); dropTabs(); }
   }, [tab, canRunShopFloor, isDemo]);
   useEffect(() => {
     if (shopFloorView === "materials" && !isStaff) setShopFloorView("jobs");
@@ -4857,6 +4969,7 @@ export default function ShopOrderApp() {
   const dropWidth = partsPerSheet > 0 ? Math.max(0, sheetWidthNum - partsPerSheet * girth) : sheetWidthNum;
 
   const resetForm = () => {
+    dropWizard(); // the order is sent: every entry the wizard pushed goes; a tab entry beneath still leads back to its list
     setOrderStep("type");
     setShapeType("panel"); setWidth(16.88); setHeight(853.08); setCoilWidth(21); setProfile(PROFILES[0]); setRunLocation("Shop"); setJobSiteAddress(""); setJobSiteMiles(""); setMilesLookupNote(""); setSupplierCo("Fortified Metal"); setRibStyle(null); setClipRelief(null);
     setFlatWidth(48); setFlatLength(120); setMetalCoilWidth(21); setMetalCoilLength(12000);
@@ -4870,7 +4983,7 @@ export default function ShopOrderApp() {
     setScupDsSize("4×5"); setScupDsLen(10);
     setPoints(TRIM_PRESETS["Eave / Drip Edge"]); setPreset("Eave / Drip Edge");
     setHemStart("none"); setHemEnd("none"); setPaintSide("right");
-    setGaugeId(GAUGE_OPTIONS[0].id); setPaintId(PAINT_OPTIONS[0].id); setBrand(BRANDS[0]); setColorName(COLORS_BY_BRAND[BRANDS[0]][0].name);
+    setMaterialCategory("painted"); setGaugeId(GAUGE_OPTIONS[0].id); setPaintId(PAINT_OPTIONS[0].id); setBrand(BRANDS[0]); setColorName(COLORS_BY_BRAND[BRANDS[0]][0].name);
     setQuantity(4); setLengthPerPiece(10); setSheetWidth(48); setPartName("");
     setEditingId(null); setBoxReturn(null); editSnapshot.current = null; setRoofBoxOpen(false); setBox3dReturn(false);
     setCustomerName(""); setPhone(""); setNotes("");
@@ -4933,7 +5046,7 @@ export default function ShopOrderApp() {
   const editBasketItem = (it, fromBox = false) => {
     if (!editingId) editSnapshot.current = { points, hemStart, hemEnd, paintSide, partName, quantity, lengthPerPiece, sheetWidth, partPhoto, drawnPitch, preset, materialCategory, gaugeId, paintId, brand, colorName, boxReturn, boxReturnKind };
     setEditingId(it.id);
-    if (fromBox) { setRoofBoxOpen(false); setBoxReturn("edit"); setBoxReturnKind(roofBoxKind); }
+    if (fromBox) { setRoofBoxOpen(false); dropNav("kit"); setBoxReturn("edit"); setBoxReturnKind(roofBoxKind); }
     setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
     setHemStart(it.hemStart || "none"); setHemEnd(it.hemEnd || "none"); setPaintSide(it.paintSide || "left");
     setPartName(it.name); setQuantity(it.quantity); setLengthPerPiece(it.lengthPerPiece); setSheetWidth(it.sheetWidth);
@@ -5047,7 +5160,7 @@ export default function ShopOrderApp() {
     const seedKit = roofBoxKind === "com" ? COM_KIT : buildRoofKit();
     setRoofBoxSel((sel) => seedBoxSel(sel, seedKit));
     setBoxOrder(seedBoxSel(roofBoxSel, seedKit)); // same computation, so the order matches what seeds
-    const onKey = (e) => { if (e.key === "Escape") setRoofBoxOpen(false); };
+    const onKey = (e) => { if (e.key === "Escape" && !navRefs.current.colorSheet) closeKit(); };
     window.addEventListener("keydown", onKey);
     const focusTimer = setTimeout(() => roofBoxPitchRef.current?.focus(), 0);
     return () => { window.removeEventListener("keydown", onKey); clearTimeout(focusTimer); };
@@ -5077,7 +5190,7 @@ export default function ShopOrderApp() {
     setBasket((b) => [...b, ...added]);
     setRoofBoxSel((sel) => { const next = { ...sel }; for (const it of added) if (it.kit) next[it.kit] = 0; return next; }); // in the order now — tick again for more
     if (!editingId) { clearDrawing(); setPartPhoto(null); } // same as Add Part: the canvas draft must not ride along as an extra part — unless it is a part being edited, which orderParts already counts once
-    setRoofBoxOpen(false);
+    setRoofBoxOpen(false); dropNav("kit");
     const pcs = added.reduce((sum, it) => sum + (+it.quantity || 0), 0);
     setToast(`${boxKind.label} — ${added.length} ${boxNoun}${added.length === 1 ? "" : "s"}, ${pcs} piece${pcs === 1 ? "" : "s"} added to the order${boxPending ? ` (the ${boxPending.name} from the canvas with them)` : ""}.`);
     setTimeout(() => setToast(""), 4000);
@@ -5099,7 +5212,7 @@ export default function ShopOrderApp() {
     setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
     setHemStart(it.hemStart); setHemEnd(it.hemEnd); setPaintSide(it.paintSide); setPartName(it.name); setDrawnPitch(it.pitch ?? roofBoxPitch);
     setQuantity(roofBoxSel[it.id] > 0 ? roofBoxSel[it.id] : 4);
-    setViewResetKey((k) => k + 1); setRoofBoxOpen(false);
+    setViewResetKey((k) => k + 1); setRoofBoxOpen(false); dropNav("kit");
     setToast(`${it.name} is on the canvas — adjust any leg, then Add Part to Order.${replaced ? ` It took the place of the ${replaced} that was there.` : ""}`); setTimeout(() => setToast(""), 4000);
   };
   // A scupper or a collector box is built in the 3D tool, not drawn — its row in the Commercial Kit
@@ -5119,7 +5232,7 @@ export default function ShopOrderApp() {
     if (editingId) restoreCanvas(); // a part being changed goes back in its place first
     setRoofBoxOpen(false); setBox3dReturn(true);
     seedPartDims(it.tool3d, partType);
-    setPartType(it.tool3d); setShapeType("part3d"); setOrderStep("details");
+    setPartType(it.tool3d); setShapeType("part3d"); setOrderStep("details"); pushNav("part3d");
     setToast(`${it.name} — size it in the 3D tool and send it as its own part. The parts in your list stay; sending brings you back to the Commercial Kit for the rest.`); setTimeout(() => setToast(""), 5000);
   };
 
@@ -5313,7 +5426,7 @@ export default function ShopOrderApp() {
     if (!saved) return; // insertOrders already said so — keep the form so they can retry
     setToast(`Order sent — estimate ${money(order.price)}. The shop will confirm final pricing.`);
     if (box3dReturn) { // reached from the Commercial Kit: the trim order is still being built, so back to it — name, phone and notes kept
-      setBox3dReturn(false); setBoxNote(`${PART3D_LABELS[partType]} sent as its own order — pick the next piece.`); openRoofBox("com");
+      dropNav("part3d"); setBox3dReturn(false); setBoxNote(`${PART3D_LABELS[partType]} sent as its own order — pick the next piece.`); openRoofBox("com");
     } else resetForm();
     setTimeout(() => setToast(""), 5000);
   };
@@ -5462,6 +5575,7 @@ export default function ShopOrderApp() {
     const kind = p.type || item.kind;
     if (editingId) restoreCanvas(); // a saved item is a new part, not the edited one
     setBoxReturn(null); setRoofBoxOpen(false); setBox3dReturn(false); // and not the box piece either
+    if (navRefs.current.tab !== "order") pushNav("tab", { from: navRefs.current.tab, to: "order" }); // Back returns to the list it came from
     setTab("order");
     setShapeType(kind);
     setOrderStep("details");
@@ -5620,188 +5734,10 @@ export default function ShopOrderApp() {
     </label>
   );
 
-  return (
-    <div style={{ fontFamily: "Inter, sans-serif", background: theme.pageBg, minHeight: "100vh" }}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
-        .disp { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.03em; }
-        .mono { font-family: 'IBM Plex Mono', monospace; }
-        input[type=number]::-webkit-inner-spin-button { opacity: 1; }
-        select { -webkit-appearance: none; appearance: none; }
-        /* Press feedback is a die closing, not a spring: the key goes DOWN 1px, its
-           bend line goes out and the face takes an inset shadow. Linear timing — a
-           press has no bounce in it. Nothing scales and nothing floats. */
-        .mac-btn {
-          transition: background-color 60ms linear, box-shadow 60ms linear, filter 60ms linear;
-        }
-        .mac-btn:hover {
-          filter: brightness(1.06);
-          box-shadow: inset 0 0 0 1px rgba(212,175,55,0.55);
-        }
-        .mac-btn:active {
-          transform: translateY(1px);
-          box-shadow: inset 0 0 0 1px rgba(212,175,55,0.55), inset 0 2px 3px rgba(10,43,65,0.35);
-        }
-        .tb-btn { transition: background-color 60ms linear, box-shadow 60ms linear, filter 60ms linear; }
-        .tb-btn:hover { filter: brightness(1.14); }
-        .tb-btn:active { transform: translateY(1px); filter: brightness(0.94); }
-        .tap-bounce {
-          transition: transform 50ms linear, box-shadow 50ms linear, filter 50ms linear;
-        }
-        .tap-bounce:active {
-          transform: translateY(1px);
-          box-shadow: inset 0 2px 3px rgba(10,43,65,0.32);
-          filter: brightness(0.96);
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .mac-btn:active, .tap-bounce:active, .tb-btn:active { transform: none; }
-        }
-        @keyframes popIn {
-          0% { transform: scale(0.7); opacity: 0; }
-          60% { transform: scale(1.06); opacity: 1; }
-          100% { transform: scale(1); }
-        }
-        .pop-in { animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
-        /* Box rows (both kits): tick, picture, words, controls — on a phone the controls drop under the words */
-        .box-row { display: grid; grid-template-columns: 22px 54px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
-        .box-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
-        @media (max-width: 560px) {
-          .box-row { grid-template-columns: 22px 54px minmax(0, 1fr); }
-          .box-row .box-controls { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
-        }
-        @keyframes wiggle {
-          0%, 100% { transform: rotate(0deg); }
-          25% { transform: rotate(-4deg); }
-          75% { transform: rotate(4deg); }
-        }
-        .wiggle-hover:hover { animation: wiggle 0.3s ease; }
-        @keyframes slideUpFade {
-          0% { transform: translateY(14px); opacity: 0; }
-          100% { transform: translateY(0); opacity: 1; }
-        }
-        .slide-up-in { animation: slideUpFade 0.28s cubic-bezier(0.34, 1.56, 0.64, 1); }
-        @keyframes celebrateSpin {
-          0% { transform: scale(0) rotate(-15deg); opacity: 0; }
-          50% { transform: scale(1.2) rotate(8deg); opacity: 1; }
-          100% { transform: scale(1) rotate(0deg); }
-        }
-        .celebrate { animation: celebrateSpin 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
-      `}</style>
-
-      {/* header */}
-      <div style={{ background: `linear-gradient(135deg, ${CHARCOAL}, ${INK})`, borderBottom: `1px solid rgba(212,175,55,0.25)`, padding: "18px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div className="disp" style={{ color: "#fff", fontSize: 20, fontWeight: 700 }}>Panel &amp; Trim Calculator</div>
-          <div className="mono" style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>Shop Order Portal</div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-          {/* name and pricing tier belong to an account — a demo visitor has neither */}
-          {!isDemo && <div style={{ textAlign: "right", marginRight: 4, maxWidth: 150, overflow: "hidden" }}>
-            <div style={{ color: "#fff", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{customer?.name || user?.email}</div>
-            <div style={{ color: theme.textSecondary, fontSize: 9.5 }}>
-              {isStaff ? "Staff" : `Tier: ${customer?.tier === "tier1" ? "Tier 1" : customer?.tier === "greenleaf" ? "Greenleaf" : "Tier 2"}`}
-            </div>
-          </div>}
-          <button onClick={isDemo ? () => openAuth("signin") : signOutEverywhere}
-            style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${isDemo ? SAFETY : "rgba(255,255,255,0.3)"}`, background: isDemo ? SAFETY : "rgba(255,255,255,0.08)", color: isDemo ? "#1C1C1E" : "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-            {isDemo ? "Sign in / Sign up" : "Sign Out"}
-          </button>
-          <button onClick={() => setDarkMode((d) => !d)}
-            style={{ width: 30, height: 30, borderRadius: 15, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-            title={darkMode ? "Switch to light mode" : "Switch to dark mode"}>
-            {darkMode ? "☀" : "☾"}
-          </button>
-          <Ruler color={SAFETY} size={22} />
-        </div>
-      </div>
-
-      {/* tabs */}
-      <div style={{ display: "flex", background: CHARCOAL, paddingBottom: 0 }}>
-        {[{ id: "order", label: "New Order", icon: PenTool },
-          // Job Vault, Past Orders and the Price List are all account territory.
-          ...(isDemo ? [] : [{ id: "vault", label: "Job Vault", icon: Briefcase }]),
-          ...(canRunShopFloor ? [{ id: "dashboard", label: "Shop Floor", icon: ClipboardList }] : []),
-          ...(isDemo ? [] : [{ id: "past", label: "Past Orders", icon: Clock }, { id: "pricelist", label: "Price List", icon: DollarSign }]),
-        ].map((t) => {
-          const Icon = t.icon;
-          const active = tab === t.id;
-          return (
-            <button key={t.id} onClick={() => setTab(t.id)}
-              className="disp tap-bounce"
-              style={{
-                flex: 1, padding: "12px 8px", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                background: active ? theme.pageBg : "transparent", color: active ? SAFETY : "#9AA5AD",
-                border: "none", borderTopLeftRadius: active ? 10 : 0, borderTopRightRadius: active ? 10 : 0,
-                borderTop: active ? `3px solid ${SAFETY}` : "3px solid transparent",
-                fontSize: 13, fontWeight: 600, cursor: "pointer",
-              }}>
-              <Icon size={15} /> {t.label}
-              {t.id === "vault" && vaultAlertCount > 0 && (
-                <span className="mono" style={{ background: AMBER, color: "#fff", borderRadius: 999, fontSize: 9, padding: "1px 6px", fontWeight: 700 }}>▲{vaultAlertCount}</span>
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {isDemo && (
-        <div style={{
-          background: theme.card, borderBottom: `1px solid ${theme.border}`, color: theme.textSecondary,
-          padding: "9px 20px", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
-        }}>
-          <span>
-            <b style={{ color: theme.text }}>You're trying the tools.</b>{" "}
-            Draw and measure as much as you like. Pricing and sending an order to a shop need a free account.
-          </span>
-          <button onClick={() => openAuth("signup")} className="tap-bounce"
-            style={{ border: `1.5px solid ${SAFETY}`, background: "transparent", color: theme.text, borderRadius: 999, padding: "5px 14px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
-            Create a free account
-          </button>
-        </div>
-      )}
-
-      {toast && (
-        <div className="pop-in" style={{
-          background: `linear-gradient(90deg, #FBF3D9, #F5E6C3)`, borderBottom: `3px solid ${SAFETY}`, color: theme.text,
-          padding: "11px 20px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8,
-        }}>
-          <span style={{ fontSize: 16 }}>✨</span>
-          {toast}
-        </div>
-      )}
-
-      {tab === "order" ? (
-        <div style={{ padding: 16, maxWidth: 640, margin: "0 auto" }}>
-          {orderStep === "color" && (
-            <>
-              <button onClick={() => setOrderStep("details")}
-                style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: 0, marginBottom: 10, display: "flex", alignItems: "center", gap: 4 }}>
-                <ChevronDown size={14} style={{ transform: "rotate(90deg)" }} /> Back to Order Details
-              </button>
-              <div className="disp" style={{ fontSize: 15, color: theme.text, marginBottom: 4 }}>Step 3 of 3 — Pick Your Finish</div>
-              <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 14 }}>Choose your manufacturer, gauge, and color.</div>
-              {/* quick links into the panel calculator / trim drawing tool */}
-              <div style={{ display: "flex", gap: 8 }}>
-                {[
-                  { id: "panel", label: "Panel Calculator", icon: Square, accent: SAFETY },
-                  { id: "trim", label: "Trim Drawing Tool", icon: PenTool, accent: "#4F9A63" },
-                ].map((q) => {
-                  const Icon = q.icon;
-                  return (
-                    <button key={q.id} onClick={() => { setShapeType(q.id); setOrderStep("details"); }} className="tap-bounce"
-                      style={{
-                        flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, padding: "10px 8px",
-                        borderRadius: 8, border: `1px solid ${q.accent}`, background: theme.card, color: q.accent,
-                        fontSize: 12, fontWeight: 700, cursor: "pointer",
-                      }}>
-                      <Icon size={14} /> {q.label}
-                    </button>
-                  );
-                })}
-              </div>
-          {/* color picker */}
-          <div style={{ background: theme.card, borderRadius: 10, padding: 12, marginTop: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
-            <div className="disp" style={{ fontSize: 12, color: theme.textSecondary, marginBottom: 8 }}>Finish Color</div>
+  // Finish & color: manufacturer, paint, gauge and the color grid. One block, shown in
+  // the sheet that opens over whichever screen the person is on (see colorSheet).
+  const renderFinishPicker = () => (
+    <>
             <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
               {[{ id: "painted", label: "Painted" }, { id: "unpainted", label: "Unpainted" }].map((c) => (
                 <button key={c.id} onClick={() => {
@@ -5992,18 +5928,236 @@ export default function ShopOrderApp() {
                 )}
               </>
             )}
-          </div>
-              <button onClick={() => setOrderStep("details")}
-                style={{ width: "100%", marginTop: 14, padding: "13px", borderRadius: 10, border: "none", background: SAFETY, color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-                Done — Back to Order Details
-              </button>
-            </>
-          )}
+    </>
+  );
 
+  return (
+    <div style={{ fontFamily: "Inter, sans-serif", background: theme.pageBg, minHeight: "100vh" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Oswald:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
+        .disp { font-family: 'Oswald', sans-serif; text-transform: uppercase; letter-spacing: 0.03em; }
+        .mono { font-family: 'IBM Plex Mono', monospace; }
+        input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+        select { -webkit-appearance: none; appearance: none; }
+        /* Press feedback is a die closing, not a spring: the key goes DOWN 1px, its
+           bend line goes out and the face takes an inset shadow. Linear timing — a
+           press has no bounce in it. Nothing scales and nothing floats. */
+        .mac-btn {
+          transition: background-color 60ms linear, box-shadow 60ms linear, filter 60ms linear;
+        }
+        .mac-btn:hover {
+          filter: brightness(1.06);
+          box-shadow: inset 0 0 0 1px rgba(212,175,55,0.55);
+        }
+        .mac-btn:active {
+          transform: translateY(1px);
+          box-shadow: inset 0 0 0 1px rgba(212,175,55,0.55), inset 0 2px 3px rgba(10,43,65,0.35);
+        }
+        .tb-btn { transition: background-color 60ms linear, box-shadow 60ms linear, filter 60ms linear; }
+        .tb-btn:hover { filter: brightness(1.14); }
+        .tb-btn:active { transform: translateY(1px); filter: brightness(0.94); }
+        .tap-bounce {
+          transition: transform 50ms linear, box-shadow 50ms linear, filter 50ms linear;
+        }
+        .tap-bounce:active {
+          transform: translateY(1px);
+          box-shadow: inset 0 2px 3px rgba(10,43,65,0.32);
+          filter: brightness(0.96);
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .mac-btn:active, .tap-bounce:active, .tb-btn:active { transform: none; }
+        }
+        @keyframes popIn {
+          0% { transform: scale(0.7); opacity: 0; }
+          60% { transform: scale(1.06); opacity: 1; }
+          100% { transform: scale(1); }
+        }
+        .pop-in { animation: popIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        /* Box rows (both kits): tick, picture, words, controls — on a phone the controls drop under the words */
+        .box-row { display: grid; grid-template-columns: 22px 54px minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+        .box-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+        @media (max-width: 560px) {
+          .box-row { grid-template-columns: 22px 54px minmax(0, 1fr); }
+          .box-row .box-controls { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
+        }
+        @keyframes wiggle {
+          0%, 100% { transform: rotate(0deg); }
+          25% { transform: rotate(-4deg); }
+          75% { transform: rotate(4deg); }
+        }
+        .wiggle-hover:hover { animation: wiggle 0.3s ease; }
+        @keyframes slideUpFade {
+          0% { transform: translateY(14px); opacity: 0; }
+          100% { transform: translateY(0); opacity: 1; }
+        }
+        .slide-up-in { animation: slideUpFade 0.28s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        /* Finish & color sheet: centered card on a desk, a bottom sheet on a phone */
+        .rc-sheet { align-items: center; }
+        @media (max-width: 560px) {
+          .rc-sheet { align-items: flex-end; padding: 0 !important; }
+          .rc-sheet-card { border-radius: 14px 14px 0 0 !important; max-height: 94vh !important; }
+          .rc-steps { gap: 4px !important; }
+        }
+        @keyframes celebrateSpin {
+          0% { transform: scale(0) rotate(-15deg); opacity: 0; }
+          50% { transform: scale(1.2) rotate(8deg); opacity: 1; }
+          100% { transform: scale(1) rotate(0deg); }
+        }
+        .celebrate { animation: celebrateSpin 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+      `}</style>
+
+      {/* header */}
+      <div style={{ background: `linear-gradient(135deg, ${CHARCOAL}, ${INK})`, borderBottom: `1px solid rgba(212,175,55,0.25)`, padding: "18px 20px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div className="disp" style={{ color: "#fff", fontSize: 20, fontWeight: 700 }}>Panel &amp; Trim Calculator</div>
+          <div className="mono" style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>Shop Order Portal</div>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+          {/* name and pricing tier belong to an account — a demo visitor has neither */}
+          {!isDemo && <div style={{ textAlign: "right", marginRight: 4, maxWidth: 150, overflow: "hidden" }}>
+            <div style={{ color: "#fff", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{customer?.name || user?.email}</div>
+            <div style={{ color: theme.textSecondary, fontSize: 9.5 }}>
+              {isStaff ? "Staff" : `Tier: ${customer?.tier === "tier1" ? "Tier 1" : customer?.tier === "greenleaf" ? "Greenleaf" : "Tier 2"}`}
+            </div>
+          </div>}
+          <button onClick={isDemo ? () => openAuth("signin") : signOutEverywhere}
+            style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${isDemo ? SAFETY : "rgba(255,255,255,0.3)"}`, background: isDemo ? SAFETY : "rgba(255,255,255,0.08)", color: isDemo ? "#1C1C1E" : "#fff", fontSize: 11, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+            {isDemo ? "Sign in / Sign up" : "Sign Out"}
+          </button>
+          <button onClick={() => setDarkMode((d) => !d)}
+            style={{ width: 30, height: 30, borderRadius: 15, border: "1px solid rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.08)", color: "#fff", fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+            title={darkMode ? "Switch to light mode" : "Switch to dark mode"}>
+            {darkMode ? "☀" : "☾"}
+          </button>
+          <Ruler color={SAFETY} size={22} />
+        </div>
+      </div>
+
+      {/* tabs */}
+      <div style={{ display: "flex", background: CHARCOAL, paddingBottom: 0 }}>
+        {[{ id: "order", label: "New Order", icon: PenTool },
+          // Job Vault, Past Orders and the Price List are all account territory.
+          ...(isDemo ? [] : [{ id: "vault", label: "Job Vault", icon: Briefcase }]),
+          ...(canRunShopFloor ? [{ id: "dashboard", label: "Shop Floor", icon: ClipboardList }] : []),
+          ...(isDemo ? [] : [{ id: "past", label: "Past Orders", icon: Clock }, { id: "pricelist", label: "Price List", icon: DollarSign }]),
+        ].map((t) => {
+          const Icon = t.icon;
+          const active = tab === t.id;
+          return (
+            <button key={t.id} onClick={() => goTab(t.id)}
+              className="disp tap-bounce"
+              style={{
+                flex: 1, padding: "12px 8px", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                background: active ? theme.pageBg : "transparent", color: active ? SAFETY : "#9AA5AD",
+                border: "none", borderTopLeftRadius: active ? 10 : 0, borderTopRightRadius: active ? 10 : 0,
+                borderTop: active ? `3px solid ${SAFETY}` : "3px solid transparent",
+                fontSize: 13, fontWeight: 600, cursor: "pointer",
+              }}>
+              <Icon size={15} /> {t.label}
+              {t.id === "vault" && vaultAlertCount > 0 && (
+                <span className="mono" style={{ background: AMBER, color: "#fff", borderRadius: 999, fontSize: 9, padding: "1px 6px", fontWeight: 700 }}>▲{vaultAlertCount}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {isDemo && (
+        <div style={{
+          background: theme.card, borderBottom: `1px solid ${theme.border}`, color: theme.textSecondary,
+          padding: "9px 20px", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap",
+        }}>
+          <span>
+            <b style={{ color: theme.text }}>You're trying the tools.</b>{" "}
+            Draw and measure as much as you like. Pricing and sending an order to a shop need a free account.
+          </span>
+          <button onClick={() => openAuth("signup")} className="tap-bounce"
+            style={{ border: `1.5px solid ${SAFETY}`, background: "transparent", color: theme.text, borderRadius: 999, padding: "5px 14px", fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+            Create a free account
+          </button>
+        </div>
+      )}
+
+      {toast && (
+        <div className="pop-in" style={{
+          background: `linear-gradient(90deg, #FBF3D9, #F5E6C3)`, borderBottom: `3px solid ${SAFETY}`, color: theme.text,
+          padding: "11px 20px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8,
+        }}>
+          <span style={{ fontSize: 16 }}>✨</span>
+          {toast}
+        </div>
+      )}
+
+      {tab === "order" ? (
+        <div style={{ padding: 16, maxWidth: 640, margin: "0 auto" }}>
+          {/* Where am I, and how do I get back: the three stops of an order, always in view.
+              Each is a button, so the color is one tap away from the 3D tool and the
+              chooser is one tap away from a drawing — and each shows what it holds. */}
+          {(() => {
+            const toolLabel = shapeType === "part3d" ? PART3D_LABELS[partType]
+              : shapeType === "panel" ? "Roof Panel" : shapeType === "metal" ? "Unfabricated Metal"
+              : roofBoxOpen ? BOX_KINDS[roofBoxKind].label : "Trim Profile";
+            const detailsLabel = shapeType === "panel" ? "Panel calculator" : shapeType === "trim" ? "Drawing tool" : shapeType === "metal" ? "Coil & flat sheet" : "3D tool";
+            const current = colorSheet ? "color" : orderStep;
+            const steps = [
+              { id: "type", n: 1, label: "What", chip: orderStep === "type" ? "Pick a tool" : toolLabel, go: goChooser, testid: "step-what" },
+              { id: "details", n: 2, label: "Details", chip: orderStep === "type" ? "Size it" : detailsLabel, go: () => goDetails(), testid: "step-details" },
+              { id: "color", n: 3, label: "Finish & color", chip: colorName, title: `${brand} — ${colorName}`, swatch: colorObj?.hex || "#ccc", go: openColorSheet, testid: "step-color" },
+            ];
+            return (
+              <nav aria-label="Order steps" className="rc-steps"
+                style={{ position: "sticky", top: 0, zIndex: 30, background: theme.pageBg, margin: "-16px -16px 14px", padding: "10px 16px 8px", borderBottom: `1px solid ${theme.border}`, display: "grid", gridTemplateColumns: "1fr 1fr 1.35fr", gap: 6 }}>
+                {steps.map((st) => {
+                  const on = current === st.id;
+                  return (
+                    <button key={st.id} type="button" data-testid={st.testid} onClick={st.go} aria-current={on ? "step" : undefined} title={st.title || st.chip} className="tap-bounce"
+                      style={{ textAlign: "left", border: `1.5px solid ${on ? SAFETY : theme.border}`, background: on ? (darkMode ? "#332A0C" : "#FBF3D9") : theme.card, color: theme.text, borderRadius: 10, padding: "6px 9px", cursor: "pointer", minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                      <span className="disp" style={{ fontSize: 9.5, letterSpacing: "0.06em", color: on ? SAFETY : theme.textSecondary, whiteSpace: "nowrap" }}>{st.n} · {st.label}</span>
+                      <span style={{ fontSize: 11.5, fontWeight: 700, display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                        {st.swatch && <span style={{ width: 12, height: 12, borderRadius: 3, background: st.swatch, border: "1px solid rgba(0,0,0,0.2)", flexShrink: 0 }} />}
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{st.chip}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </nav>
+            );
+          })()}
+          {colorSheet && (() => {
+            const whereLabel = orderStep === "type" ? "the tools"
+              : shapeType === "part3d" ? `the ${PART3D_LABELS[partType]}`
+              : shapeType === "panel" ? "the Panel Calculator" : shapeType === "metal" ? "Coil & Flat Sheet"
+              : roofBoxOpen ? `the ${BOX_KINDS[roofBoxKind].label}` : "the Drawing Tool";
+            return (
+              <div className="rc-sheet" onClick={closeColorSheet} data-testid="finish-sheet"
+                style={{ position: "fixed", inset: 0, zIndex: 410, background: "rgba(5,20,32,0.62)", display: "flex", justifyContent: "center", padding: 12 }}>
+                <div className="rc-sheet-card slide-up-in" role="dialog" aria-modal="true" aria-labelledby="finish-title" onClick={(e) => e.stopPropagation()}
+                  style={{ width: "100%", maxWidth: 560, maxHeight: "92vh", background: theme.card, color: theme.text, borderRadius: 14, boxShadow: "0 30px 80px rgba(0,0,0,0.55)", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10, padding: "14px 16px 10px", borderBottom: `1px solid ${theme.border}` }}>
+                    <div>
+                      <div id="finish-title" className="disp" style={{ fontSize: 17, color: theme.text }}>Finish & color</div>
+                      <div style={{ fontSize: 12, color: theme.textSecondary, marginTop: 2 }}>For {whereLabel}. Done takes you straight back to it.</div>
+                    </div>
+                    <button type="button" onClick={closeColorSheet} aria-label="Close" data-testid="finish-close"
+                      style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 20, cursor: "pointer", lineHeight: 1, padding: "0 2px" }}>✕</button>
+                  </div>
+                  <div style={{ overflowY: "auto", padding: "12px 16px 16px" }}>{renderFinishPicker()}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 16px", borderTop: `1px solid ${theme.border}`, background: theme.card }}>
+                    <span style={{ width: 34, height: 34, borderRadius: 7, background: colorObj?.hex || "#ccc", border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, color: theme.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{brand} — {colorName}</span>
+                    <button type="button" onClick={closeColorSheet} data-testid="finish-done" className="tap-bounce"
+                      style={{ padding: "11px 16px", borderRadius: 10, border: "none", background: SAFETY, color: "#fff", fontSize: 13.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>
+                      Done — back to {whereLabel}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
           {orderStep === "type" && (
             <>
-              <div className="disp" style={{ fontSize: 15, color: theme.text, marginBottom: 4 }}>Step 1 of 3 — What Do You Need?</div>
-              <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 16 }}>We'll ask for your finish and color next.</div>
+              <div className="disp" style={{ fontSize: 15, color: theme.text, marginBottom: 4 }}>Step 1 of 2 — What do you need?</div>
+              <div style={{ fontSize: 11, color: theme.textSecondary, marginBottom: 16 }}>Size it on the next screen. Finish and color stay one tap away in the bar above, whatever you're working on.</div>
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {[
                   { id: "panel", label: "Roof Panel", desc: "Formed standing-seam or snap-lock panels", icon: Square, accent: SAFETY },
@@ -6015,7 +6169,7 @@ export default function ShopOrderApp() {
                 ].map((t) => {
                   const Icon = t.icon;
                   return (
-                    <button key={t.id} data-testid={`tile-${t.id}`} onClick={() => { if (t.kind) { openRoofBox(t.kind); return; } if (t.id === "part3d") { setAccessories([]); setBox3dReturn(false); } setShapeType(t.id); setOrderStep("details"); }} className="mac-btn"
+                    <button key={t.id} data-testid={`tile-${t.id}`} onClick={() => { if (t.kind) { goDetails(() => openRoofBox(t.kind), "trim"); pushNav("kit", { kind: t.kind }); return; } goDetails(() => { if (t.id === "part3d") { setAccessories([]); setBox3dReturn(false); } setShapeType(t.id); }, t.id); }} className="mac-btn"
                       style={{
                         display: "flex", alignItems: "center", gap: 14, padding: 16, borderRadius: 12, border: `1px solid ${t.accent}`,
                         background: `linear-gradient(180deg, ${t.accent}, ${t.accent}dd)`, color: "#fff", cursor: "pointer", textAlign: "left",
@@ -6157,25 +6311,24 @@ export default function ShopOrderApp() {
 
           {orderStep === "details" && (
             <>
-              <div className="disp" style={{ fontSize: 15, color: theme.text, marginBottom: 10 }}>Step 2 of 3 — Order Details</div>
+              <div className="disp" style={{ fontSize: 15, color: theme.text, marginBottom: 10 }}>Step 2 of 2 — Order details</div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 2 }}>
-                <button onClick={() => setOrderStep("type")} className="tap-bounce"
+                <button onClick={goChooser} data-testid="change-type" className="tap-bounce"
                   style={{ border: `1.5px solid ${theme.border}`, background: theme.card, color: theme.text, fontSize: 14, fontWeight: 600, cursor: "pointer", padding: "7px 14px 7px 10px", borderRadius: 8, display: "flex", alignItems: "center", gap: 4 }}>
                   <ChevronDown size={16} style={{ transform: "rotate(90deg)" }} /> Change Type
                 </button>
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 3, alignSelf: "flex-end" }}>
-                  <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
-                    <span className="disp" style={{ fontSize: 9.5, color: theme.textSecondary, letterSpacing: "0.06em", whiteSpace: "nowrap" }}>Selected Color</span>
+                {/* the whole swatch is the button: finish and color open as a sheet over this screen and Done lands back here */}
+                <button type="button" onClick={openColorSheet} data-testid="details-color" className="tap-bounce" title="Change finish and color"
+                  style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: 3, alignSelf: "flex-end", border: "none", background: "none", padding: 0, cursor: "pointer", minWidth: 220, textAlign: "left" }}>
+                  <span style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12 }}>
+                    <span className="disp" style={{ fontSize: 9.5, color: theme.textSecondary, letterSpacing: "0.06em", whiteSpace: "nowrap" }}>Finish & color</span>
                     <span style={{ fontSize: 12, fontWeight: 600, color: theme.text, lineHeight: 1.3, textAlign: "right" }}>
                       {brand} — {colorName}{" "}
-                      <button onClick={() => setOrderStep("color")}
-                        style={{ border: "none", background: "none", color: SAFETY, fontSize: 10.5, fontWeight: 700, cursor: "pointer", padding: 0, textDecoration: "underline" }}>
-                        Edit
-                      </button>
+                      <span style={{ color: SAFETY, fontSize: 10.5, fontWeight: 700, textDecoration: "underline" }}>Change</span>
                     </span>
-                  </div>
-                  <span style={{ width: "100%", minWidth: 220, height: 46, borderRadius: 5, background: colorObj?.hex || "#ccc", border: "1px solid rgba(0,0,0,0.15)" }} />
-                </div>
+                  </span>
+                  <span style={{ width: "100%", height: 46, borderRadius: 5, background: colorObj?.hex || "#ccc", border: "1px solid rgba(0,0,0,0.15)", display: "block" }} />
+                </button>
               </div>
           {/* drawing area */}
           <div style={{ background: theme.card, borderRadius: 10, padding: 12, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
@@ -6246,14 +6399,14 @@ export default function ShopOrderApp() {
                 })()}
 
                 <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 10 }}>
-                  Raw material — no profile or trim shape. Gauge, paint, and color are set below in Finish Color.
+                  Raw material — no profile or trim shape. Gauge, paint and color: tap Finish & color in the bar at the top.
                 </div>
 
               </>
             ) : shapeType === "part3d" ? (
               <>
                 {box3dReturn && (
-                  <button type="button" onClick={() => { setBox3dReturn(false); openRoofBox("com"); }} data-testid="box-3d-back" title="Back to the Commercial Kit — your parts are still in the list"
+                  <button type="button" onClick={backToKitFrom3d} data-testid="box-3d-back" title="Back to the Commercial Kit — your parts are still in the list"
                     style={{
                       padding: "5px 11px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer", marginBottom: 8,
                       border: `1px solid ${BOX_KINDS.com.accent}`, background: `linear-gradient(180deg, ${BOX_KINDS.com.accentLight}, ${BOX_KINDS.com.accent})`, color: "#fff", display: "inline-flex", alignItems: "center", gap: 5,
@@ -6643,7 +6796,7 @@ export default function ShopOrderApp() {
                 </div>
 
                 <div style={{ fontSize: 10.5, color: theme.textSecondary, marginTop: 10 }}>
-                  Schematic 3D preview and nominal flat pattern — not bend-allowance corrected. Gauge, paint, and color are set below in Finish Color.
+                  Schematic 3D preview and nominal flat pattern — not bend-allowance corrected. Gauge, paint and color: tap Finish & color in the bar at the top.
                 </div>
               </>
             ) : shapeType === "panel" ? (
@@ -6937,11 +7090,11 @@ export default function ShopOrderApp() {
               </>
             ) : (
               <>
-                <div ref={canvasTopRef} style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap" }}>
+                <div ref={canvasTopRef} style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap", scrollMarginTop: 76 }}>
                   {Object.entries(BOX_KINDS).map(([kind, k]) => {
                     const Icon = k.icon, back = boxReturn && boxReturnKind === kind; // the box a piece came from is the one to go back to
                     return (
-                      <button key={kind} type="button" onClick={() => openRoofBox(kind)} title={k.blurb} data-testid={`box-open-${kind}`}
+                      <button key={kind} type="button" onClick={() => openKit(kind)} title={k.blurb} data-testid={`box-open-${kind}`}
                         style={{
                           padding: "5px 11px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer",
                           border: `1px solid ${k.accent}`, background: `linear-gradient(180deg, ${k.accentLight}, ${k.accent})`, color: "#fff", display: "flex", alignItems: "center", gap: 5,
@@ -7010,7 +7163,7 @@ export default function ShopOrderApp() {
                   const totalPrice = roofBoxPicked.reduce((sum, it) => sum + it.price, 0);
                   const gaugeLabel = findGauge(kitGaugeId, brand)?.label || "24 Gauge";
                   return (
-                    <div onClick={() => setRoofBoxOpen(false)} data-testid="roof-box"
+                    <div onClick={closeKit} data-testid="roof-box"
                       style={{ position: "fixed", inset: 0, zIndex: 400, background: "rgba(5,20,32,0.62)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
                       <div onClick={(e) => e.stopPropagation()} className="pop-in" role="dialog" aria-modal="true" aria-labelledby="roof-box-title"
                         style={{ width: "100%", maxWidth: 760, maxHeight: "94vh", overflowY: "auto", background: theme.card, color: theme.text, borderRadius: 14, boxShadow: "0 30px 80px rgba(0,0,0,0.55)", padding: "16px 18px 14px" }}>
@@ -7023,7 +7176,7 @@ export default function ShopOrderApp() {
                                 : "The standard trims for a 24 ga standing seam roof in one place. Set the pitch and seam height, tick what the job needs, and add them all to the order — or open any one on the canvas to tweak a leg."}
                             </div>
                           </div>
-                          <button type="button" onClick={() => setRoofBoxOpen(false)} aria-label="Close" style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 20, cursor: "pointer", lineHeight: 1 }}>✕</button>
+                          <button type="button" onClick={closeKit} aria-label="Close" style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 20, cursor: "pointer", lineHeight: 1 }}>✕</button>
                         </div>
                         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "flex-end", marginTop: 12 }}>
                           {roofBoxKind === "com" ? (<>
@@ -7095,7 +7248,7 @@ export default function ShopOrderApp() {
                               {(boxStripAll ? basket : basket.slice(0, 8)).map((b) => {
                                 const editing = b.id === editingId;
                                 return (
-                                  <button key={b.id} type="button" onClick={() => (editing ? setRoofBoxOpen(false) : editBasketItem(b, true))} title={editing ? "This part is on the canvas now — back to it" : "Open this part on the canvas to change it"} data-testid="box-in-order-part"
+                                  <button key={b.id} type="button" onClick={() => (editing ? closeKit() : editBasketItem(b, true))} title={editing ? "This part is on the canvas now — back to it" : "Open this part on the canvas to change it"} data-testid="box-in-order-part"
                                     style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 8px 3px 3px", borderRadius: 999, border: `1px solid ${editing ? SAFETY : theme.border}`, background: editing ? "rgba(212,175,55,0.18)" : theme.inputBg, color: theme.text, fontSize: 11, cursor: "pointer" }}>
                                     <span style={{ background: INK, borderRadius: 4, padding: 2, display: "flex" }}><ShapeThumb order={{ type: "trim", points: b.points, hemStart: b.hemStart, hemEnd: b.hemEnd, colorHex: b.colorHex }} size={18} /></span>
                                     <span style={{ fontWeight: 600 }}>{b.name}</span><span className="mono" style={{ color: theme.textSecondary }}>×{b.quantity}{b.kit && PITCHED_KIT.has(b.kit) && b.pitch ? ` · ${fmtPitch(b.pitch)}` : ""}</span>
@@ -7248,7 +7401,7 @@ export default function ShopOrderApp() {
                             {boxPending && <span data-testid="box-pending" style={{ display: "block", fontWeight: 500, color: theme.textSecondary }}>+ the {boxPending.name} ×{boxPending.quantity} on the canvas goes in with them</span>}
                           </div>
                           <div style={{ display: "flex", gap: 8 }}>
-                            <button type="button" onClick={() => setRoofBoxOpen(false)}
+                            <button type="button" onClick={closeKit}
                               style={{ padding: "9px 14px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, fontSize: 12.5, fontWeight: 600, cursor: "pointer" }}>Close</button>
                             <button type="button" onClick={addRoofBoxToOrder} className="tap-bounce" data-testid="box-add"
                               style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: SAFETY, color: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>

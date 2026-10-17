@@ -71,6 +71,9 @@ export default function AuthGate({ children }) {
   if (user) return children;
   // Demo: the tools are open, the card is not up.
   if (!authOpen && !signupDone) return children;
+  // The card floats over the tools rather than replacing them: a drawing or a 3D part in
+  // progress, and the order's place in the browser history, are still there afterwards.
+  const overlay = { position: "fixed", inset: 0, zIndex: 1000, overflowY: "auto", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, boxSizing: "border-box", background: "linear-gradient(180deg, rgba(11,30,44,0.97), rgba(15,61,92,0.97))", fontFamily: "'Inter', system-ui, sans-serif" };
 
   const dismiss = () => { setAuthOpen(false); setError(""); setPending(null); };
 
@@ -126,8 +129,8 @@ export default function AuthGate({ children }) {
   };
 
   if (signupDone) {
-    return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(180deg, #0B1E2C, #0F3D5C)", fontFamily: "'Inter', system-ui, sans-serif", padding: 20 }}>
+    return (<>{children}
+      <div role="dialog" aria-modal="true" aria-label="Check your email" style={overlay}>
         <div style={{ maxWidth: 380, textAlign: "center", background: "#fff", borderRadius: 16, padding: 28, boxShadow: "0 30px 80px rgba(0,0,0,0.5)" }}>
           <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 10, color: INK }}>Check your email</div>
           <div style={{ fontSize: 13.5, color: "#555", lineHeight: 1.5 }}>
@@ -145,11 +148,11 @@ export default function AuthGate({ children }) {
           </button>
         </div>
       </div>
-    );
+    </>);
   }
 
-  return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(180deg, #0B1E2C, #0F3D5C)", fontFamily: "'Inter', system-ui, sans-serif", padding: 20 }}>
+  return (<>{children}
+    <div role="dialog" aria-modal="true" aria-label={mode === "signup" ? "Create an account" : "Sign in"} style={overlay}>
       <form onSubmit={handleSubmit} style={{ width: "100%", maxWidth: 380, background: "#fff", borderRadius: 16, padding: 28, boxShadow: "0 30px 80px rgba(0,0,0,0.5)" }}>
         <div style={{ fontFamily: "'Oswald', sans-serif", textTransform: "uppercase", letterSpacing: "0.03em", fontSize: 22, fontWeight: 700, marginBottom: 4, color: "#0A2B41", textAlign: "center" }}>{ON_FORTIFIED ? "Fortified Metals" : "RoofCoil.com Tools"}</div>
         <div style={{ fontSize: 12.5, color: "#777", marginBottom: 22, textAlign: "center" }}>
@@ -242,5 +245,5 @@ export default function AuthGate({ children }) {
         )}
       </form>
     </div>
-  );
+  </>);
 }
