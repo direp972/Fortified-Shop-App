@@ -23,8 +23,15 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.resolve(process.env.OUT_DIR || path.join(ROOT, "dist"));
 const SITE = "https://www.roofcoil.com";
-const SUPA = process.env.VITE_SUPABASE_URL || "https://znueitseoqijhkkvdomc.supabase.co";
-const KEY = process.env.VITE_SUPABASE_ANON_KEY || "sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB";
+// The same two values the app itself is built with (see .env.example). No fallback on
+// purpose: a build without them, or pointed at the wrong project, stops here instead of
+// quietly prerendering production's listings. LISTINGS_FIXTURE skips the fetch and needs neither.
+const SUPA = process.env.VITE_SUPABASE_URL;
+const KEY = process.env.VITE_SUPABASE_ANON_KEY;
+if (!process.env.LISTINGS_FIXTURE && (!SUPA || !KEY)) {
+  console.error("prerender: set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (the app's own .env values), or LISTINGS_FIXTURE=<rows.json> for an offline build.");
+  process.exit(1);
+}
 
 /* ── taxonomy (kept in lock-step with get-listed / suppliers / directory-admin) ── */
 const COIL = ["Coil & flat sheet", "Painted coil — PVDF / Kynar", "Painted coil — SMP", "Bare — Galvalume · G90 · bonderized", "Copper"];

@@ -13,7 +13,10 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [customer, setCustomer] = useState(null); // row from `customers` table (name, tier, etc.)
   const [isStaff, setIsStaff] = useState(false);
-  const [ownedShops, setOwnedShops] = useState([]); // directory listings this account owns (a shop's Shop Floor)
+  const [ownedShops, setOwnedShops] = useState([]); // directory listings this account owns (manage-listing)
+  // Shops this account runs (public.shop_members, through my_shops()): each gives the
+  // account that shop's Price List backend, costs, tiers, materials board and Shop Floor.
+  const [memberShops, setMemberShops] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // Loads the customer/staff rows for a signed-in user, and self-heals by creating the
@@ -27,15 +30,18 @@ export function AuthProvider({ children }) {
       setCustomer(null);
       setIsStaff(false);
       setOwnedShops([]);
+      setMemberShops([]);
       return;
     }
     const userId = sessionUser.id;
-    const [{ data: custRow }, { data: staffRow }, { data: shopRows }] = await Promise.all([
+    const [{ data: custRow }, { data: staffRow }, { data: shopRows }, { data: memberRows }] = await Promise.all([
       supabase.from("customers").select("*").eq("id", userId).maybeSingle(),
       supabase.from("staff").select("id").eq("id", userId).maybeSingle(),
       supabase.from("directory_listings").select("id, name, accepts_orders, order_email").eq("owner_id", userId),
+      supabase.rpc("my_shops"),
     ]);
     setOwnedShops(shopRows || []);
+    setMemberShops(Array.isArray(memberRows) ? memberRows : []);
     if (custRow) {
       setCustomer(custRow);
     } else {
@@ -43,7 +49,7 @@ export function AuthProvider({ children }) {
       const phone = sessionUser.user_metadata?.phone || "";
       let { data: created, error } = await supabase
         .from("customers")
-        .insert({ id: userId, email: sessionUser.email, name, phone, tier: "tier2" })
+        .insert({ id: userId, email: sessionUser.email, name, phone }) // tiers are per shop now (shop_customers); the row's own tier column is legacy
         .select()
         .maybeSingle();
       if (error && error.code === "23505") {
@@ -163,6 +169,6 @@ export function AuthProvider({ children }) {
 
   const refreshCustomer = () => loadCustomer(user);
 
-  const value = { user, customer, isStaff, ownedShops, loading, signUp, signIn, signInWithGoogle, signOut, refreshCustomer, resendConfirmation, requestPasswordReset };
+  const value = { user, customer, isStaff, ownedShops, memberShops, loading, signUp, signIn, signInWithGoogle, signOut, refreshCustomer, resendConfirmation, requestPasswordReset };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
