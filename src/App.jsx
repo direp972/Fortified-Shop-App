@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase, Package, Pencil, Building2 } from "lucide-react";
+import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase, Package, Pencil, Building2, Folder, FolderOpen } from "lucide-react";
 import * as THREE from "three";
 import { storage } from "./lib/storage";
 import { supabase } from "./lib/supabaseClient";
@@ -3455,7 +3455,7 @@ export default function ShopOrderApp() {
   const [productionCostsLoaded, setProductionCostsLoaded] = useState(false);
   const [coilWidthScale, setCoilWidthScale] = useState([]);
   const [customPresets, setCustomPresets] = useState([]);
-  const [presetFolder, setPresetFolder] = useState("trim"); // the open presets folder on the drawing tool, or null
+  const [presetFolder, setPresetFolder] = useState(null); // the open presets folder on the drawing tool; all closed to start with
   const [showIdeaBox, setShowIdeaBox] = useState(false);
   const [ideaType, setIdeaType] = useState("idea"); // "idea" | "bug"
   const [ideaText, setIdeaText] = useState("");
@@ -4618,7 +4618,7 @@ export default function ShopOrderApp() {
     if (!editingId) editSnapshot.current = { points, hemStart, hemEnd, paintSide, partName, quantity, lengthPerPiece, sheetWidth, partPhoto, drawnPitch, preset, materialCategory, gaugeId, paintId, brand, colorName, boxReturn, boxReturnKind };
     setEditingId(it.id);
     if (fromBox) { setRoofBoxOpen(false); dropNav("kit"); setBoxReturn("edit"); setBoxReturnKind(roofBoxKind); }
-    setPreset(it.name); setPoints(it.points.map((pt) => [...pt])); { const pf = presetFolderOf(it.name); if (pf) setPresetFolder(pf); }
+    setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
     setHemStart(it.hemStart || "none"); setHemEnd(it.hemEnd || "none"); setPaintSide(it.paintSide || "left");
     setPartName(it.name); setQuantity(it.quantity); setLengthPerPiece(it.lengthPerPiece); setSheetWidth(it.sheetWidth);
     setPartPhoto(it.photo || null); setDrawnPitch(it.pitch || 4);
@@ -4780,7 +4780,7 @@ export default function ShopOrderApp() {
     if (editingId) restoreCanvas(); // a piece from the box is a new part, not the edited one
     const replaced = boxPending && boxPending.kit !== it.id ? boxPending.name : null;
     setBoxReturn(it.id); setBoxReturnKind(roofBoxKind);
-    setPreset(it.name); setPoints(it.points.map((pt) => [...pt])); { const pf = presetFolderOf(it.name); if (pf) setPresetFolder(pf); }
+    setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
     setHemStart(it.hemStart); setHemEnd(it.hemEnd); setPaintSide(it.paintSide); setPartName(it.name); setDrawnPitch(it.pitch ?? roofBoxPitch);
     setQuantity(roofBoxSel[it.id] > 0 ? roofBoxSel[it.id] : 4);
     setViewResetKey((k) => k + 1); setRoofBoxOpen(false); dropNav("kit");
@@ -5305,14 +5305,13 @@ export default function ShopOrderApp() {
     </label>
   );
 
-  // A preset chip on the drawing tool: the shape, its standard folds and painted side, and
-  // the folder it lives in opens so its neighbours are a tap away.
+  // A preset chip on the drawing tool: the shape with its standard folds and painted side.
+  // Folders open and close only by hand; a closed one shows when it holds the shape in use.
   const pickPreset = (p) => {
     setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt])); setDrawnPitch(4);
     if (boxReturn && boxReturn !== "edit") { setPartName(""); setBoxReturn(null); }
     const f = presetFolds(p);
     if (f) { setHemStart(f.hemStart); setHemEnd(f.hemEnd); setPaintSide(f.paintSide); }
-    const folder = presetFolderOf(p); if (folder) setPresetFolder(folder);
     setViewResetKey((k) => k + 1);
   };
   // Finish & color: manufacturer, paint, gauge and the color grid. One block, shown in
@@ -6686,14 +6685,19 @@ export default function ShopOrderApp() {
                   })}
                   {PRESET_FOLDERS.map((f) => {
                     const open = presetFolder === f.id, holds = f.names.includes(preset);
+                    const edge = open || holds ? INK : "#C9C3B3", fill = open ? INK : holds ? "#EFE9D6" : "#FBF7EA";
+                    const FolderIcon = open ? FolderOpen : Folder;
                     return (
                       <button key={f.id} type="button" onClick={() => setPresetFolder(open ? null : f.id)} aria-expanded={open} data-testid={`folder-${f.id}`}
-                        title={`${f.names.length} shapes`}
+                        title={open ? `Close ${f.label}` : `Open ${f.label} — ${f.names.length} shapes`}
                         style={{
-                          padding: "5px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
-                          border: `1px solid ${open || holds ? INK : "#D9D5C7"}`, background: open ? INK : "#fff", color: open ? "#fff" : INK_DEEP,
+                          position: "relative", marginTop: 7, padding: "6px 10px 6px 9px", borderRadius: "3px 9px 9px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer",
+                          display: "flex", alignItems: "center", gap: 5, border: `1px solid ${edge}`, background: fill, color: open ? "#fff" : INK_DEEP,
+                          boxShadow: open ? "none" : "inset 0 -2px 0 rgba(10,43,65,0.08)",
                         }}>
-                        {f.label} <ChevronDown size={11} style={{ transform: open ? "rotate(180deg)" : "none" }} />
+                        <span aria-hidden="true" style={{ position: "absolute", top: -7, left: -1, width: 30, height: 8, borderRadius: "5px 5px 0 0", border: `1px solid ${edge}`, borderBottom: "none", background: fill }} />
+                        <FolderIcon size={13} /> {f.label}
+                        <span className="mono" style={{ fontSize: 9.5, fontWeight: 600, opacity: 0.75 }}>{f.names.length}</span>
                       </button>
                     );
                   })}
@@ -6743,7 +6747,8 @@ export default function ShopOrderApp() {
                   const f = PRESET_FOLDERS.find((x) => x.id === presetFolder);
                   if (!f) return null;
                   return (
-                    <div data-testid="folder-shapes" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, padding: "8px 10px", background: theme.inputBg, border: `1px solid ${theme.border}`, borderRadius: 10 }}>
+                    <div data-testid="folder-shapes" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 8, padding: "8px 10px", background: "#FBF7EA", border: `1px solid ${INK}`, borderRadius: 10 }}>
+                      <span className="disp" style={{ fontSize: 9.5, letterSpacing: "0.08em", color: INK, marginRight: 4, display: "flex", alignItems: "center", gap: 4 }}><FolderOpen size={12} /> {f.label}</span>
                       {f.names.map((p) => (
                         <button key={p} type="button" onClick={() => pickPreset(p)} data-testid={`preset-${KIT_PRESETS[p]}`}
                           style={{
