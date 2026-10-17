@@ -522,7 +522,7 @@ const COLORS_BY_BRAND = {
 };
 
 
-/* --------------------------------- Residential Kit --------------------------------- */
+/* --------------------------------- Residential Standing Seam --------------------------------- */
 // The standard trim set for a 24 ga standing seam roof, drawn to the roof's pitch and the
 // panel's seam height. Every entry is a real profile the drawing tool can open and edit:
 // points in inches, y grows downward, drawn with the leg that sits on the panel (or the
@@ -677,7 +677,7 @@ function buildCommercialKit({ wallWidth = 12, gutterSize = 6, downspout = "4×4"
       where: `The edge of a low-slope roof with no parapet and no gutter — the 4\" flange on the deck is stripped into the membrane, the cant stands up ¾\" to hold the gravel and the water back from the edge, steps ¾\" out to the edge of the nailer, and the face drops over it to a ${kickWord} that hooks the Hook Strip: no fastener through the face, the cleated edge the ES-1 systems are built on. Where the spec or the inspector calls for a tested ES-1 edge, that edge comes from a certified shop. One Hook Strip per length, set ¾\" proud of the nailer, up inside the cant.`,
       points: [kitPt(TOP + GS_FLANGE, 0), kitPt(TOP, 0), kitPt(TOP, -CANT), kitPt(0, -CANT), ...edgeEnd(F - CANT)], hemStart: "none", hemEnd: edgeHem, paintSide: "left" },
     { id: "dripedge", name: es("Drip Edge — Membrane Roof"), dims: `3" roof flange · ${inWord(F)} face · ${edgeDrip}`, per: "roof edge", on: false,
-      where: `The same edge where the roof drains over it, into a gutter or clear of the wall, so no cant — a 3\" flange flat on the deck, stripped into the membrane, the face down the nailer to a ${kickWord} that hooks the Hook Strip set flush with the nailer top. Not the Eave or the D-Style Drip Edge of the Residential Kit: no panel hooks this one, it hangs on the Hook Strip and nothing else. One Hook Strip per length.`,
+      where: `The same edge where the roof drains over it, into a gutter or clear of the wall, so no cant — a 3\" flange flat on the deck, stripped into the membrane, the face down the nailer to a ${kickWord} that hooks the Hook Strip set flush with the nailer top. Not the Eave or the D-Style Drip Edge of Residential Standing Seam: no panel hooks this one, it hangs on the Hook Strip and nothing else. One Hook Strip per length.`,
       points: [kitPt(DE_FLANGE, 0), kitPt(0, 0), ...edgeEnd(F)], hemStart: "none", hemEnd: edgeHem, paintSide: "left" },
     { id: "snapfascia", name: es("Snap-On Fascia"), dims: `2⅜" top return · ${inWord(F)} face · ${edgeDrip}`, per: "roof edge", on: false,
       where: `The two-piece edge on a single-ply roof, put on last — the membrane is terminated over the nailer and the Hook Strip screwed flush with its top; the cover's 2⅜\" return lies on the nailer over the termination, the face drops over the strip, and the ${kickWord} snaps under the strip's lip. Nothing stripped in, no fastener showing, and it comes off without touching the roof. One Hook Strip per length. For a canted nailer, open it on the canvas and tilt the return to the bevel. When the spec names an anchor-bar system, the bar comes from that maker and only the cover is bent.`,
@@ -734,9 +734,19 @@ const TRIM_PRESETS = {
 // A preset from a kit brings its standard end folds and painted side along with the shape;
 // the shop staples set only the shape and leave the folds as they are.
 const presetFolds = (name) => { const it = KIT_BY_ID[KIT_PRESETS[name]]; return it ? { hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide } : null; };
+// The drawing tool shows its presets in three folders: the coping caps and their cleats
+// together, the box gutter and downspout together, and everything else a roof edge or a
+// wall takes under Trim. "Custom" (a blank leg to draw from) stands on its own.
+const PRESET_FOLDER_IDS = { coping: ["coping0", "coping1", "coping2", "copingcleat", "copingcleat2"], gutter: ["boxgutter", "downspout"] };
+const presetFolderOf = (name) => {
+  const id = KIT_PRESETS[name];
+  return PRESET_FOLDER_IDS.coping.includes(id) ? "coping" : PRESET_FOLDER_IDS.gutter.includes(id) ? "gutter" : KIT_BY_ID[id] ? "trim" : null;
+};
+const PRESET_FOLDERS = [{ id: "trim", label: "Trim" }, { id: "coping", label: "Coping Cap" }, { id: "gutter", label: "Gutter Systems" }]
+  .map((f) => ({ ...f, names: KIT_PRESET_ITEMS.map((it) => it.name).filter((n) => presetFolderOf(n) === f.id) }));
 // The two boxes: what each is called, which ?view= opens it from the site, and its colours.
 const BOX_KINDS = {
-  res: { label: "Residential Kit", view: "box", accent: "#A0602E", accentLight: "#B8703A", icon: Package,
+  res: { label: "Residential Standing Seam", view: "box", accent: "#A0602E", accentLight: "#B8703A", icon: Package,
     blurb: "The standard trims for a 24 ga standing seam roof, drawn to your pitch — add them all at once" },
   com: { label: "Commercial Kit", view: "commercial", accent: "#4F5D6B", accentLight: "#61707F", icon: Building2,
     blurb: "Coping, edge metal, counter flashing, box gutters and downspouts for a low-slope roof" },
@@ -3843,6 +3853,7 @@ export default function ShopOrderApp() {
   const [productionCostsLoaded, setProductionCostsLoaded] = useState(false);
   const [coilWidthScale, setCoilWidthScale] = useState([]);
   const [customPresets, setCustomPresets] = useState([]);
+  const [presetFolder, setPresetFolder] = useState("trim"); // the open presets folder on the drawing tool, or null
   const [showIdeaBox, setShowIdeaBox] = useState(false);
   const [ideaType, setIdeaType] = useState("idea"); // "idea" | "bug"
   const [ideaText, setIdeaText] = useState("");
@@ -4031,7 +4042,7 @@ export default function ShopOrderApp() {
   //   ?view=color  the Color Lab button opens the Finish & color sheet over the chooser
   //   ?view=trim   "Trim drawing" on roofcoil.com/members.html opens the drawing tool
   //   ?view=panel  "Panel orders" opens the panel calculator
-  //   ?view=box    "Open the Residential Kit" on sheet-metal-trim.html opens that kit
+  //   ?view=box    "Open Residential Standing Seam" on sheet-metal-trim.html opens that kit
   //   ?view=commercial  "Open the Commercial Kit" opens the other one
   //   ?view=metal  raw coil and flat sheet;  ?view=part3d  collector boxes, scuppers, caps
   //   ?view=type   the "What do you need?" chooser, for a member who hasn't decided yet
@@ -5047,7 +5058,7 @@ export default function ShopOrderApp() {
     if (!editingId) editSnapshot.current = { points, hemStart, hemEnd, paintSide, partName, quantity, lengthPerPiece, sheetWidth, partPhoto, drawnPitch, preset, materialCategory, gaugeId, paintId, brand, colorName, boxReturn, boxReturnKind };
     setEditingId(it.id);
     if (fromBox) { setRoofBoxOpen(false); dropNav("kit"); setBoxReturn("edit"); setBoxReturnKind(roofBoxKind); }
-    setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
+    setPreset(it.name); setPoints(it.points.map((pt) => [...pt])); { const pf = presetFolderOf(it.name); if (pf) setPresetFolder(pf); }
     setHemStart(it.hemStart || "none"); setHemEnd(it.hemEnd || "none"); setPaintSide(it.paintSide || "left");
     setPartName(it.name); setQuantity(it.quantity); setLengthPerPiece(it.lengthPerPiece); setSheetWidth(it.sheetWidth);
     setPartPhoto(it.photo || null); setDrawnPitch(it.pitch || 4);
@@ -5209,7 +5220,7 @@ export default function ShopOrderApp() {
     if (editingId) restoreCanvas(); // a piece from the box is a new part, not the edited one
     const replaced = boxPending && boxPending.kit !== it.id ? boxPending.name : null;
     setBoxReturn(it.id); setBoxReturnKind(roofBoxKind);
-    setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
+    setPreset(it.name); setPoints(it.points.map((pt) => [...pt])); { const pf = presetFolderOf(it.name); if (pf) setPresetFolder(pf); }
     setHemStart(it.hemStart); setHemEnd(it.hemEnd); setPaintSide(it.paintSide); setPartName(it.name); setDrawnPitch(it.pitch ?? roofBoxPitch);
     setQuantity(roofBoxSel[it.id] > 0 ? roofBoxSel[it.id] : 4);
     setViewResetKey((k) => k + 1); setRoofBoxOpen(false); dropNav("kit");
@@ -5734,6 +5745,16 @@ export default function ShopOrderApp() {
     </label>
   );
 
+  // A preset chip on the drawing tool: the shape, its standard folds and painted side, and
+  // the folder it lives in opens so its neighbours are a tap away.
+  const pickPreset = (p) => {
+    setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt])); setDrawnPitch(4);
+    if (boxReturn && boxReturn !== "edit") { setPartName(""); setBoxReturn(null); }
+    const f = presetFolds(p);
+    if (f) { setHemStart(f.hemStart); setHemEnd(f.hemEnd); setPaintSide(f.paintSide); }
+    const folder = presetFolderOf(p); if (folder) setPresetFolder(folder);
+    setViewResetKey((k) => k + 1);
+  };
   // Finish & color: manufacturer, paint, gauge and the color grid. One block, shown in
   // the sheet that opens over whichever screen the person is on (see colorSheet).
   const renderFinishPicker = () => (
@@ -7103,21 +7124,26 @@ export default function ShopOrderApp() {
                       </button>
                     );
                   })}
-                  {Object.keys(TRIM_PRESETS).map((p) => (
-                    <button key={p} onClick={() => {
-                      setPreset(p); setPoints(TRIM_PRESETS[p].map((pt) => [...pt])); setDrawnPitch(4);
-                      if (boxReturn && boxReturn !== "edit") { setPartName(""); setBoxReturn(null); }
-                      const f = presetFolds(p);
-                      if (f) { setHemStart(f.hemStart); setHemEnd(f.hemEnd); setPaintSide(f.paintSide); }
-                      setViewResetKey((k) => k + 1);
-                    }}
-                      style={{
-                        padding: "5px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
-                        border: `1px solid ${preset === p ? INK : "#D9D5C7"}`, background: preset === p ? INK : "#fff", color: preset === p ? "#fff" : INK_DEEP,
-                      }}>
-                      {p}
-                    </button>
-                  ))}
+                  {PRESET_FOLDERS.map((f) => {
+                    const open = presetFolder === f.id, holds = f.names.includes(preset);
+                    return (
+                      <button key={f.id} type="button" onClick={() => setPresetFolder(open ? null : f.id)} aria-expanded={open} data-testid={`folder-${f.id}`}
+                        title={`${f.names.length} shapes`}
+                        style={{
+                          padding: "5px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", gap: 4,
+                          border: `1px solid ${open || holds ? INK : "#D9D5C7"}`, background: open ? INK : "#fff", color: open ? "#fff" : INK_DEEP,
+                        }}>
+                        {f.label} <ChevronDown size={11} style={{ transform: open ? "rotate(180deg)" : "none" }} />
+                      </button>
+                    );
+                  })}
+                  <button type="button" onClick={() => pickPreset("Custom")} data-testid="preset-custom"
+                    style={{
+                      padding: "5px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
+                      border: `1px solid ${preset === "Custom" ? INK : "#D9D5C7"}`, background: preset === "Custom" ? INK : "#fff", color: preset === "Custom" ? "#fff" : INK_DEEP,
+                    }}>
+                    Custom
+                  </button>
                   {customPresetsLoaded && customPresets.map((cp) => (
                     <span key={cp.id} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
                       <button onClick={() => { setPreset(cp.name); setPoints(cp.points.map((pt) => [...pt])); if (boxReturn && boxReturn !== "edit") { setPartName(""); setBoxReturn(null); } setViewResetKey((k) => k + 1); }}
@@ -7153,6 +7179,23 @@ export default function ShopOrderApp() {
                       onChange={(e) => { scanSketchToPoints(e.target.files?.[0]); e.target.value = ""; }} />
                   </label>
                 </div>
+                {(() => {
+                  const f = PRESET_FOLDERS.find((x) => x.id === presetFolder);
+                  if (!f) return null;
+                  return (
+                    <div data-testid="folder-shapes" style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8, padding: "8px 10px", background: theme.inputBg, border: `1px solid ${theme.border}`, borderRadius: 10 }}>
+                      {f.names.map((p) => (
+                        <button key={p} type="button" onClick={() => pickPreset(p)} data-testid={`preset-${KIT_PRESETS[p]}`}
+                          style={{
+                            padding: "5px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
+                            border: `1px solid ${preset === p ? INK : "#D9D5C7"}`, background: preset === p ? INK : "#fff", color: preset === p ? "#fff" : INK_DEEP,
+                          }}>
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
                 <div style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: -4, marginBottom: 6 }}>
                   AI reads a best-effort shape from the photo — always check and adjust points/lengths before using it.
                 </div>
