@@ -4087,7 +4087,7 @@ export default function ShopOrderApp() {
     if (layer === "sheet") { cur.colorSheet = false; setColorSheet(false); }
     else if (layer === "kit") { cur.roofBoxOpen = false; setRoofBoxOpen(false); }
     else if (layer === "part3d") { if (cur.box3dReturn) { cur.box3dReturn = false; cur.roofBoxOpen = true; setBox3dReturn(false); openRoofBox("com"); } }
-    else if (layer === "details") { cur.orderStep = "type"; setOrderStep("type"); }
+    else if (layer === "details") { cur.orderStep = "type"; cur.roofBoxOpen = false; setRoofBoxOpen(false); setOrderStep("type"); }
     else if (layer === "tab") { cur.tab = data.from; setTab(data.from); }
   };
   // Forward after Back: the layer comes back the way it opened.
@@ -4099,9 +4099,12 @@ export default function ShopOrderApp() {
     else if (layer === "details") { cur.orderStep = "details"; if (data && data.shape) setShapeType(data.shape); setOrderStep("details"); }
     else if (layer === "tab") { cur.tab = data.to; setTab(data.to); }
   };
+  const navDo = useRef({});
+  navDo.current = { undoLayer, redoLayer };
   useEffect(() => {
     if (embedded) return;
     const onPop = (e) => {
+      const { undoLayer, redoLayer } = navDo.current;
       const st = e.state;
       const ours = !!(st && st.tok === navTok.current && typeof st.rcNav === "number");
       const target = ours ? st.rcNav : 0;
@@ -4110,7 +4113,7 @@ export default function ShopOrderApp() {
       if (navSilent.current) { navSilent.current -= 1; navStack.current.length = Math.min(depth, target); return; }
       if (target < depth) { while (navStack.current.length > target) undoLayer(navStack.current.pop()); }
       else if (target === depth + 1 && ours) { const entry = { layer: st.layer, data: st.data }; navStack.current.push(entry); redoLayer(entry); }
-      else if (target > depth) { navBusy.current += 1; window.history.go(depth - target); } // a jump of several forward: back to where the app is
+      else if (target > depth) { navGo(depth - target); } // a jump of several forward: back to where the app is
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
@@ -4119,22 +4122,27 @@ export default function ShopOrderApp() {
   // Close the named layer and everything opened on top of it. With an entry to unwind the
   // browser goes back and onPop does the closing; without one the fallback does it now.
   // A second press while the browser is still on its way does nothing.
+  const navGo = (k) => {
+    navBusy.current += 1; window.history.go(k);
+    // same-document traversals land within a frame; if one never does, the stack is on its own
+    setTimeout(() => { if (navBusy.current) { navBusy.current = 0; navSilent.current = 0; } }, 1500);
+  };
   const navBackTo = (layer, fallback) => {
     const i = navStack.current.map((x) => x.layer).lastIndexOf(layer);
     if (embedded || i < 0) { fallback(); return; }
     if (navBusy.current) return;
-    navBusy.current += 1; window.history.go(-(navStack.current.length - i));
+    navGo(-(navStack.current.length - i));
   };
   // A layer the app closed on its own: its entry (and anything above it) goes quietly.
   const dropNav = (layer) => {
     const i = layer ? navStack.current.map((x) => x.layer).lastIndexOf(layer) : 0;
     if (embedded || i < 0 || !navStack.current.length || navBusy.current) return;
-    navSilent.current += 1; navBusy.current += 1; window.history.go(-(navStack.current.length - i));
+    navSilent.current += 1; navGo(-(navStack.current.length - i));
   };
   const openColorSheet = () => { if (navRefs.current.colorSheet) return; setColorSheet(true); pushNav("sheet"); };
   const closeColorSheet = () => { if (!navRefs.current.colorSheet) return; navBackTo("sheet", () => setColorSheet(false)); };
   const goDetails = (apply, shape) => { if (apply) apply(); const wasChooser = navRefs.current.orderStep !== "details"; setOrderStep("details"); if (wasChooser) pushNav("details", { shape: shape || navRefs.current.shapeType }); };
-  const goChooser = () => navBackTo("details", () => setOrderStep("type"));
+  const goChooser = () => navBackTo("details", () => { setRoofBoxOpen(false); setOrderStep("type"); });
   const openKit = (kind) => { openRoofBox(kind); pushNav("kit", { kind }); };
   const closeKit = () => navBackTo("kit", () => setRoofBoxOpen(false));
   const backToKitFrom3d = () => navBackTo("part3d", () => { setBox3dReturn(false); openRoofBox("com"); });
@@ -5560,6 +5568,7 @@ export default function ShopOrderApp() {
     const kind = p.type || item.kind;
     if (editingId) restoreCanvas(); // a saved item is a new part, not the edited one
     setBoxReturn(null); setRoofBoxOpen(false); setBox3dReturn(false); // and not the box piece either
+    if (navRefs.current.tab !== "order") pushNav("tab", { from: navRefs.current.tab, to: "order" }); // Back returns to the list it came from
     setTab("order");
     setShapeType(kind);
     setOrderStep("details");
