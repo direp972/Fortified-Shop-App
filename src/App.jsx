@@ -4056,55 +4056,89 @@ export default function ShopOrderApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Moving forward in the wizard by hand (a tool tile, opening Finish & color) leaves a
-  // history entry, so the phone's back gesture and the browser's Back button close the
-  // sheet or step back to the chooser instead of leaving the app. Programmatic moves
-  // (deep links, the vault, a kit) don't push, and nothing is pushed when members.html
-  // embeds the app, whose own history this must not touch. The in-app Back buttons pop
-  // the entry they pushed, so the two never drift apart.
+  // Screens the person opens by hand — a tool from the chooser, a kit, the 3D tool from
+  // the Commercial Kit, the Finish & color sheet, another tab — each leave a history entry
+  // tagged with the layer they opened, so the browser's Back and a phone's back gesture
+  // close that layer instead of leaving the app, and Forward opens it again. navStack
+  // mirrors those entries. The in-app Back buttons unwind down to the layer they name,
+  // through the browser, so the two never drift apart. Nothing is pushed when members.html
+  // embeds the app, whose own history this must not touch; deep links, the vault and the
+  // moves the app makes on its own push nothing; a layer the app closes by itself drops
+  // its entry quietly. Entries left by an earlier page load carry another token and count
+  // as nothing.
   const embedded = window.parent !== window;
-  const navDepth = useRef(0);
+  const navTok = useRef(Math.random().toString(36).slice(2));
+  const navStack = useRef([]);   // [{ layer, data }], bottom first
+  const navBusy = useRef(0);     // traversals asked for and not yet landed
+  const navSilent = useRef(0);   // …of which these only drop entries, undoing nothing
   const navRefs = useRef({});
   navRefs.current = { colorSheet, orderStep, tab, roofBoxOpen, box3dReturn, shapeType };
-  const pushNav = () => { if (embedded) return; navDepth.current += 1; window.history.pushState({ rcNav: navDepth.current }, ""); };
-  // Undo one forward move, outermost layer first: the sheet, then a kit, then the 3D tool
-  // opened from the Commercial Kit (back to that kit, as its own button does), then details
-  // back to the chooser. Only orderStep and the overlay flags move; a drawing, a kit piece
-  // or an edit in progress stays exactly as it was.
-  const navBackOnce = () => {
-    const cur = navRefs.current;
-    if (cur.colorSheet) { cur.colorSheet = false; setColorSheet(false); return true; }
-    if (cur.tab !== "order") return false;
-    if (cur.roofBoxOpen) { cur.roofBoxOpen = false; setRoofBoxOpen(false); return true; }
-    if (cur.box3dReturn && cur.shapeType === "part3d") { cur.box3dReturn = false; cur.roofBoxOpen = true; setBox3dReturn(false); openRoofBox("com"); return true; }
-    if (cur.orderStep === "details") { cur.orderStep = "type"; setOrderStep("type"); return true; }
-    return false;
+  useEffect(() => {
+    if (!embedded && window.history.state && window.history.state.rcNav) window.history.replaceState(null, ""); // left by the last load; not ours
+  }, []);
+  const pushNav = (layer, data) => {
+    if (embedded || navBusy.current) return;
+    navStack.current.push({ layer, data: data || null });
+    window.history.pushState({ rcNav: navStack.current.length, layer, data: data || null, tok: navTok.current }, "");
   };
-  // An in-app Back: pop our own history entry when it is on top, otherwise just move.
-  const navBack = (fallback) => {
-    const top = window.history.state;
-    if (!embedded && navDepth.current > 0 && top && top.rcNav === navDepth.current) { window.history.back(); return; }
-    fallback();
+  // What closing a layer means. One the app already closed on its own is a no-op.
+  const undoLayer = ({ layer, data }) => {
+    const cur = navRefs.current;
+    if (layer === "sheet") { cur.colorSheet = false; setColorSheet(false); }
+    else if (layer === "kit") { cur.roofBoxOpen = false; setRoofBoxOpen(false); }
+    else if (layer === "part3d") { if (cur.box3dReturn) { cur.box3dReturn = false; cur.roofBoxOpen = true; setBox3dReturn(false); openRoofBox("com"); } }
+    else if (layer === "details") { cur.orderStep = "type"; setOrderStep("type"); }
+    else if (layer === "tab") { cur.tab = data.from; setTab(data.from); }
+  };
+  // Forward after Back: the layer comes back the way it opened.
+  const redoLayer = ({ layer, data }) => {
+    const cur = navRefs.current;
+    if (layer === "sheet") { cur.colorSheet = true; setColorSheet(true); }
+    else if (layer === "kit") { cur.roofBoxOpen = true; openRoofBox((data && data.kind) || undefined); }
+    else if (layer === "part3d") { cur.box3dReturn = true; cur.roofBoxOpen = false; setRoofBoxOpen(false); setBox3dReturn(true); setShapeType("part3d"); setOrderStep("details"); }
+    else if (layer === "details") { cur.orderStep = "details"; if (data && data.shape) setShapeType(data.shape); setOrderStep("details"); }
+    else if (layer === "tab") { cur.tab = data.to; setTab(data.to); }
   };
   useEffect(() => {
     if (embedded) return;
     const onPop = (e) => {
-      const target = e.state && typeof e.state.rcNav === "number" ? e.state.rcNav : 0;
-      if (target >= navDepth.current) return; // forward, or history that isn't ours
-      let steps = navDepth.current - target;
-      navDepth.current = target;
-      while (steps-- > 0 && navBackOnce()) { /* one layer per entry */ }
+      const st = e.state;
+      const ours = !!(st && st.tok === navTok.current && typeof st.rcNav === "number");
+      const target = ours ? st.rcNav : 0;
+      const depth = navStack.current.length;
+      if (navBusy.current) navBusy.current -= 1;
+      if (navSilent.current) { navSilent.current -= 1; navStack.current.length = Math.min(depth, target); return; }
+      if (target < depth) { while (navStack.current.length > target) undoLayer(navStack.current.pop()); }
+      else if (target === depth + 1 && ours) { const entry = { layer: st.layer, data: st.data }; navStack.current.push(entry); redoLayer(entry); }
+      else if (target > depth) { navBusy.current += 1; window.history.go(depth - target); } // a jump of several forward: back to where the app is
     };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const openColorSheet = () => { if (navRefs.current.colorSheet) return; setColorSheet(true); pushNav(); };
-  const closeColorSheet = () => { if (!navRefs.current.colorSheet) return; navBack(() => setColorSheet(false)); };
-  const goDetails = (apply) => { if (apply) apply(); const wasChooser = navRefs.current.orderStep !== "details"; setOrderStep("details"); if (wasChooser) pushNav(); };
-  const goChooser = () => navBack(() => setOrderStep("type"));
-  const closeKit = () => navBack(() => setRoofBoxOpen(false));
-  const backToKitFrom3d = () => navBack(() => { setBox3dReturn(false); openRoofBox("com"); });
+  // Close the named layer and everything opened on top of it. With an entry to unwind the
+  // browser goes back and onPop does the closing; without one the fallback does it now.
+  // A second press while the browser is still on its way does nothing.
+  const navBackTo = (layer, fallback) => {
+    const i = navStack.current.map((x) => x.layer).lastIndexOf(layer);
+    if (embedded || i < 0) { fallback(); return; }
+    if (navBusy.current) return;
+    navBusy.current += 1; window.history.go(-(navStack.current.length - i));
+  };
+  // A layer the app closed on its own: its entry (and anything above it) goes quietly.
+  const dropNav = (layer) => {
+    const i = layer ? navStack.current.map((x) => x.layer).lastIndexOf(layer) : 0;
+    if (embedded || i < 0 || !navStack.current.length || navBusy.current) return;
+    navSilent.current += 1; navBusy.current += 1; window.history.go(-(navStack.current.length - i));
+  };
+  const openColorSheet = () => { if (navRefs.current.colorSheet) return; setColorSheet(true); pushNav("sheet"); };
+  const closeColorSheet = () => { if (!navRefs.current.colorSheet) return; navBackTo("sheet", () => setColorSheet(false)); };
+  const goDetails = (apply, shape) => { if (apply) apply(); const wasChooser = navRefs.current.orderStep !== "details"; setOrderStep("details"); if (wasChooser) pushNav("details", { shape: shape || navRefs.current.shapeType }); };
+  const goChooser = () => navBackTo("details", () => setOrderStep("type"));
+  const openKit = (kind) => { openRoofBox(kind); pushNav("kit", { kind }); };
+  const closeKit = () => navBackTo("kit", () => setRoofBoxOpen(false));
+  const backToKitFrom3d = () => navBackTo("part3d", () => { setBox3dReturn(false); openRoofBox("com"); });
+  const goTab = (to) => { const from = navRefs.current.tab; if (to === from) return; setTab(to); pushNav("tab", { from, to }); };
   // The sheet is modal: Escape closes it and the page behind it stops scrolling.
   useEffect(() => {
     if (!colorSheet) return;
@@ -4920,6 +4954,7 @@ export default function ShopOrderApp() {
   const dropWidth = partsPerSheet > 0 ? Math.max(0, sheetWidthNum - partsPerSheet * girth) : sheetWidthNum;
 
   const resetForm = () => {
+    dropNav(); // the order is sent: every entry the wizard pushed goes
     setOrderStep("type");
     setShapeType("panel"); setWidth(16.88); setHeight(853.08); setCoilWidth(21); setProfile(PROFILES[0]); setRunLocation("Shop"); setJobSiteAddress(""); setJobSiteMiles(""); setMilesLookupNote(""); setSupplierCo("Fortified Metal"); setRibStyle(null); setClipRelief(null);
     setFlatWidth(48); setFlatLength(120); setMetalCoilWidth(21); setMetalCoilLength(12000);
@@ -4996,7 +5031,7 @@ export default function ShopOrderApp() {
   const editBasketItem = (it, fromBox = false) => {
     if (!editingId) editSnapshot.current = { points, hemStart, hemEnd, paintSide, partName, quantity, lengthPerPiece, sheetWidth, partPhoto, drawnPitch, preset, materialCategory, gaugeId, paintId, brand, colorName, boxReturn, boxReturnKind };
     setEditingId(it.id);
-    if (fromBox) { setRoofBoxOpen(false); setBoxReturn("edit"); setBoxReturnKind(roofBoxKind); }
+    if (fromBox) { setRoofBoxOpen(false); dropNav("kit"); setBoxReturn("edit"); setBoxReturnKind(roofBoxKind); }
     setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
     setHemStart(it.hemStart || "none"); setHemEnd(it.hemEnd || "none"); setPaintSide(it.paintSide || "left");
     setPartName(it.name); setQuantity(it.quantity); setLengthPerPiece(it.lengthPerPiece); setSheetWidth(it.sheetWidth);
@@ -5140,7 +5175,7 @@ export default function ShopOrderApp() {
     setBasket((b) => [...b, ...added]);
     setRoofBoxSel((sel) => { const next = { ...sel }; for (const it of added) if (it.kit) next[it.kit] = 0; return next; }); // in the order now — tick again for more
     if (!editingId) { clearDrawing(); setPartPhoto(null); } // same as Add Part: the canvas draft must not ride along as an extra part — unless it is a part being edited, which orderParts already counts once
-    setRoofBoxOpen(false);
+    setRoofBoxOpen(false); dropNav("kit");
     const pcs = added.reduce((sum, it) => sum + (+it.quantity || 0), 0);
     setToast(`${boxKind.label} — ${added.length} ${boxNoun}${added.length === 1 ? "" : "s"}, ${pcs} piece${pcs === 1 ? "" : "s"} added to the order${boxPending ? ` (the ${boxPending.name} from the canvas with them)` : ""}.`);
     setTimeout(() => setToast(""), 4000);
@@ -5162,7 +5197,7 @@ export default function ShopOrderApp() {
     setPreset(it.name); setPoints(it.points.map((pt) => [...pt]));
     setHemStart(it.hemStart); setHemEnd(it.hemEnd); setPaintSide(it.paintSide); setPartName(it.name); setDrawnPitch(it.pitch ?? roofBoxPitch);
     setQuantity(roofBoxSel[it.id] > 0 ? roofBoxSel[it.id] : 4);
-    setViewResetKey((k) => k + 1); setRoofBoxOpen(false);
+    setViewResetKey((k) => k + 1); setRoofBoxOpen(false); dropNav("kit");
     setToast(`${it.name} is on the canvas — adjust any leg, then Add Part to Order.${replaced ? ` It took the place of the ${replaced} that was there.` : ""}`); setTimeout(() => setToast(""), 4000);
   };
   // A scupper or a collector box is built in the 3D tool, not drawn — its row in the Commercial Kit
@@ -5182,7 +5217,7 @@ export default function ShopOrderApp() {
     if (editingId) restoreCanvas(); // a part being changed goes back in its place first
     setRoofBoxOpen(false); setBox3dReturn(true);
     seedPartDims(it.tool3d, partType);
-    setPartType(it.tool3d); setShapeType("part3d"); setOrderStep("details"); pushNav();
+    setPartType(it.tool3d); setShapeType("part3d"); setOrderStep("details"); pushNav("part3d");
     setToast(`${it.name} — size it in the 3D tool and send it as its own part. The parts in your list stay; sending brings you back to the Commercial Kit for the rest.`); setTimeout(() => setToast(""), 5000);
   };
 
@@ -5376,7 +5411,7 @@ export default function ShopOrderApp() {
     if (!saved) return; // insertOrders already said so — keep the form so they can retry
     setToast(`Order sent — estimate ${money(order.price)}. The shop will confirm final pricing.`);
     if (box3dReturn) { // reached from the Commercial Kit: the trim order is still being built, so back to it — name, phone and notes kept
-      setBox3dReturn(false); setBoxNote(`${PART3D_LABELS[partType]} sent as its own order — pick the next piece.`); openRoofBox("com");
+      dropNav("part3d"); setBox3dReturn(false); setBoxNote(`${PART3D_LABELS[partType]} sent as its own order — pick the next piece.`); openRoofBox("com");
     } else resetForm();
     setTimeout(() => setToast(""), 5000);
   };
@@ -5993,7 +6028,7 @@ export default function ShopOrderApp() {
           const Icon = t.icon;
           const active = tab === t.id;
           return (
-            <button key={t.id} onClick={() => setTab(t.id)}
+            <button key={t.id} onClick={() => goTab(t.id)}
               className="disp tap-bounce"
               style={{
                 flex: 1, padding: "12px 8px", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
@@ -6118,7 +6153,7 @@ export default function ShopOrderApp() {
                 ].map((t) => {
                   const Icon = t.icon;
                   return (
-                    <button key={t.id} data-testid={`tile-${t.id}`} onClick={() => { if (t.kind) { goDetails(() => openRoofBox(t.kind)); pushNav(); return; } goDetails(() => { if (t.id === "part3d") { setAccessories([]); setBox3dReturn(false); } setShapeType(t.id); }); }} className="mac-btn"
+                    <button key={t.id} data-testid={`tile-${t.id}`} onClick={() => { if (t.kind) { goDetails(() => openRoofBox(t.kind), "trim"); pushNav("kit", { kind: t.kind }); return; } goDetails(() => { if (t.id === "part3d") { setAccessories([]); setBox3dReturn(false); } setShapeType(t.id); }, t.id); }} className="mac-btn"
                       style={{
                         display: "flex", alignItems: "center", gap: 14, padding: 16, borderRadius: 12, border: `1px solid ${t.accent}`,
                         background: `linear-gradient(180deg, ${t.accent}, ${t.accent}dd)`, color: "#fff", cursor: "pointer", textAlign: "left",
@@ -7043,7 +7078,7 @@ export default function ShopOrderApp() {
                   {Object.entries(BOX_KINDS).map(([kind, k]) => {
                     const Icon = k.icon, back = boxReturn && boxReturnKind === kind; // the box a piece came from is the one to go back to
                     return (
-                      <button key={kind} type="button" onClick={() => openRoofBox(kind)} title={k.blurb} data-testid={`box-open-${kind}`}
+                      <button key={kind} type="button" onClick={() => openKit(kind)} title={k.blurb} data-testid={`box-open-${kind}`}
                         style={{
                           padding: "5px 11px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer",
                           border: `1px solid ${k.accent}`, background: `linear-gradient(180deg, ${k.accentLight}, ${k.accent})`, color: "#fff", display: "flex", alignItems: "center", gap: 5,
