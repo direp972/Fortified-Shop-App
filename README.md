@@ -193,7 +193,7 @@ staff (`public.staff`) keep every power across every shop. Design and the reason
   its tiers are every account's tier as assigned before, and new sign-ups keep appearing
   on its tier panel. The six old `app_storage` keys (`shop-price-list`, …) were copied into
   `shop_settings` by migration `20261017213414_shops_tenant.sql`; the cleanup migration
-  `phase1_cleanup_legacy_keys` then deleted them, returned `app_storage` to plain
+  `20261017220436_phase1_cleanup_legacy_keys.sql` then deleted them, returned `app_storage` to plain
   signed-in read/write (it holds only the idea box now), and dropped `customers.tier`.
 
 ## How the New Order tab moves
