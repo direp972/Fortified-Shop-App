@@ -77,7 +77,7 @@ Expected: `0, 0, 0, <own row + B's customers>, 0, false` (or `null` for the list
 
 ## 6. Platform staff still runs everything (Staff)
 
-1. Shop Floor → Jobs shows the orders of both shops; switching the picker to RoofCoil Test Shop (it is in Staff's picker because Staff can read every listing) shows B's **Master Materials List** and B's Backend with the 9.99 list; **Customer Pricing Tiers** shows B's customers and the **Admin** / **Platform** buttons.
+1. Shop Floor → Jobs shows the orders of both shops; opening `?shop=<B>` as Staff (a hidden shop is not in anyone's picker without the deep link, Staff included) shows B's **Master Materials List** and B's Backend with the 9.99 list; **Customer Pricing Tiers** shows B's customers and the **Admin** / **Platform** buttons.
 2. Directory admin still toggles **Takes orders** and links owners as before. Switching ordering on for any listing creates its shop (`select count(*) from public.shops`).
 
 ## 7. Build, checks, advisors
@@ -98,3 +98,23 @@ Expected: `0, 0, 0, <own row + B's customers>, 0, false` (or `null` for the list
 - `next_po_number()` is one sequence across every shop.
 - A shop whose listing is hidden can be ordered from only through `?shop=<id>`; a slug or subdomain comes with Phase 2.
 - Anonymous reads of `orders` used to fail at the database (the pre-existing `shop owner reads routed orders` policy touched `directory_listings.owner_id`, a column the anon role cannot read) and the app ignored the error. Fixed by migration `anon_orders_policy_fix`: the ownership and membership tests are SECURITY DEFINER helpers, so a signed-out request gets no rows, and the app no longer loads orders before sign-in.
+
+## Results — run on 2026-10-19 against shop.roofcoil.com (bundle `index-Dw32njQu.js`)
+
+Accounts used: Staff = nbass (platform staff); the Customer and, for one step, the test shop's own staff member = bassnick1@gmail.com (a fresh sign-up). The B-owner role was played by Staff for the price edits (section 2) and by bassnick1 as a shop member for the member-only UI (section 4, step 4). The drawing tool's default part was used instead of the reference part: 4 points (two bends), 4 pieces × 10 ft, 24 ga, **PVDF** (the default), Regal White, so the expected numbers are 40 LF × rate × 1.15 + $16 + $10.
+
+| Section | Result | Evidence |
+|---|---|---|
+| 1 Fortified as Staff | **Pass** | Header "Staff"; Fortified preselected; Customer View 3.00 / 3.35 / 2.90; Backend lists 31 accounts, each with **Admin** and **Platform** (2 of each lit), Site Leads / Applications / Idea Box present, cost sections present; Shop Floor lists both legacy jobs; the materials board shows the PO-1002 coil line; the Custom presets folder shows Z-Bar and Box Gutter; estimate $159.40 (greenleaf) equals a server dry run through submit-order (159.40, greenleaf, Fortified's id). No order sent. |
+| 2 Test shop prices (as Staff) | **Pass** | `?shop=<B>` puts RoofCoil Test Shop in the picker, preselected; Backend tier panel empty; 24 Gauge Trim set to 9.99 / 9.99 / 9.99, still 9.99 after a reload; `shop_settings` holds one `price-list` row for B (40 rows) and none for Fortified; estimate $485.54 on screen and from a server dry run (485.54, tier2, B's id); picker back to Fortified → $159.40. |
+| 3 Customer at each shop | **Pass** | Plain URL: "Tier: Tier 2", no Shop Floor, Price List 3.35 with no Backend toggle and no tier buttons, picker CFR + Fortified, estimate $180.10. `?shop=<B>`: test shop preselected, 9.99, $485.54, still no Backend or Shop Floor. Orders sent: PO-1005 to the test shop (shop_id B, tier2, 485.54; desk email sent, customer confirmation sent, `routed=false`) and PO-1006 to Fortified (tier2, 180.10); Past Orders shows both; a `shop_customers` row for B appeared from the first order. |
+| 4 Per-shop tiers and member UI | **Pass** | With bassnick1 Tier 1 at B and B's Tier 1 trim rate 8.00: at `?shop=<B>` "Tier: Tier 1", 8.00, $394.00; at the plain URL still "Tier: Tier 2", $180.10; Fortified's panel still shows tier2. As B's staff member (no deep link): lands on RoofCoil Test Shop, header "Shop staff", Shop Floor present with only PO-1005, Backend toggle and Master Materials List present; switching the picker to Fortified → "Tier: Tier 2", $180.10, no Backend. |
+| 5 Isolation at the database | **Pass** | As bassnick1 (B's staff): Fortified private settings 0, Fortified tiers of others 0, Fortified members 0, customers visible 1 (self), others' Fortified orders 0, own orders 2, B's orders 1, `customer_price_list(Fortified)` null and `customer_price_list(B)` without `cost`, shops visible 1; inserting a Fortified `price-list` row and a Fortified tier row both refused by RLS. |
+| 6 Platform staff | **Pass** | Shop Floor shows all four jobs ($180.10, $485.54, $1,869.72, $84.70); at `?shop=<B>` the board holds only PO-1005's flat sheet, Backend shows 8 / 9.99 / 9.99, the tier panel shows bassnick1 with **Admin ✓** and **Platform**; the tier dropdown saved Tier 2 (`shop_customers` updated) and **Admin** removed the membership (0 rows); `set_listing_owner(B, bassnick1)` made them the `owner` member through the trigger and clearing the owner removed it. |
+| 7 Build, checks, advisors | **Pass** | Covered on the PRs (#53, #54, #55): pricing-check and build green; advisor items as documented. |
+
+Findings:
+
+- The Price List heading is hardcoded "Fortified Sheet Metal" whatever shop is selected (cosmetic; fixed in this PR to show the selected shop's name).
+- The checklist's section 6 said a hidden shop appears in Staff's picker; it does not — only `?shop=<id>` reaches a hidden shop, for Staff too (wording corrected above).
+- A platform-staff account with no tier row at a shop prices at retail there, as any account does; Staff's own greenleaf tier at Fortified comes from its Fortified `shop_customers` row.
