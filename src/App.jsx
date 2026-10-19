@@ -3832,17 +3832,23 @@ export default function ShopOrderApp() {
     if (priceListView === "backend" && !canManageShop) setPriceListView("customer");
   }, [priceListView, canManageShop]);
 
-  // Orders live in their own table (not the shared app_storage blob) — RLS shows
-  // customers only their own orders, staff see everything.
+  // Orders live in their own table (not the shared app_storage blob) — RLS shows customers
+  // only their own orders, a shop's people their shop's, platform staff everything. Signed
+  // out there is nothing to read (the demo shows no orders), and signing in loads them
+  // without a page reload.
   useEffect(() => {
+    if (!user) { setOrders([]); setLoaded(true); return; }
+    let stale = false;
     (async () => {
       try {
         const { data, error } = await supabase.from("orders").select("id, user_id, shop_id, data").order("created_at", { ascending: false });
-        if (!error && data) setOrders(data.map((r) => ({ ...r.data, userId: r.user_id, shopId: r.shop_id || r.data?.shopId || null })));
+        if (!stale && !error && data) setOrders(data.map((r) => ({ ...r.data, userId: r.user_id, shopId: r.shop_id || r.data?.shopId || null })));
       } catch (e) { /* no orders yet */ }
-      setLoaded(true);
+      if (!stale) setLoaded(true);
     })();
-  }, []);
+    return () => { stale = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // Shops that take orders through RoofCoil: the public directory's, plus any shop this
   // account runs (even one whose listing is hidden). ?shop=<listing id> (a shop's own site

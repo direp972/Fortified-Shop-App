@@ -97,4 +97,4 @@ Expected: `0, 0, 0, <own row + B's customers>, 0, false` (or `null` for the list
 - The materials board, presets and costs of a shop are per shop, but every shop still draws from the same catalog (profiles, brands, colors) and the same three tier ids and names — Phase 2.
 - `next_po_number()` is one sequence across every shop.
 - A shop whose listing is hidden can be ordered from only through `?shop=<id>`; a slug or subdomain comes with Phase 2.
-- Anonymous reads of `orders` (the demo loads them before sign-in) fail silently at the database because the pre-existing `shop owner reads routed orders` policy touches `directory_listings.owner_id`, a column the anon role cannot read; the app ignores the error, as it did before Phase 1.
+- Anonymous reads of `orders` used to fail at the database (the pre-existing `shop owner reads routed orders` policy touched `directory_listings.owner_id`, a column the anon role cannot read) and the app ignored the error. Fixed by migration `anon_orders_policy_fix`: the ownership and membership tests are SECURITY DEFINER helpers, so a signed-out request gets no rows, and the app no longer loads orders before sign-in.
