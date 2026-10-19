@@ -10,6 +10,9 @@ create table if not exists app_storage (
 -- One row per registered customer, created automatically the moment someone signs up.
 -- `tier` controls which price list they see: 'tier1' (preferred), 'greenleaf', or
 -- 'tier2' (retail/off-the-street — the default for everyone until you upgrade them).
+-- (Historical: this file is the original one-time setup and the migrations under
+-- supabase/migrations build on it. Since shops_tenant a tier is per shop, in
+-- shop_customers, and phase1_cleanup_legacy_keys drops this column.)
 create table if not exists customers (
   id uuid primary key references auth.users(id) on delete cascade,
   email text not null,

@@ -258,8 +258,8 @@ export function findGauge(gaugeId, brand) {
 }
 
 // The shop's price list and coil width scale as first seeded, and what the app and the
-// server fall back to until the shop has saved its own (app_storage keys shop-price-list
-// and shop-coil-width-scale).
+// server fall back to until the shop has saved its own (shop_settings keys price-list and
+// coil-width-scale for that shop).
 export const DEFAULT_PRICE_LIST = [
   // Roof Panel
   { id: "p1", category: "Roof Panel", name: '24 Gauge Coil (per linear ft)', derivedFromMaterialId: "m1", coverageWidth: 16, cost: 0, tier1: 4.10, tier2: 4.55, greenleaf: 3.95 },

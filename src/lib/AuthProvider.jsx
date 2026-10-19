@@ -49,7 +49,7 @@ export function AuthProvider({ children }) {
       const phone = sessionUser.user_metadata?.phone || "";
       let { data: created, error } = await supabase
         .from("customers")
-        .insert({ id: userId, email: sessionUser.email, name, phone }) // tiers are per shop now (shop_customers); the row's own tier column is legacy
+        .insert({ id: userId, email: sessionUser.email, name, phone }) // tiers are per shop (shop_customers), not on this row
         .select()
         .maybeSingle();
       if (error && error.code === "23505") {
