@@ -6735,12 +6735,12 @@ export default function ShopOrderApp() {
                               <span className="disp" style={{ fontSize: 13, color: theme.text }}>{vend.name}</span>
                               <span style={{ fontSize: 9.5, color: theme.textSecondary, marginLeft: 6 }}>{vend.tagline}</span>
                             </div>
-                            <span style={{ fontSize: 10, color: theme.textSecondary, whiteSpace: "nowrap", flexShrink: 0 }}>
+                            {vend.city && <span style={{ fontSize: 10, color: theme.textSecondary, whiteSpace: "nowrap", flexShrink: 0 }}>
                               {vend.city}, {vend.state}
                               {catalogUserLoc && (
                                 <span className="mono" style={{ color: SAFETY, fontWeight: 700 }}> · ~{Math.round(distanceMiles(catalogUserLoc, vend))} mi</span>
                               )}
-                            </span>
+                            </span>}
                           </div>
                           {vend.profiles.length === 0 ? (
                             <div style={{ fontSize: 11, color: theme.textSecondary, padding: "6px 0 2px" }}>
