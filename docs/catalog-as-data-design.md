@@ -16,11 +16,11 @@ Everything below is a constant in `src/App.jsx` or `supabase/functions/_shared/p
 |---|---|---|---|---|
 | Painted brands (paint lines) | `BRAND_GROUPS`, `BRANDS` in App.jsx | names | 4 (Fortified Metal, Una-Clad, Adax Metals, Berridge) | brand picker, color lists, rules |
 | Brand rules | `PVDF_ONLY_BRANDS`, `PVDF_24GA_ONLY_BRANDS`, `UNPAINTED_FLATS_ONLY_BRANDS` | name lists | 3 rules | which paints and gauges a brand allows |
-| Colors | `COLORS_BY_BRAND` in pricing.mjs | per brand: `{name, hex, premium?}` | about 110 across the 4 lines (+ one swatch each for the 4 bare metals) | color picker, Color Lab matching (by hex), premium upcharge in pricing (×1.12) |
+| Colors | `COLORS_BY_BRAND` in pricing.mjs | per brand: `{name, hex, premium?}` | 72 distinct names, about 110 entries across the 4 lines (a name such as Regal White appears in several) + one swatch each for the 4 bare metals | color picker, Color Lab matching (by hex), premium upcharge in pricing (×1.12) |
 | Unpainted metals | `UNPAINTED_MATERIALS` + `COPPER_WEIGHT_OPTIONS`, `G90_GAUGE_OPTIONS`, `GALVALUME_GAUGE_OPTIONS`, `BONDERIZED_GAUGE_OPTIONS` | `{id, label, panelSqft, trimFt}` | 4 metals, 2–5 gauges each | material picker; the $/sq ft and $/ft **fallback rates** pricing uses when the price list has no row |
 | Painted gauges | `GAUGE_OPTIONS` in pricing.mjs | `{id, label, panelSqft, trimFt}` | 2 (24 ga, 26 ga) | gauge picker; fallback rates; the price-list row match ("24 Gauge Coil", "24 Gauge Trim") |
 | Paint systems | `PAINT_OPTIONS` in pricing.mjs | `{id, label, mult}` | 2 (PVDF ×1.15, SMP ×1.0) | paint picker, pricing multiplier |
-| Panel profiles | `PROFILE_INFO`, `PROFILES`, `PANEL_VENDORS` in App.jsx | keyed by display name: `{code, family, takeup, vendor?, delisted?, desc}` | 23 (15 New Tech + 8 Adax; 7 delisted) | profile picker and catalog page, coil-width takeup, seam drawing by family, fabrication row match by code ("FWQ100 Fabrication"), vendor grouping |
+| Panel profiles | `PROFILE_INFO`, `PROFILES`, `PANEL_VENDORS` in App.jsx | keyed by display name: `{code, family, takeup, vendor?, delisted?, desc}` | 22 (14 New Tech + 8 Adax; 9 delisted, 13 listed) | profile picker and catalog page, coil-width takeup, seam drawing by family, fabrication row match by code ("FWQ100 Fabrication"), vendor grouping |
 | Clips | `CLIP_SPECS` | by profile code: `{code, perBox}` | 5 | clip accessory, materials board |
 | Accessories | `ACCESSORY_TYPES`, `DRY_IN_TYPES`, `ACCESSORY_SPECS` | names per group | 5 + 3 groups | accessory picker; price-list rows by name |
 | Fabricator bases | `FAB_COMPANIES` | name + coordinates | 2 | mileage; already superseded by the listing's `locations` through `shopBases()` |
