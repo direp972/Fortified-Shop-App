@@ -47,6 +47,19 @@ export default function AuthGate({ children }) {
   // A finished sign-in closes the card and drops the visitor back where they were.
   useEffect(() => { if (user) setAuthOpen(false); }, [user]);
 
+  // A link that ends in #signup or #signin (a shop's invite email, confirm.html's "Go to
+  // sign in") opens the card on that side straight away, then clears the hash so a reload
+  // does not reopen it.
+  useEffect(() => {
+    if (user) return;
+    const h = (window.location.hash || "").toLowerCase();
+    if (h !== "#signup" && h !== "#signin") return;
+    setMode(h === "#signup" ? "signup" : "signin");
+    setAuthOpen(true);
+    try { window.history.replaceState(null, "", window.location.pathname + window.location.search); } catch (e) { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // If Google (or Supabase) bounced us back with an error, it arrives in the URL hash
   // (#error=...&error_description=...). Surface it once and clean the address bar.
   useEffect(() => {

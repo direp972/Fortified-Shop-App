@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase, Package, Pencil, Building2, Folder, FolderOpen } from "lucide-react";
+import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase, Package, Pencil, Building2, Folder, FolderOpen, Copy, UserPlus } from "lucide-react";
 import * as THREE from "three";
 import { storage, shopStorage } from "./lib/storage";
 import { supabase } from "./lib/supabaseClient";
@@ -663,6 +663,18 @@ function parseLength(input) {
 }
 const dist = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1]);
 const money = (n) => `$${n.toFixed(2)}`;
+
+// Each shop names its three price tiers; the ids (tier1 / tier2 / greenleaf) are the Price
+// List columns and what orders store. No saved names (shop_settings 'tier-labels') mean
+// exactly these words, Fortified's. The short form used by the header badge is the part
+// before " — " when there is one.
+const DEFAULT_TIER_LABELS = {
+  tier1: { name: "Tier 1 — Preferred", heading: "Preferred Customer Pricing" },
+  tier2: { name: "Tier 2 — Retail", heading: "Standard Pricing" },
+  greenleaf: { name: "Greenleaf", heading: "Greenleaf Pricing" },
+};
+const TIER_IDS = ["tier1", "tier2", "greenleaf"];
+const tierShortOf = (name) => String(name || "").split(" — ")[0].trim();
 
 // Inside angle at a bend, in degrees (not rounded): 90 at a square corner, close to 180
 // at a gentle ridge, small when a leg folds back on itself — the number a brake operator
@@ -3349,9 +3361,304 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
   );
 }
 
+/* ------------------------------- shop settings -------------------------------- */
+// Shop Floor → Shop Settings: where a shop's people set it up and run it. The setup
+// checklist is derived from facts that already live somewhere (a saved price list, an order
+// email, the ordering switch) and never stored. Owner-only controls are hidden from staff.
+// The default shop (Fortified) gets no checklist: the seed numbers are its own and its
+// orders go to the desk on purpose. Design: docs/phase2-self-serve-shop-design.md.
+const APP_ORIGIN = "https://shop.roofcoil.com";
+function ShopSettingsView({ shopId, info, reloadInfo, isOwner, userId, theme, flash, tierLabels, saveTierLabels, openBackend, refreshAuth }) {
+  const [orderEmail, setOrderEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [slugDraft, setSlugDraft] = useState("");
+  const [poPrefix, setPoPrefix] = useState("PO-");
+  const [poNext, setPoNext] = useState("1001");
+  const [labels, setLabels] = useState({ tier1: "", tier2: "", greenleaf: "" });
+  const [roster, setRoster] = useState(null);
+  const [invites, setInvites] = useState([]);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("staff");
+  const [busy, setBusy] = useState("");
+
+  // The form follows the shop's facts whenever they reload.
+  useEffect(() => {
+    if (!info) return;
+    setOrderEmail(info.order_email || "");
+    setPhone(info.phone || "");
+    setSlugDraft(info.slug || "");
+    setPoPrefix(info.po_prefix ?? "PO-");
+    setPoNext(String(info.po_next ?? 1001));
+  }, [info]);
+  useEffect(() => {
+    setLabels({ tier1: tierLabels.tier1?.name || "", tier2: tierLabels.tier2?.name || "", greenleaf: tierLabels.greenleaf?.name || "" });
+  }, [tierLabels]);
+
+  // The roster (shop_roster) and the pending invites (RLS: the shop's people only).
+  const loadPeople = useCallback(async () => {
+    if (!shopId) return;
+    const [{ data: r }, { data: inv }] = await Promise.all([
+      supabase.rpc("shop_roster", { p_shop: shopId }),
+      supabase.from("shop_invites").select("id, email, role, status, created_at, expires_at").eq("shop_id", shopId).eq("status", "pending").order("created_at", { ascending: false }),
+    ]);
+    setRoster(Array.isArray(r) ? r : []);
+    setInvites(Array.isArray(inv) ? inv : []);
+  }, [shopId]);
+  useEffect(() => { loadPeople(); }, [loadPeople]);
+
+  if (!info) return <div style={{ color: theme.textSecondary, fontSize: 13, textAlign: "center", padding: 40 }}>Loading shop settings…</div>;
+
+  const link = `${APP_ORIGIN}/?shop=${encodeURIComponent(info.slug || shopId)}`;
+  const steps = info.is_default ? [] : [
+    { id: "prices", label: "Your prices", done: !!info.price_list_saved, required: true, hint: "Price List → Backend starts on RoofCoil's seed numbers. Keep them or edit them; either saves the list as yours.", action: openBackend, actionLabel: "Open" },
+    { id: "contact", label: "Order email and phone", done: !!info.order_email, required: true, hint: "Every order is emailed to that address; the phone goes on your customers' confirmation." },
+    { id: "people", label: "Your people", done: info.member_count > 1 || info.pending_invites > 0, required: false, hint: "Invite the people who run the shop with you." },
+    { id: "tiers", label: "Tier names", done: !!info.tier_labels_saved, required: false, hint: "Name your three price tiers the way your customers know them." },
+    { id: "live", label: "Go live", done: !!info.accepts_orders, required: true, hint: "Switch ordering on once your prices and order email are set." },
+  ];
+  const required = steps.filter((s) => s.required);
+  const requiredDone = required.filter((s) => s.done).length;
+
+  const run = async (key, fn) => { setBusy(key); try { await fn(); } finally { setBusy(""); } };
+  const fail = (e, msg) => { console.error(e); flash(/listing owner/i.test(e?.message || "") ? "The listing owner always runs this shop. Change the listing owner first." : msg); };
+  const saveContact = () => run("contact", async () => {
+    const { data, error } = await supabase.rpc("set_shop_contact", { p_shop: shopId, p_order_email: orderEmail.trim(), p_phone: phone.trim() });
+    if (error) return fail(error, "Couldn't save that — try again.");
+    if (data === "bad-email") return flash("That order email isn't an email address.");
+    if (data === "needs-email") return flash("Ordering is on, so the shop needs an order email — switch ordering off first to clear it.");
+    flash("Saved."); await reloadInfo(); refreshAuth();
+  });
+  const toggleOrdering = () => run("live", async () => {
+    const { data, error } = await supabase.rpc("set_shop_ordering", { p_shop: shopId, p_on: !info.accepts_orders });
+    if (error) return fail(error, "Couldn't change that — try again.");
+    if (data === "needs-email") return flash("Add your order email first — every order is sent there.");
+    if (data === "needs-prices") return flash("Save your price list first: Price List → Backend → Keep these prices, or edit any rate.");
+    flash(data === "on" ? "Ordering is on — customers can send you orders now." : "Ordering is off.", 5000);
+    await reloadInfo(); refreshAuth();
+  });
+  const saveSlug = () => run("slug", async () => {
+    const { data, error } = await supabase.rpc("set_shop_slug", { p_shop: shopId, p_slug: slugDraft.trim() });
+    if (error) return fail(error, "Couldn't save that — try again.");
+    flash({ ok: "Saved — your link changed.", invalid: "A link name is 3–60 lower-case letters, digits and hyphens.", reserved: "That name is reserved — pick another.", taken: "Another shop has that name.", live: "Ordering is on, so the link stays as it is — it may already be in use." }[data] || "Couldn't save that.");
+    if (data === "ok") { await reloadInfo(); refreshAuth(); }
+  });
+  const savePo = () => run("po", async () => {
+    const next = parseInt(poNext, 10);
+    const { data, error } = await supabase.rpc("set_po_sequence", { p_shop: shopId, p_prefix: poPrefix.trim(), p_next: Number.isFinite(next) ? next : 0 });
+    if (error) return fail(error, "Couldn't save that — try again.");
+    flash(data === "ok" ? "Saved." : data === "too-low" ? `The next number can't go below ${info.po_next} — numbers are never reused.` : "The prefix is up to 8 letters, digits or hyphens, and the next number is 1 or more.");
+    if (data === "ok") await reloadInfo();
+  });
+  const saveLabels = () => run("labels", async () => {
+    const next = {};
+    for (const id of TIER_IDS) {
+      const name = (labels[id] || "").trim().slice(0, 24);
+      if (!name) return flash("Give every tier a name.");
+      next[id] = { name };
+    }
+    await saveTierLabels(next);
+    flash("Tier names saved."); await reloadInfo();
+  });
+  const invite = () => run("invite", async () => {
+    const email = inviteEmail.trim();
+    if (!email) return;
+    const { data, error } = await supabase.rpc("invite_shop_member", { p_shop: shopId, p_email: email, p_role: inviteRole });
+    if (error) return fail(error, "Couldn't send that invite — try again.");
+    flash({
+      added: "Added — they'll see the shop next time they sign in (we emailed them).",
+      invited: "Invite sent — they have 14 days to create an account with that email.",
+      already: "That account is already on the list.",
+      pending: "An invite is already out for that address — revoke it to send a new one.",
+      "too-many": "Twenty invites are already waiting — revoke some first.",
+      "bad-email": "That isn't an email address.",
+      "bad-role": "Pick a role.",
+    }[data] || "Couldn't send that invite.", 5000);
+    if (data === "added" || data === "invited") { setInviteEmail(""); await loadPeople(); await reloadInfo(); }
+  });
+  const revoke = (id) => run(`revoke-${id}`, async () => {
+    const { error } = await supabase.rpc("revoke_shop_invite", { p_invite: id });
+    if (error) return fail(error, "Couldn't revoke that — try again.");
+    await loadPeople(); await reloadInfo();
+  });
+  const setRole = (uid, role) => run(`role-${uid}`, async () => {
+    const { error } = await supabase.from("shop_members").update({ role }).eq("shop_id", shopId).eq("user_id", uid);
+    if (error) return fail(error, "Couldn't change that role — try again.");
+    await loadPeople();
+  });
+  const remove = (uid) => run(`remove-${uid}`, async () => {
+    const { error } = await supabase.from("shop_members").delete().eq("shop_id", shopId).eq("user_id", uid);
+    if (error) return fail(error, "Couldn't remove them — try again.");
+    await loadPeople(); await reloadInfo();
+  });
+  const copyLink = async () => {
+    try { await navigator.clipboard.writeText(link); flash("Link copied."); } catch (e) { flash("Select the link and copy it."); }
+  };
+
+  const card = { background: theme.card, borderRadius: 8, padding: 12, marginBottom: 8, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" };
+  const head = { fontSize: 12, color: SAFETY, marginBottom: 6 };
+  const sub = { fontSize: 9.5, color: theme.textSecondary, marginBottom: 6 };
+  const input = { width: "100%", padding: 8, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: theme.inputBg, color: theme.text, boxSizing: "border-box" };
+  const select = { padding: 6, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 11.5, fontWeight: 600, background: theme.inputBg, color: theme.text };
+  const btn = (primary) => ({ padding: "8px 12px", borderRadius: 6, border: primary ? "none" : `1px solid ${theme.border}`, background: primary ? INK : "transparent", color: primary ? "#fff" : theme.text, fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" });
+  const label = { display: "block", fontSize: 9.5, color: theme.textSecondary };
+
+  return (
+    <div>
+      {steps.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <div className="disp" style={head}>Shop setup{requiredDone === required.length ? " — done" : ` — ${requiredDone} of ${required.length} required steps done`}</div>
+          <div style={sub}>{requiredDone === required.length ? `${info.name} is taking orders through RoofCoil.` : "Three steps before customers can order from you; the other two whenever you like."}</div>
+          {steps.map((s, i) => (
+            <div key={s.id} style={{ ...card, display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 22, height: 22, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, background: s.done ? SAFETY : "transparent", border: `1px solid ${s.done ? SAFETY : theme.border}`, color: s.done ? "#fff" : theme.textSecondary, fontSize: 11, fontWeight: 700 }}>
+                {s.done ? <Check size={13} /> : i + 1}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{s.label}{s.required ? null : <span style={{ fontWeight: 400, color: theme.textSecondary }}> · optional</span>}</div>
+                <div style={{ fontSize: 10.5, color: theme.textSecondary }}>{s.hint}</div>
+              </div>
+              {s.action && !s.done ? <button onClick={s.action} style={btn(false)}>{s.actionLabel}</button> : null}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ marginBottom: 18 }}>
+        <div className="disp" style={head}>Ordering</div>
+        <div style={card}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{info.accepts_orders ? "Taking orders through RoofCoil" : "Not taking orders yet"}</div>
+              <div style={{ fontSize: 10.5, color: theme.textSecondary }}>
+                {info.accepts_orders
+                  ? (info.listing_status === "live" ? "Your shop is in every customer's \"Send this order to\" list, and at the link below." : "Your listing isn't public, so customers reach you through the link below.")
+                  : "Customers can't send you orders until this is on."}
+              </div>
+            </div>
+            {isOwner && !info.is_default ? (
+              <button onClick={toggleOrdering} disabled={busy === "live"} style={btn(!info.accepts_orders)}>{info.accepts_orders ? "Switch off" : "Switch on"}</button>
+            ) : null}
+          </div>
+          <div style={{ marginTop: 10, fontSize: 10.5, color: theme.textSecondary }}>Your link — put it on your website or send it to customers</div>
+          <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+            <input readOnly value={link} className="mono" style={{ ...input, fontSize: 11 }} onFocus={(e) => e.target.select()} />
+            <button onClick={copyLink} style={btn(false)} title="Copy the link"><Copy size={13} /></button>
+          </div>
+          {isOwner && !info.accepts_orders ? (
+            <div style={{ display: "flex", gap: 6, marginTop: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 10.5, color: theme.textSecondary, whiteSpace: "nowrap" }}>?shop=</span>
+              <input value={slugDraft} onChange={(e) => setSlugDraft(e.target.value)} className="mono" style={{ ...input, fontSize: 11 }} />
+              <button onClick={saveSlug} disabled={busy === "slug" || slugDraft.trim() === info.slug} style={btn(false)}>Rename</button>
+            </div>
+          ) : null}
+          {isOwner && info.accepts_orders && !info.is_default ? <div style={{ marginTop: 6, fontSize: 10, color: theme.textSecondary }}>The link name is fixed while ordering is on — ask RoofCoil to change it.</div> : null}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 18 }}>
+        <div className="disp" style={head}>Order email and phone</div>
+        <div style={sub}>Every order is emailed to this address{info.is_default ? " (empty: the desk gets them, with a text)" : ""}. The phone goes on your listing and on your customers' order confirmation.</div>
+        <div style={card}>
+          <label style={label}>Order email
+            <input type="email" value={orderEmail} onChange={(e) => setOrderEmail(e.target.value)} disabled={!isOwner} placeholder="orders@yourshop.com" style={{ ...input, marginTop: 2 }} />
+          </label>
+          <label style={{ ...label, marginTop: 8 }}>Phone
+            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!isOwner} style={{ ...input, marginTop: 2 }} />
+          </label>
+          {isOwner ? <button onClick={saveContact} disabled={busy === "contact"} style={{ ...btn(true), marginTop: 10 }}>Save</button> : null}
+        </div>
+      </div>
+
+      <div style={{ marginBottom: 18 }}>
+        <div className="disp" style={head}>Tier names</div>
+        <div style={sub}>Your three price tiers, named the way your customers know them: on the Price List, in the tier panel and in each customer's header badge.</div>
+        <div style={card}>
+          {TIER_IDS.map((id) => (
+            <label key={id} style={{ ...label, marginBottom: 8 }}>{DEFAULT_TIER_LABELS[id].name}
+              <input value={labels[id]} onChange={(e) => setLabels((l) => ({ ...l, [id]: e.target.value }))} maxLength={24} style={{ ...input, marginTop: 2 }} />
+            </label>
+          ))}
+          <button onClick={saveLabels} disabled={busy === "labels"} style={btn(true)}>Save tier names</button>
+        </div>
+      </div>
+
+      {isOwner ? (
+        <div style={{ marginBottom: 18 }}>
+          <div className="disp" style={head}>PO numbers</div>
+          <div style={sub}>Each order gets the next number from your own counter. The next number only moves up — numbers are never reused.</div>
+          <div style={{ ...card, display: "flex", gap: 8, alignItems: "flex-end" }}>
+            <label style={{ ...label, flex: 1 }}>Prefix
+              <input value={poPrefix} onChange={(e) => setPoPrefix(e.target.value)} maxLength={8} className="mono" style={{ ...input, marginTop: 2 }} />
+            </label>
+            <label style={{ ...label, flex: 1 }}>Next number
+              <input value={poNext} onChange={(e) => setPoNext(e.target.value)} inputMode="numeric" className="mono" style={{ ...input, marginTop: 2 }} />
+            </label>
+            <button onClick={savePo} disabled={busy === "po"} style={btn(true)}>Save</button>
+          </div>
+          <div style={{ fontSize: 10, color: theme.textSecondary }}>Next order: <b className="mono">{poPrefix}{poNext}</b></div>
+        </div>
+      ) : null}
+
+      <div style={{ marginBottom: 18 }}>
+        <div className="disp" style={head}>People</div>
+        <div style={sub}>Owners run everything here; staff get the Price List backend, costs, tiers, the materials board and the Shop Floor. The listing's owner account always stays.</div>
+        {roster === null ? (
+          <div style={{ color: theme.textSecondary, fontSize: 12, padding: 10 }}>Loading…</div>
+        ) : roster.map((m) => (
+          <div key={m.user_id} style={{ ...card, display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{m.name || "(no name)"}{m.user_id === userId ? " (you)" : ""}</div>
+              <div style={{ fontSize: 10.5, color: theme.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.email}{m.is_listing_owner ? " · listing owner" : ""}</div>
+            </div>
+            {isOwner && !m.is_listing_owner && m.user_id !== userId ? (
+              <>
+                <select value={m.role} onChange={(e) => setRole(m.user_id, e.target.value)} style={select}>
+                  <option value="owner">Owner</option>
+                  <option value="staff">Staff</option>
+                </select>
+                <button onClick={() => remove(m.user_id)} disabled={busy === `remove-${m.user_id}`} style={{ ...btn(false), color: theme.textSecondary }}>Remove</button>
+              </>
+            ) : (
+              <span style={{ fontSize: 10.5, fontWeight: 700, color: theme.textSecondary, textTransform: "capitalize" }}>{m.role}</span>
+            )}
+          </div>
+        ))}
+        {invites.length > 0 ? (
+          <>
+            <div style={{ ...sub, marginTop: 10 }}>Invited, not signed up yet</div>
+            {invites.map((i) => {
+              const expired = new Date(i.expires_at) < new Date();
+              return (
+                <div key={i.id} style={{ ...card, display: "flex", alignItems: "center", gap: 10, opacity: expired ? 0.6 : 1 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: theme.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.email}</div>
+                    <div style={{ fontSize: 10.5, color: theme.textSecondary, textTransform: "capitalize" }}>{i.role} · {expired ? "expired" : `good until ${new Date(i.expires_at).toLocaleDateString()}`}</div>
+                  </div>
+                  {isOwner ? <button onClick={() => revoke(i.id)} disabled={busy === `revoke-${i.id}`} style={{ ...btn(false), color: theme.textSecondary }}>Revoke</button> : null}
+                </div>
+              );
+            })}
+          </>
+        ) : null}
+        {isOwner ? (
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <input type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="name@theirshop.com"
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); invite(); } }} style={{ ...input, flex: 1, minWidth: 0 }} />
+            <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)} style={select}>
+              <option value="staff">Staff</option>
+              <option value="owner">Owner</option>
+            </select>
+            <button onClick={invite} disabled={busy === "invite"} style={btn(true)} title="Invite by email"><UserPlus size={13} /></button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 /* ---------------------------------- main app ---------------------------------- */
 export default function ShopOrderApp() {
-  const { user, customer, isStaff, memberShops, signOut } = useAuth();
+  const { user, customer, isStaff, memberShops, signOut, refreshCustomer } = useAuth();
   // Signed out, the tools are open to anyone as a demo: draw trim, size a panel
   // run, try colours. What an account is for — pricing, sending an order to a
   // shop, and the saved-job tabs — stays locked, and every locked control raises
@@ -3408,6 +3715,66 @@ export default function ShopOrderApp() {
   useEffect(() => {
     if (!canManageShop) setPriceListTier(sellTier);
   }, [canManageShop, sellTier]);
+  const flash = (msg, ms = 3500) => { setToast(msg); setTimeout(() => setToast(""), ms); };
+
+  // What Shop Settings and the setup checklist need about the selected shop
+  // (shop_admin_info): its people and platform staff only; null for anyone else.
+  const [shopInfo, setShopInfo] = useState(null);
+  const reloadShopInfo = useCallback(async () => {
+    if (!shopId || !canManageShop) { setShopInfo(null); return null; }
+    const { data, error } = await supabase.rpc("shop_admin_info", { p_shop: shopId });
+    if (error) { console.error("shop_admin_info", error); return null; }
+    const row = Array.isArray(data) ? data[0] || null : data || null;
+    setShopInfo(row);
+    return row;
+  }, [shopId, canManageShop]);
+  useEffect(() => { reloadShopInfo(); }, [reloadShopInfo]);
+
+  // A ?shop= that names no shop taking orders (a slug or id that is off, suspended or
+  // unknown): said once next to the picker instead of silently landing on the default.
+  const [shopNotice, setShopNotice] = useState(null);
+
+  // The selected shop's names for the three tiers (shop_settings 'tier-labels'), readable
+  // by any signed-in account so a customer sees their own tier's name. No row = today's words.
+  const [tierLabels, setTierLabels] = useState(DEFAULT_TIER_LABELS);
+  const tierName = (id) => tierLabels[id]?.name || DEFAULT_TIER_LABELS[id]?.name || id;
+  const tierShort = (id) => tierShortOf(tierName(id));
+  const tierHeading = (id) => tierLabels[id]?.heading || (tierLabels[id]?.name ? `${tierShort(id)} Pricing` : DEFAULT_TIER_LABELS[id]?.heading) || "";
+  // The backend's per-box note keeps its T1 · T2 · GL shorthand until a shop names its tiers.
+  const tierAbbr = (id) => (tierLabels === DEFAULT_TIER_LABELS ? { tier1: "T1", tier2: "T2", greenleaf: "GL" }[id] : tierShort(id));
+  useEffect(() => {
+    if (!user || !shopId) { setTierLabels(DEFAULT_TIER_LABELS); return; }
+    let stale = false;
+    (async () => {
+      try {
+        const res = await shopStorage.get(shopId, "tier-labels");
+        const parsed = res?.value ? JSON.parse(res.value) : null;
+        if (!stale) setTierLabels(parsed && typeof parsed === "object" && !Array.isArray(parsed) ? { ...DEFAULT_TIER_LABELS, ...parsed } : DEFAULT_TIER_LABELS);
+      } catch (e) { if (!stale) setTierLabels(DEFAULT_TIER_LABELS); }
+    })();
+    return () => { stale = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, shopId]);
+  const saveTierLabels = async (next) => {
+    setTierLabels({ ...DEFAULT_TIER_LABELS, ...next });
+    const res = await shopStorage.set(shopId, "tier-labels", JSON.stringify(next));
+    if (!res) flash("⚠️ Tier names didn't save — check your connection and try again.");
+  };
+
+  // First run: a shop with required setup steps left opens Shop Settings once per browser.
+  // Never the default shop — its setup is the platform's.
+  useEffect(() => {
+    if (!shopInfo || shopInfo.is_default || !canManageShop) return;
+    if (shopInfo.price_list_saved && shopInfo.order_email && shopInfo.accepts_orders) return;
+    const key = `personal:setup-seen:${shopInfo.id}`;
+    try {
+      if (window.localStorage.getItem(key)) return;
+      window.localStorage.setItem(key, "1");
+    } catch (e) { return; }
+    goTab("dashboard");
+    setShopFloorView("settings");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shopInfo?.id]);
   const [materialCosts, setMaterialCosts] = useState([]);
   const [materialCostsLoaded, setMaterialCostsLoaded] = useState(false);
   const [productionCosts, setProductionCosts] = useState([]);
@@ -3556,7 +3923,7 @@ export default function ShopOrderApp() {
   const [phone, setPhone] = useState("");
   const [notes, setNotes] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
-  const [shopFloorView, setShopFloorView] = useState("jobs"); // "jobs" | "materials"
+  const [shopFloorView, setShopFloorView] = useState("jobs"); // "jobs" | "materials" | "settings"
   const [expandedJobs, setExpandedJobs] = useState({});
   const [matStatus, setMatStatus] = useState({}); // materials pull board: lineKey -> "instock" | "pulled"
   const matSaveChain = useRef(Promise.resolve()); // serializes board writes so rapid taps can't land out of order
@@ -3772,7 +4139,7 @@ export default function ShopOrderApp() {
     if (isDemo && tab !== "order") { setTab("order"); dropTabs(); }
   }, [tab, canRunShopFloor, isDemo]);
   useEffect(() => {
-    if (shopFloorView === "materials" && !canManageShop) setShopFloorView("jobs");
+    if ((shopFloorView === "materials" || shopFloorView === "settings") && !canManageShop) setShopFloorView("jobs");
   }, [shopFloorView, canManageShop]);
 
   useEffect(() => {
@@ -3798,10 +4165,12 @@ export default function ShopOrderApp() {
   }, [user?.id]);
 
   // Shops that take orders through RoofCoil: the public directory's, plus any shop this
-  // account runs (even one whose listing is hidden). ?shop=<listing id> (a shop's own site
-  // linking to the app) preselects that shop, found through ordering_shop() when its
-  // listing is not live; otherwise a member's own shop; otherwise the platform's default
-  // shop (Fortified); otherwise the first one listed.
+  // account runs (even one whose listing is hidden). ?shop=<slug or listing id> (a shop's
+  // own link to the app) preselects that shop, resolved through ordering_shop_by_ref() when
+  // it is not in the list — a shop that takes orders whatever its listing's status;
+  // otherwise a member's own shop; otherwise the platform's default shop (Fortified);
+  // otherwise the first one listed. A reference that names no shop taking orders is said
+  // next to the picker rather than silently landing on the default.
   useEffect(() => {
     (async () => {
       const { data, error } = await supabase.from("directory_public")
@@ -3812,18 +4181,24 @@ export default function ShopOrderApp() {
       const list = [...data];
       const add = (s) => { if (s && s.id && !list.some((x) => x.id === s.id)) list.push(s); };
       (memberShops || []).forEach(add);
-      const want = new URLSearchParams(window.location.search).get("shop");
+      const want = (new URLSearchParams(window.location.search).get("shop") || "").trim();
+      let wantId = want || null;
       if (want && !list.some((s) => s.id === want)) {
-        const { data: wanted } = await supabase.rpc("ordering_shop", { p_id: want });
-        if (Array.isArray(wanted)) wanted.forEach(add);
+        const bySlug = list.find((s) => s.slug && s.slug === want.toLowerCase());
+        if (bySlug) wantId = bySlug.id;
+        else {
+          const { data: wanted } = await supabase.rpc("ordering_shop_by_ref", { p_ref: want });
+          if (Array.isArray(wanted) && wanted.length > 0) { wanted.forEach(add); wantId = wanted[0].id; }
+          else { wantId = null; setShopNotice(want); }
+        }
       }
       let fallback = null;
-      if (!list.some((s) => s.id === want) && !list.some((s) => memberShopIds.includes(s.id))) {
+      if (!list.some((s) => s.id === wantId) && !list.some((s) => memberShopIds.includes(s.id))) {
         const { data: d } = await supabase.rpc("default_shop_id");
         fallback = typeof d === "string" ? d : null;
       }
       setShops(list);
-      const pick = list.find((s) => s.id === want) || list.find((s) => memberShopIds.includes(s.id)) || list.find((s) => s.id === fallback) || list[0] || null;
+      const pick = list.find((s) => s.id === wantId) || list.find((s) => memberShopIds.includes(s.id)) || list.find((s) => s.id === fallback) || list[0] || null;
       setShopId((cur) => (cur && shopPicked.current && list.some((s) => s.id === cur) ? cur : (pick ? pick.id : null)));
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -4036,6 +4411,8 @@ export default function ShopOrderApp() {
     if (!ok) ok = await attempt(); // one automatic retry before giving up
     if (!ok) {
       setToast("⚠️ Price list change didn't save — check your connection and try again.");
+    } else if (shopInfo && !shopInfo.price_list_saved) {
+      reloadShopInfo(); // the first save completes the "Your prices" setup step
     }
   };
 
@@ -4902,21 +5279,17 @@ export default function ShopOrderApp() {
     ? orderParts().reduce((s, i) => s + i.price, 0)
     : estimate;
 
-  // PO numbers come from a server-side counter — customers only see their own
-  // orders now, so a client-side count would collide across accounts.
-  const nextPoNumber = async () => {
-    try {
-      const { data, error } = await supabase.rpc("next_po_number");
-      if (!error && data) return data;
-    } catch (e) {}
-    const distinctJobs = new Set(orders.map((o) => o.jobId).filter(Boolean));
-    return `PO-${1000 + distinctJobs.size + 1}`;
-  };
+  // PO numbers are the shop's: submit-order takes the next one from the shop's own counter
+  // and stamps every part of the job with it, so nothing is chosen here. The reply carries
+  // it, and insertOrders puts the saved rows (number included) in place of the drafts.
 
   const submitOrder = async () => {
     // The button already asks a signed-out visitor to sign up; this is the backstop
     // so no other path can put an anonymous order in front of the shop.
     if (isDemo) { openAuth("signup"); return; }
+    // A shop's own people drawing at their shop while ordering is still off: submit-order
+    // would refuse anyway; say why, and where the switch is.
+    if (shopInfo && shopInfo.id === shopId && !shopInfo.accepts_orders) { flash("Ordering is off for your shop — switch it on in Shop Floor → Shop Settings.", 5000); return; }
     if (!customerName.trim()) { setToast("Add a name so the shop knows who this is for."); return; }
     if (shapeType === "panel") {
       if (ribStyle === null) { setToast("Pick a rib style (or None) before sending the order."); return; }
@@ -4931,12 +5304,10 @@ export default function ShopOrderApp() {
       if (items.length === 0) { setToast("Draw at least two points, or add a part to the order first."); return; }
       setSubmitting(true);
       const jobId = uid();
-      const poNumber = await nextPoNumber();
       const newOrders = items.map((it, idx) => {
         const order = {
           id: uid(),
           jobId,
-          poNumber,
           shopId: shopId || undefined,
           shopName: selectedShop ? selectedShop.name : undefined,
           type: "trim",
@@ -4974,7 +5345,8 @@ export default function ShopOrderApp() {
       setSubmitting(false);
       if (!saved) return; // insertOrders already said so — keep the parts so they can retry
       const totalPrice = saved.reduce((s, o) => s + o.price, 0);
-      setToast(`Order sent — ${newOrders.length} part${newOrders.length === 1 ? "" : "s"}, estimate ${money(totalPrice)}. The shop will confirm final pricing.`);
+      const po = saved[0]?.poNumber;
+      setToast(`Order sent — ${po ? `${po}, ` : ""}${newOrders.length} part${newOrders.length === 1 ? "" : "s"}, estimate ${money(totalPrice)}. The shop will confirm final pricing.`);
       setBasket([]);
       resetForm();
       setTimeout(() => setToast(""), 6000);
@@ -4987,7 +5359,6 @@ export default function ShopOrderApp() {
     const order = {
       id: uid(),
       jobId: uid(),
-      poNumber: await nextPoNumber(),
       shopId: shopId || undefined,
       shopName: selectedShop ? selectedShop.name : undefined,
       type: shapeType,
@@ -5345,12 +5716,19 @@ export default function ShopOrderApp() {
 
   // "Send this order to": every shop that takes orders through RoofCoil. With one shop the
   // order still carries it; with none switched on, it goes to the Fortified desk as before.
-  const renderShopPicker = () => shops.length === 0 ? null : shops.length === 1 ? (
+  const shopNoticeLine = shopNotice ? (
+    <div style={{ fontSize: 11, color: SAFETY, fontWeight: 600, marginTop: 4, marginBottom: 2 }}>
+      {/^[0-9a-f-]{36}$/i.test(shopNotice) ? "That shop" : `"${shopNotice}"`} isn't taking orders through RoofCoil yet — this order goes to the shop below.
+    </div>
+  ) : null;
+  const renderShopPicker = () => shops.length === 0 ? shopNoticeLine : shops.length === 1 ? (
     <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 4 }}>
+      {shopNoticeLine}
       Sent to <b style={{ color: theme.text }}>{shops[0].name}</b>{shops[0].city ? ` · ${shops[0].city}` : ""}
     </div>
   ) : (
     <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 4 }}>
+      {shopNoticeLine}
       Send this order to
       <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
         {shops.map((c) => (
@@ -5659,7 +6037,7 @@ export default function ShopOrderApp() {
           {!isDemo && <div style={{ textAlign: "right", marginRight: 4, maxWidth: 150, overflow: "hidden" }}>
             <div style={{ color: "#fff", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{customer?.name || user?.email}</div>
             <div style={{ color: theme.textSecondary, fontSize: 9.5 }}>
-              {isStaff ? "Staff" : canManageShop ? "Shop staff" : `Tier: ${sellTier === "tier1" ? "Tier 1" : sellTier === "greenleaf" ? "Greenleaf" : "Tier 2"}`}
+              {isStaff ? "Staff" : canManageShop ? "Shop staff" : `Tier: ${tierShort(sellTier)}`}
             </div>
           </div>}
           <button onClick={isDemo ? () => openAuth("signin") : signOutEverywhere}
@@ -7512,6 +7890,28 @@ export default function ShopOrderApp() {
             <div style={{ color: theme.textSecondary, fontSize: 13, textAlign: "center", padding: 40 }}>You don't have access to this view.</div>
           ) : priceListView === "backend" ? (
             <>
+              {/* A shop that has saved nothing yet is on RoofCoil's seed numbers; say so, once. Never for the default shop: the seed numbers are its own. */}
+              {shopInfo && !shopInfo.is_default && !shopInfo.price_list_saved ? (
+                <div style={{ background: theme.card, border: `1px solid ${SAFETY}`, borderRadius: 8, padding: 12, marginBottom: 14 }}>
+                  <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 4 }}>Starting prices</div>
+                  <div style={{ fontSize: 11, color: theme.text, lineHeight: 1.5 }}>
+                    These are RoofCoil's seed numbers, not yours yet. Customers can't order from you until ordering is on. Keep them, or edit anything below — either one saves the list as yours.
+                  </div>
+                  <button onClick={() => savePriceList(priceList)}
+                    style={{ marginTop: 8, padding: "8px 12px", borderRadius: 6, border: "none", background: INK, color: "#fff", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>
+                    Keep these prices
+                  </button>
+                </div>
+              ) : null}
+              {shopInfo && !shopInfo.is_default && !(shopInfo.price_list_saved && shopInfo.order_email && shopInfo.accepts_orders) ? (
+                <div style={{ fontSize: 10.5, color: theme.textSecondary, marginBottom: 14 }}>
+                  Setup: {[!!shopInfo.price_list_saved, !!shopInfo.order_email, !!shopInfo.accepts_orders].filter(Boolean).length} of 3 required steps done —{" "}
+                  <button onClick={() => { goTab("dashboard"); setShopFloorView("settings"); }}
+                    style={{ border: "none", background: "none", color: SAFETY, fontWeight: 700, cursor: "pointer", padding: 0, fontSize: 10.5 }}>
+                    open Shop Settings
+                  </button>
+                </div>
+              ) : null}
               <div style={{ marginBottom: 18 }}>
                 <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>Customer Pricing Tiers</div>
                 <div style={{ fontSize: 9.5, color: theme.textSecondary, marginBottom: 6 }}>
@@ -7539,9 +7939,9 @@ export default function ShopOrderApp() {
                       </div>
                       <select value={c.tier} onChange={(e) => updateCustomerTier(c.id, e.target.value)}
                         style={{ padding: 6, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 11.5, fontWeight: 600, background: theme.inputBg, color: theme.text }}>
-                        <option value="tier1">Tier 1 — Preferred</option>
-                        <option value="greenleaf">Greenleaf</option>
-                        <option value="tier2">Tier 2 — Retail</option>
+                        <option value="tier1">{tierName("tier1")}</option>
+                        <option value="greenleaf">{tierName("greenleaf")}</option>
+                        <option value="tier2">{tierName("tier2")}</option>
                       </select>
                       {isShopOwner && (
                         <button onClick={() => toggleAdmin(c.id)}
@@ -7879,15 +8279,15 @@ export default function ShopOrderApp() {
                               className="mono" style={{ width: "100%", padding: 5, marginTop: 2, border: `1px solid ${theme.border}`, borderRadius: 5, fontSize: 12, background: theme.inputBg, color: theme.text, boxSizing: "border-box" }} />
                           )}
                         </label>
-                        {tierRow("tier1", "Tier 1")}
-                        {tierRow("tier2", "Tier 2")}
-                        {tierRow("greenleaf", "Greenleaf")}
+                        {tierRow("tier1", tierShort("tier1"))}
+                        {tierRow("tier2", tierShort("tier2"))}
+                        {tierRow("greenleaf", tierShort("greenleaf"))}
                         {(() => {
                           const spec = Object.values(CLIP_SPECS).find((cs) => p.name.toUpperCase().startsWith(cs.code));
                           if (!spec) return null;
                           return (
                             <div className="mono" style={{ fontSize: 10.5, color: theme.text, marginTop: 6, background: theme.highlight, borderRadius: 5, padding: "6px 9px" }}>
-                              Box of {spec.perBox}: T1 {money((+p.tier1 || 0) * spec.perBox)} · T2 {money((+p.tier2 || 0) * spec.perBox)} · GL {money((+p.greenleaf || 0) * spec.perBox)}
+                              Box of {spec.perBox}: {tierAbbr("tier1")} {money((+p.tier1 || 0) * spec.perBox)} · {tierAbbr("tier2")} {money((+p.tier2 || 0) * spec.perBox)} · {tierAbbr("greenleaf")} {money((+p.greenleaf || 0) * spec.perBox)}
                             </div>
                           );
                         })()}
@@ -7910,9 +8310,9 @@ export default function ShopOrderApp() {
               {canManageShop ? (
                 <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
                   {[
-                    { id: "tier1", label: "Tier 1 — Preferred" },
-                    { id: "greenleaf", label: "Greenleaf" },
-                    { id: "tier2", label: "Tier 2 — Retail" },
+                    { id: "tier1", label: tierName("tier1") },
+                    { id: "greenleaf", label: tierName("greenleaf") },
+                    { id: "tier2", label: tierName("tier2") },
                   ].map((t) => (
                     <button key={t.id} onClick={() => setPriceListTier(t.id)}
                       style={{
@@ -7927,7 +8327,7 @@ export default function ShopOrderApp() {
               <div style={{ background: theme.card, borderRadius: 10, padding: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
                 <div className="disp" style={{ fontSize: 16, color: theme.text, textAlign: "center", marginBottom: 2 }}>{selectedShop ? selectedShop.name : "Fortified Sheet Metal"}</div>
                 <div style={{ fontSize: 11, color: theme.textSecondary, textAlign: "center", marginBottom: 10 }}>
-                  {priceListTier === "tier1" ? "Preferred Customer Pricing" : priceListTier === "greenleaf" ? "Greenleaf Pricing" : "Standard Pricing"}
+                  {tierHeading(priceListTier)}
                 </div>
                 <div style={{ fontSize: 10.5, color: SAFETY, fontWeight: 700, textAlign: "center", marginBottom: 16 }}>
                   Prices shown do not include sales tax — 8.25% sales tax will be added.
@@ -8127,7 +8527,7 @@ export default function ShopOrderApp() {
       ) : (
         <div style={{ padding: 16, maxWidth: 640, margin: "0 auto" }}>
           <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
-            {[{ id: "jobs", label: "Jobs" }, ...(canManageShop ? [{ id: "materials", label: "Master Materials List" }] : [])].map((v) => (
+            {[{ id: "jobs", label: "Jobs" }, ...(canManageShop ? [{ id: "materials", label: "Master Materials List" }, { id: "settings", label: "Shop Settings" }] : [])].map((v) => (
               <button key={v.id} onClick={() => setShopFloorView(v.id)}
                 style={{
                   flex: 1, padding: "9px 6px", borderRadius: 8, fontSize: 12.5, fontWeight: 700, cursor: "pointer",
@@ -8138,7 +8538,11 @@ export default function ShopOrderApp() {
             ))}
           </div>
 
-          {shopFloorView === "materials" ? (
+          {shopFloorView === "settings" && canManageShop ? (
+            <ShopSettingsView shopId={shopId} info={shopInfo} reloadInfo={reloadShopInfo} isOwner={isShopOwner} userId={user?.id} theme={theme} flash={flash}
+              tierLabels={tierLabels} saveTierLabels={saveTierLabels} refreshAuth={refreshCustomer}
+              openBackend={() => { goTab("pricelist"); setPriceListView("backend"); }} />
+          ) : shopFloorView === "materials" ? (
             (() => {
               // The board is the selected shop's: its active jobs only, saved under that shop.
               const activeOrders = orders.filter((o) => o.status !== "Completed" && (o.shopId || null) === shopId);

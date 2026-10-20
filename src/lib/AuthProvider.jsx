@@ -34,6 +34,10 @@ export function AuthProvider({ children }) {
       return;
     }
     const userId = sessionUser.id;
+    // Any shop invite addressed to this account's confirmed email becomes a membership now,
+    // before the shop list below is read (the customers trigger covers brand-new accounts;
+    // this covers the rest). Best effort: a failure here just means no new shop this load.
+    try { await supabase.rpc("accept_my_invites"); } catch (e) { /* ignore */ }
     const [{ data: custRow }, { data: staffRow }, { data: shopRows }, { data: memberRows }] = await Promise.all([
       supabase.from("customers").select("*").eq("id", userId).maybeSingle(),
       supabase.from("staff").select("id").eq("id", userId).maybeSingle(),

@@ -98,9 +98,9 @@
   </div>
 
   <div class="step"><h3><span class="sn">5</span>Orders through RoofCoil</h3>
-    <p style="color:#4E6273;font-size:13.5px;margin:0 0 12px;max-width:70ch">Switched on, contractors can send trim, panel and 3D-part orders to your shop straight from the Panel &amp; Trim app. Each order is emailed to the address below, and this account gets a Shop Floor at shop.roofcoil.com to work them.</p>
-    <div class="fld"><div class="chipgrid"><button type="button" class="seg" id="f-orders">Take orders from RoofCoil.com</button></div></div>
-    <div class="fld"><label>Order email — where each order is sent</label><input id="f-orderemail" type="email" placeholder="orders@company.com"></div>
+    <p style="color:#4E6273;font-size:13.5px;margin:0 0 12px;max-width:70ch">Contractors can send trim, panel and 3D-part orders to your shop straight from the Panel &amp; Trim app, priced at your own price list, and this account gets a Shop Floor at shop.roofcoil.com to work them. Your prices, the email your orders go to, and the switch that turns ordering on are yours to set there — no review needed.</p>
+    <p style="margin:0 0 8px"><a class="btn" href="https://shop.roofcoil.com/" target="_blank" rel="noopener">Open Shop Settings →</a></p>
+    <p style="color:var(--steel);font-size:12.5px;margin:0" id="f-ordersnote">Sign in there with this email: Shop Floor → Shop Settings.</p>
   </div>
   <div class="step"><h3><span class="sn">6</span>Anything else</h3>
     <div class="fld"><label>Address changes, new locations, photos, a logo, or anything the fields above don't cover — describe it and we'll handle it</label><textarea id="f-note" rows="3" placeholder="We moved to 2200 Industrial Blvd, Weatherford…"></textarea></div>
@@ -167,7 +167,6 @@ $$('#f-efpanels .seg').forEach(b=>b.addEventListener('click',()=>{
 GUTTER_PROFILES.forEach(a=>$('#f-gutters').appendChild(segChip(a,gutLabel(a))));
 GUTTER_MATERIALS.forEach(a=>$('#f-gutmats').appendChild(segChip(a,gutLabel(a))));
 STOCK_COLORS.forEach(c=>$('#f-colors').appendChild(segChip(c)));
-$('#f-orders').onclick=()=>$('#f-orders').classList.toggle('sel');
 
 // Every call refreshes the access token first (auth.js refreshes when the old
 // one is stale), so a form finished an hour after the page opened still sends.
@@ -224,8 +223,9 @@ function fillForm(l){
   $('#f-morecolors').value=notCanon(l.colors,STOCK_COLORS).join(', ');
   $('#f-coildesc').value=l.coil_desc||'';
   $('#f-fabdesc').value=l.fab_desc||'';
-  $('#f-orders').classList.toggle('sel',!!l.accepts_orders);
-  $('#f-orderemail').value=l.order_email||'';
+  $('#f-ordersnote').textContent=l.accepts_orders
+    ?'Ordering is on for '+l.name+(l.order_email?' — orders go to '+l.order_email:'')+'. Sign in there with this email: Shop Floor → Shop Settings.'
+    :'Ordering is off for '+l.name+'. Sign in there with this email, set your prices and switch it on: Shop Floor → Shop Settings.';
   $('#f-note').value='';
   $('#send-note').textContent='';
   loadMyEdits();
@@ -284,12 +284,7 @@ function buildProposed(){
   if(coild!==(listing.coil_desc||''))p.coil_desc=coild;
   const fabd=$('#f-fabdesc').value.trim();
   if(fabd!==(listing.fab_desc||''))p.fab_desc=fabd;
-  const wantOrders=$('#f-orders').classList.contains('sel');
-  const oe=$('#f-orderemail').value.trim();
-  if(oe&&!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(oe))return{err:'Order email must be an email address.'};
-  if(wantOrders&&!oe)return{err:'Add the email address your orders should go to.'};
-  if(wantOrders!==!!listing.accepts_orders)p.accepts_orders=wantOrders;
-  if(oe!==(listing.order_email||''))p.order_email=oe;
+  // ordering and the order email are the owner's to set in the app's Shop Settings, not proposed here
   return{proposed:p};
 }
 function formDirty(){

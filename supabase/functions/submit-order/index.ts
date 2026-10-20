@@ -17,11 +17,15 @@
 // account sends a shop creates that row, which is how the account appears in the shop's
 // Customer Pricing Tiers panel.
 //
+// PO numbers: one job per call, one number per job, from the shop's own counter
+// (next_po_number(shop), service role only). Like the price, a poNumber the browser sends is
+// ignored; the reply carries the shop's. A dry run allocates nothing (poNumber null).
+//
 // Body: { orders: [order, ...], dryRun?: true }
 //   order   — the object the app builds in submitOrder (type, dimensions, gauge, paint, color,
 //             quantity, shopId, …). Up to 50 per call; one job's parts come together.
 //   dryRun  — price and validate but write nothing, for checking an estimate server-side.
-// Reply:   { orders: [priced order, ...], tier, shopId }  or  { error }
+// Reply:   { orders: [priced order, ...], tier, shopId, poNumber }  or  { error }
 //
 // Auth: the signed-in customer's access token in the Authorization header. Rows are written
 // with the service role, so public.orders needs no insert policy for customers any more —
@@ -139,7 +143,7 @@ Deno.serve(async (req: Request) => {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return json({ error: "Bad order." }, 400);
     if (!TYPES.includes(raw.type)) return json({ error: `Unknown order type "${raw.type}".` }, 400);
     if (typeof raw.id !== "string" || !ORDER_ID.test(raw.id)) return json({ error: "Bad order id." }, 400);
-    const { userId: _userId, ...order } = raw; // the app's local-only field; user_id is the column
+    const { userId: _userId, poNumber: _po, ...order } = raw; // userId is local to the app (user_id is the column); the PO number is the shop's to give
     let price: number;
     // The platform catalog; a shop's own selection over it arrives with catalog-as-data step 3.
     try { price = computePrice(order, priceList, coilWidthScale, tier, catalog); } catch { return json({ error: "That order can't be priced." }, 400); }
@@ -152,6 +156,15 @@ Deno.serve(async (req: Request) => {
     if (typeof order.createdAt !== "string" || Number.isNaN(Date.parse(order.createdAt))) order.createdAt = now;
     priced.push(order);
   }
+
+  // The shop's next PO number, once per job; every part of the job carries it.
+  let poNumber: string | null = null;
+  if (!dryRun) {
+    const { data: po, error: poErr } = await admin.rpc("next_po_number", { p_shop: shopId });
+    if (poErr || typeof po !== "string" || !po) { console.error("next_po_number", poErr?.message); return json({ error: TRY_AGAIN }, 500); }
+    poNumber = po;
+  }
+  for (const o of priced) o.poNumber = poNumber;
 
   if (!dryRun) {
     const rows = priced.map((o) => ({ id: o.id, user_id: user.id, shop_id: shopId, data: o, created_at: o.createdAt }));
@@ -168,5 +181,5 @@ Deno.serve(async (req: Request) => {
       if (tierErr) console.error("shop_customers upsert", tierErr.message);
     }
   }
-  return json({ orders: priced, tier, shopId, dryRun });
+  return json({ orders: priced, tier, shopId, poNumber, dryRun });
 });
