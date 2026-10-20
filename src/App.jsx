@@ -5,7 +5,8 @@ import { storage, shopStorage } from "./lib/storage";
 import { supabase } from "./lib/supabaseClient";
 import { useAuth } from "./lib/AuthProvider";
 import { scupperSpec, scupperBack, MILEAGE_FREE, MILEAGE_RATE, mileageCharge, coilPriceForWidth, findFabItem, getSellRates, computePrice, sellRate, sellTierFor, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE } from "../supabase/functions/_shared/pricing.mjs";
-import { DEFAULT_CATALOG, GAUGE_OPTIONS, COPPER_WEIGHT_OPTIONS, G90_GAUGE_OPTIONS, GALVALUME_GAUGE_OPTIONS, BONDERIZED_GAUGE_OPTIONS, PAINT_OPTIONS, COLORS_BY_BRAND, BRAND_GROUPS, BRANDS, UNPAINTED_MATERIALS, PVDF_24GA_ONLY_BRANDS, PVDF_ONLY_BRANDS, UNPAINTED_FLATS_ONLY_BRANDS, PROFILE_INFO, PROFILES, CLIP_SPECS, ACCESSORY_TYPES, DRY_IN_TYPES, ACCESSORY_SPECS, getColorsForBrand as catalogColorsForBrand, findColor as catalogFindColor, findGauge as catalogFindGauge } from "../supabase/functions/_shared/catalog.mjs";
+import { DEFAULT_CATALOG, listedProfiles, resolveCatalog, getColorsForBrand as catalogColorsForBrand, findColor as catalogFindColor, findGauge as catalogFindGauge } from "../supabase/functions/_shared/catalog.mjs";
+import { loadPlatformCatalog, loadShopCatalogSelection } from "./lib/catalog";
 
 /* ---------------------------------- tokens ---------------------------------- */
 const INK = "#0F3D5C";        // blueprint ink
@@ -42,20 +43,24 @@ const MATERIAL_DENSITIES = {
   copper: { label: "Copper", density: 0.323 },
 };
 
-// The catalog this build offers: the brands, colors, metals, gauges, paints, profiles and
-// accessories in supabase/functions/_shared/catalog.mjs, which is also what submit-order
-// prices against. Everything below reads it through these names; when a shop's own catalog
-// arrives (docs/catalog-as-data-design.md) the resolved catalog takes DEFAULT_CATALOG's place
-// here and the lookups follow it.
-const CATALOG = DEFAULT_CATALOG;
-const getColorsForBrand = (brand, paintId) => catalogColorsForBrand(CATALOG, brand, paintId);
-const findColor = (name, brand, paintId) => catalogFindColor(CATALOG, name, brand, paintId);
-const findGauge = (gaugeId, brand) => catalogFindGauge(CATALOG, gaugeId, brand);
+// The catalog the app offers right now: the platform catalog (public.catalog_items, the
+// code default until it loads) with the selected shop's selection over it — its switched-off
+// brands, colors, metals and profiles and its own paint lines and profiles (see
+// docs/catalog-as-data-design.md). Everything below reads activeCatalog at call time;
+// ShopOrderApp resolves it whenever the shop or its selection changes and re-renders, so a
+// module-level binding is enough and every component sees the same catalog that
+// submit-order prices against.
+let activeCatalog = DEFAULT_CATALOG;
+const setActiveCatalog = (c) => { activeCatalog = c || DEFAULT_CATALOG; };
+const getColorsForBrand = (brand, paintId) => catalogColorsForBrand(activeCatalog, brand, paintId);
+const findColor = (name, brand, paintId) => catalogFindColor(activeCatalog, name, brand, paintId);
+const findGauge = (gaugeId, brand) => catalogFindGauge(activeCatalog, gaugeId, brand);
+const PROFILES = () => listedProfiles(activeCatalog);
 
-const clipSpecForProfile = (profile) => CLIP_SPECS[PROFILE_INFO[profile]?.code] || null;
+const clipSpecForProfile = (profile) => activeCatalog.clips[activeCatalog.profiles[profile]?.code] || null;
 
 function profileFamily(profile) {
-  return PROFILE_INFO[profile]?.family || "mech";
+  return activeCatalog.profiles[profile]?.family || "mech";
 }
 
 // Builds a detailed side-view (cross-section) of the panel: real fold geometry for the
@@ -67,7 +72,7 @@ function profileFamily(profile) {
 // on one full seam-to-seam module rather than trying to show true panel width — legibility
 // of the fold shape matters more here than literal width-to-scale accuracy.
 function generatePanelProfileSvg(profileLabel, ribStyle, widthIn) {
-  const info = PROFILE_INFO[profileLabel] || {};
+  const info = activeCatalog.profiles[profileLabel] || {};
   const family = info.family || "mech";
   const seamHeightMatch = profileLabel.match(/(\d+(\.\d+)?)"/);
   const seamHeightIn = seamHeightMatch ? parseFloat(seamHeightMatch[1]) : 1.5;
@@ -192,7 +197,7 @@ function generatePanelProfileSvg(profileLabel, ribStyle, widthIn) {
 }
 
 function profileSearchUrl(profile) {
-  const code = PROFILE_INFO[profile]?.code || profile;
+  const code = activeCatalog.profiles[profile]?.code || profile;
   return `https://newtechmachinery.com/?s=${encodeURIComponent(code)}`;
 }
 
@@ -205,7 +210,7 @@ function profileSearchUrl(profile) {
 // Geometry is exaggerated for thumbnail legibility, same trade-off as the old
 // cross-section drawing — the fold SHAPE matters more than true scale.
 function generatePanelIsoSvg(profileLabel, ribStyle, idSuffix) {
-  const family = PROFILE_INFO[profileLabel]?.family || "mech";
+  const family = activeCatalog.profiles[profileLabel]?.family || "mech";
   const seamMatch = profileLabel.match(/(\d+(\.\d+)?)"/);
   const seamIn = Math.max(1.0, Math.min(2.6, seamMatch ? parseFloat(seamMatch[1]) : 1.5));
 
@@ -275,7 +280,7 @@ function generatePanelIsoSvg(profileLabel, ribStyle, idSuffix) {
   const edge = `<polygon points="${edgeTop} ${edgeBot}" fill="hsl(${BASE_H} ${BASE_S + 6}% 20%)"/>`;
 
   // Gradient ids must be unique per rendered SVG or same-page cards bleed into each other.
-  const gid = `pcs${(PROFILE_INFO[profileLabel]?.code || "x")}${ribStyle || "none"}${idSuffix || ""}`;
+  const gid = `pcs${(activeCatalog.profiles[profileLabel]?.code || "x")}${ribStyle || "none"}${idSuffix || ""}`;
   const panQuad = `${px(0, 0, 0)},${py(0, 0, 0)} ${px(W, 0, 0)},${py(W, 0, 0)} ${px(W, 0, 1)},${py(W, 0, 1)} ${px(0, 0, 1)},${py(0, 0, 1)}`;
   const sheen = `<defs><linearGradient id="${gid}" x1="0" y1="1" x2="1" y2="0">` +
     `<stop offset="0.15" stop-color="#fff" stop-opacity="0"/><stop offset="0.45" stop-color="#fff" stop-opacity="0.22"/>` +
@@ -291,18 +296,25 @@ function generatePanelIsoSvg(profileLabel, ribStyle, idSuffix) {
 // contractor browsing panels sees who offers what and how far away they are.
 // Coordinates are city-center approximations for the distance estimate — edit the
 // profiles arrays here as vendor lineups change.
-const PANEL_VENDORS = [
-  {
-    id: "newtech", name: "New Tech", tagline: "New Tech Machinery roll-former profiles",
-    city: "Denver", state: "CO", lat: 39.7392, lng: -104.9903, // New Tech Machinery is Denver-based; city center, per the note above
-    profiles: PROFILES.filter((p) => !PROFILE_INFO[p].vendor),
-  },
-  {
-    id: "adax", name: "Adax Metals", tagline: "Licensed Ultra Seam profiles",
-    city: "Weatherford", state: "TX", lat: 32.7593, lng: -97.7972, // 1901 B Mineral Wells Hwy, Weatherford, TX 76088
-    profiles: PROFILES.filter((p) => PROFILE_INFO[p].vendor === "adax"),
-  },
-];
+// The panel catalog's sections, from the active catalog: the New Tech profiles, Adax's,
+// and the selected shop's own (vendor "shop"), the last one only when it has some.
+const panelVendors = () => {
+  const listed = PROFILES();
+  const own = listed.filter((p) => activeCatalog.profiles[p].vendor === "shop");
+  return [
+    {
+      id: "newtech", name: "New Tech", tagline: "New Tech Machinery roll-former profiles",
+      city: "Denver", state: "CO", lat: 39.7392, lng: -104.9903, // New Tech Machinery is Denver-based; city center, per the note above
+      profiles: listed.filter((p) => !activeCatalog.profiles[p].vendor),
+    },
+    {
+      id: "adax", name: "Adax Metals", tagline: "Licensed Ultra Seam profiles",
+      city: "Weatherford", state: "TX", lat: 32.7593, lng: -97.7972, // 1901 B Mineral Wells Hwy, Weatherford, TX 76088
+      profiles: listed.filter((p) => activeCatalog.profiles[p].vendor === "adax"),
+    },
+    ...(own.length ? [{ id: "shop", name: "This shop's own", tagline: "Profiles the shop rolls on its own machine", profiles: own }] : []),
+  ];
+};
 
 function distanceMiles(a, b) {
   const R = 3958.8, toRad = (d) => (d * Math.PI) / 180;
@@ -758,7 +770,7 @@ function colorDistance(hexA, hexB) {
 // the nearest equivalent from a different one instead of just saying "we don't have that."
 function findSimilarColorsAcrossBrands(hex, excludeBrand, limit = 8) {
   const results = [];
-  for (const [brandName, entry] of Object.entries(COLORS_BY_BRAND)) {
+  for (const [brandName, entry] of Object.entries(activeCatalog.colors)) {
     if (brandName === excludeBrand) continue;
     const isNested = !Array.isArray(entry);
     const colorGroups = isNested ? Object.entries(entry) : [[null, entry]];
@@ -929,7 +941,7 @@ function computeJobMaterials(items) {
       if (o.flatWidth && o.flatLength) addFlatSheets(o.flatWidth, o.flatLength, +o.quantity || 0, o);
       if (o.coilWidth && o.coilLength) addCoil(o.coilWidth, o.coilLength / 12, o);
     } else if (o.type === "panel") {
-      const takeup = PROFILE_INFO[o.profile]?.takeup || 0;
+      const takeup = activeCatalog.profiles[o.profile]?.takeup || 0;
       const coilWidthIn = (+o.width || 0) + takeup;
       const feet = ((+o.height || 0) / 12) * (+o.quantity || 0);
       addCoil(coilWidthIn, feet, o);
@@ -3361,6 +3373,179 @@ function FlatPatternSVG({ partType, w, d, h, capH, colorHex, outletShape, flange
   );
 }
 
+/* ------------------------------ Backend: Catalog ------------------------------ */
+// What the selected shop offers, over the platform catalog: platform paint lines, their
+// colors, the bare metals and the panel profiles switched on or off (default on), the
+// shop's own paint lines (with colors) and profiles, and the ones it retired. One document
+// in shop_settings (key `catalog`, docs/catalog-as-data-design.md §2.2); every change saves.
+const PROFILE_FAMILIES = [["snap", "Snap-lock"], ["mech", "Mechanical seam"], ["flush", "Flush wall / soffit"], ["flange", "Fastener flange / nail strip"], ["batten", "Batten"], ["trapezoid", "Trapezoid"]];
+const HEX = /^#[0-9a-fA-F]{6}$/;
+function CatalogSection({ platform, selection, onChange, theme, shopName }) {
+  const sel = selection && typeof selection === "object" ? selection : {};
+  const custom = sel.custom || {};
+  const customBrands = Array.isArray(custom.brands) ? custom.brands : [];
+  const customProfiles = Array.isArray(custom.profiles) ? custom.profiles : [];
+  const retired = sel.retired || {};
+  const [openBrand, setOpenBrand] = useState(null);
+  const [addingBrand, setAddingBrand] = useState(false);
+  const [addingProfile, setAddingProfile] = useState(false);
+  const [nb, setNb] = useState({ name: "", pvdf: true, smp: true, ga24: true, ga26: true, colors: "" });
+  const [np, setNp] = useState({ name: "", code: "", family: "snap", takeup: "", desc: "" });
+  const [note, setNote] = useState("");
+  const say = (m) => { setNote(m); setTimeout(() => setNote(""), 4000); };
+  const isOn = (map, key) => !(map && map[key] === false);
+  const flip = (kind, key, on) => { const m = { ...(sel[kind] || {}) }; if (on) delete m[key]; else m[key] = false; onChange({ ...sel, [kind]: m }); };
+  const flipColor = (brand, color, on) => { const all = { ...(sel.colors || {}) }; const m = { ...(all[brand] || {}) }; if (on) delete m[color]; else m[color] = false; if (Object.keys(m).length) all[brand] = m; else delete all[brand]; onChange({ ...sel, colors: all }); };
+  const taken = (name) => [...platform.brands, ...platform.unpainted, ...Object.keys(platform.colors), ...customBrands.map((b) => b.name), ...(retired.brands || []).map((b) => b.name)].some((n) => n.toLowerCase() === name.toLowerCase());
+  const addBrand = () => {
+    const name = nb.name.trim();
+    if (!name) { say("Give the paint line a name."); return; }
+    if (taken(name)) { say("That name is already in the catalog."); return; }
+    const paints = [nb.pvdf && "pvdf", nb.smp && "smp"].filter(Boolean);
+    const gauges = [nb.ga24 && "24ga", nb.ga26 && "26ga"].filter(Boolean);
+    if (!paints.length || !gauges.length) { say("Pick at least one paint system and one gauge."); return; }
+    const colors = [];
+    for (const line of nb.colors.split("\n").map((l) => l.trim()).filter(Boolean)) {
+      const [cName, hex, flag] = line.split(",").map((s) => s.trim());
+      if (!cName || !HEX.test(hex || "")) { say(`Each color line is: name, #hex, premium — "${line}" isn't.`); return; }
+      colors.push({ name: cName, hex: hex.toUpperCase(), ...(/^premium$/i.test(flag || "") ? { premium: true } : {}) });
+    }
+    if (!colors.length) { say("Add at least one color, one per line: name, #hex, premium."); return; }
+    onChange({ ...sel, custom: { ...custom, brands: [...customBrands, { name, base: "painted-steel", paints, gauges, colors }] } });
+    setNb({ name: "", pvdf: true, smp: true, ga24: true, ga26: true, colors: "" }); setAddingBrand(false);
+  };
+  const retireBrand = (name) => {
+    const b = customBrands.find((x) => x.name === name); if (!b) return;
+    onChange({ ...sel, custom: { ...custom, brands: customBrands.filter((x) => x.name !== name) }, retired: { ...retired, brands: [...(retired.brands || []), b] } });
+  };
+  const addProfile = () => {
+    const name = np.name.trim(), code = np.code.trim(), takeup = Number(np.takeup);
+    if (!name || !code) { say("A profile needs a name and a code (the short code the panel catalog shows, like SS450)."); return; }
+    if (platform.profiles[name] || customProfiles.some((q) => q.name === name) || (retired.profiles || []).some((q) => q.name === name)) { say("That profile name is already in the catalog."); return; }
+    if (!Number.isFinite(takeup) || takeup < 0) { say("Takeup is the coil width minus the finished coverage, in inches."); return; }
+    onChange({ ...sel, custom: { ...custom, profiles: [...customProfiles, { name, code, family: np.family, takeup, desc: np.desc.trim() }] } });
+    setNp({ name: "", code: "", family: "snap", takeup: "", desc: "" }); setAddingProfile(false);
+  };
+  const retireProfile = (name) => {
+    const q = customProfiles.find((x) => x.name === name); if (!q) return;
+    onChange({ ...sel, custom: { ...custom, profiles: customProfiles.filter((x) => x.name !== name) }, retired: { ...retired, profiles: [...(retired.profiles || []), q] } });
+  };
+  const row = { background: theme.card, borderRadius: 8, padding: "8px 10px", marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" };
+  const label = { display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 600, color: theme.text, cursor: "pointer" };
+  const small = { fontSize: 10.5, color: theme.textSecondary };
+  const input = { width: "100%", padding: 8, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: theme.inputBg, color: theme.text, boxSizing: "border-box", marginTop: 4 };
+  const btn = (primary) => ({ padding: "7px 12px", borderRadius: 6, border: primary ? "none" : `1px solid ${theme.border}`, background: primary ? INK : "transparent", color: primary ? "#fff" : theme.text, fontSize: 11.5, fontWeight: 700, cursor: "pointer" });
+  const platformListed = Object.keys(platform.profiles).filter((k) => !platform.profiles[k].delisted);
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>Catalog</div>
+      <div style={{ ...small, marginBottom: 8 }}>
+        What {shopName} offers in the tools. Everything on the platform catalog is on until you switch it off; add your own paint lines and profiles below. Customers see only what is on, and orders for anything else are refused.
+      </div>
+      {note && <div role="alert" style={{ fontSize: 12, color: "#B3261E", background: "#FDECEA", padding: 8, borderRadius: 6, marginBottom: 8 }}>{note}</div>}
+
+      <div style={{ ...small, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", margin: "10px 0 4px" }}>Paint lines</div>
+      {platform.brands.map((b) => {
+        const on = isOn(sel.brands, b);
+        const list = Array.isArray(platform.colors[b]) ? platform.colors[b] : [];
+        const offCount = list.filter((c) => !isOn((sel.colors || {})[b], c.name)).length;
+        return (
+          <div key={b} style={row}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <label style={{ ...label, flex: 1 }}><input type="checkbox" checked={on} onChange={(e) => flip("brands", b, e.target.checked)} /> {b}
+                <span style={{ ...small, fontWeight: 400 }}>{list.length} colors{offCount ? `, ${offCount} off` : ""}</span></label>
+              <button type="button" onClick={() => setOpenBrand(openBrand === b ? null : b)} style={btn(false)}>{openBrand === b ? "Hide colors" : "Colors"}</button>
+            </div>
+            {openBrand === b && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 4, marginTop: 8 }}>
+                {list.map((c) => (
+                  <label key={c.name} style={{ ...label, fontSize: 11.5, fontWeight: 500, opacity: on ? 1 : 0.5 }}>
+                    <input type="checkbox" checked={isOn((sel.colors || {})[b], c.name)} disabled={!on} onChange={(e) => flipColor(b, c.name, e.target.checked)} />
+                    <span style={{ width: 12, height: 12, borderRadius: 3, background: c.hex, border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}{c.premium ? " ★" : ""}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {customBrands.map((b) => (
+        <div key={b.name} style={row}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{b.name} <span style={{ ...small, fontWeight: 400 }}>your own · {(b.colors || []).length} colors · {(b.paints || []).map((x) => x.toUpperCase()).join(" / ")} · {(b.gauges || []).join(" / ")}</span></div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+                {(b.colors || []).map((c) => <span key={c.name} style={{ ...small, display: "inline-flex", alignItems: "center", gap: 4 }}><span style={{ width: 10, height: 10, borderRadius: 2, background: c.hex, border: "1px solid rgba(0,0,0,0.15)" }} />{c.name}{c.premium ? " ★" : ""}</span>)}
+              </div>
+            </div>
+            <button type="button" onClick={() => retireBrand(b.name)} style={btn(false)}>Retire</button>
+          </div>
+        </div>
+      ))}
+      {(retired.brands || []).length > 0 && <div style={{ ...small, marginBottom: 6 }}>Retired: {(retired.brands || []).map((b) => b.name).join(", ")} — kept so past orders still read right.</div>}
+      {addingBrand ? (
+        <div style={row}>
+          <label style={{ ...small, display: "block" }}>Name<input value={nb.name} onChange={(e) => setNb({ ...nb, name: e.target.value })} placeholder="e.g. Acme Select" style={input} /></label>
+          <div style={{ display: "flex", gap: 14, marginTop: 8, flexWrap: "wrap" }}>
+            <label style={label}><input type="checkbox" checked={nb.pvdf} onChange={(e) => setNb({ ...nb, pvdf: e.target.checked })} /> PVDF</label>
+            <label style={label}><input type="checkbox" checked={nb.smp} onChange={(e) => setNb({ ...nb, smp: e.target.checked })} /> SMP</label>
+            <label style={label}><input type="checkbox" checked={nb.ga24} onChange={(e) => setNb({ ...nb, ga24: e.target.checked })} /> 24 ga</label>
+            <label style={label}><input type="checkbox" checked={nb.ga26} onChange={(e) => setNb({ ...nb, ga26: e.target.checked })} /> 26 ga</label>
+          </div>
+          <label style={{ ...small, display: "block", marginTop: 8 }}>Colors, one per line: name, #hex, premium (the last word only for premium colors)
+            <textarea value={nb.colors} onChange={(e) => setNb({ ...nb, colors: e.target.value })} rows={4} placeholder={"Acme Bronze, #4A3E36\nAcme Slate, #565B5E, premium"} style={{ ...input, fontFamily: "monospace" }} />
+          </label>
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <button type="button" onClick={addBrand} style={btn(true)}>Add paint line</button>
+            <button type="button" onClick={() => setAddingBrand(false)} style={btn(false)}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setAddingBrand(true)} style={{ ...btn(false), marginBottom: 6 }}>+ Add a paint line of your own</button>
+      )}
+
+      <div style={{ ...small, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", margin: "12px 0 4px" }}>Bare metals</div>
+      <div style={{ ...row, display: "flex", flexWrap: "wrap", gap: 14 }}>
+        {platform.unpainted.map((m) => <label key={m} style={label}><input type="checkbox" checked={isOn(sel.materials, m)} onChange={(e) => flip("materials", m, e.target.checked)} /> {m}</label>)}
+      </div>
+
+      <div style={{ ...small, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", margin: "12px 0 4px" }}>Panel profiles</div>
+      <div style={{ ...row, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: 4 }}>
+        {platformListed.map((q) => <label key={q} style={{ ...label, fontSize: 11.5, fontWeight: 500 }}><input type="checkbox" checked={isOn(sel.profiles, q)} onChange={(e) => flip("profiles", q, e.target.checked)} /> <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{q}</span></label>)}
+      </div>
+      {customProfiles.map((q) => (
+        <div key={q.name} style={{ ...row, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{q.name} <span style={{ ...small, fontWeight: 400 }}>your own · {q.code} · {(PROFILE_FAMILIES.find((f) => f[0] === q.family) || [])[1] || q.family} · takeup {q.takeup}"</span></div>
+            {q.desc && <div style={small}>{q.desc}</div>}
+          </div>
+          <button type="button" onClick={() => retireProfile(q.name)} style={btn(false)}>Retire</button>
+        </div>
+      ))}
+      {(retired.profiles || []).length > 0 && <div style={{ ...small, marginBottom: 6 }}>Retired: {(retired.profiles || []).map((q) => q.name).join(", ")}.</div>}
+      {addingProfile ? (
+        <div style={row}>
+          <label style={{ ...small, display: "block" }}>Name, as the pickers show it<input value={np.name} onChange={(e) => setNp({ ...np, name: e.target.value })} placeholder={'e.g. AC-150 – 1.5" Snap-Lock'} style={input} /></label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginTop: 8 }}>
+            <label style={{ ...small, display: "block" }}>Code<input value={np.code} onChange={(e) => setNp({ ...np, code: e.target.value })} placeholder="AC150" style={input} /></label>
+            <label style={{ ...small, display: "block" }}>Seam<select value={np.family} onChange={(e) => setNp({ ...np, family: e.target.value })} style={input}>{PROFILE_FAMILIES.map(([id, l]) => <option key={id} value={id}>{l}</option>)}</select></label>
+            <label style={{ ...small, display: "block" }}>Takeup (in)<input type="number" step="0.0625" value={np.takeup} onChange={(e) => setNp({ ...np, takeup: e.target.value })} placeholder="4.125" style={input} /></label>
+          </div>
+          <label style={{ ...small, display: "block", marginTop: 8 }}>Description<input value={np.desc} onChange={(e) => setNp({ ...np, desc: e.target.value })} style={input} /></label>
+          <div style={{ ...small, marginTop: 6 }}>Price it with a "{(np.name.trim().split(" ")[0] || "NAME")} Fabrication (per linear ft)" row in the price list (the row starts with the profile name's first word, as FWQ100's does); without one it uses the Panel Fabrication rate.</div>
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <button type="button" onClick={addProfile} style={btn(true)}>Add profile</button>
+            <button type="button" onClick={() => setAddingProfile(false)} style={btn(false)}>Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setAddingProfile(true)} style={btn(false)}>+ Add a profile of your own</button>
+      )}
+    </div>
+  );
+}
+
 /* ------------------------------- shop settings -------------------------------- */
 // Shop Floor → Shop Settings: where a shop's people set it up and run it. The setup
 // checklist is derived from facts that already live somewhere (a saved price list, an order
@@ -3822,8 +4007,8 @@ export default function ShopOrderApp() {
   const [height, setHeight] = useState(853.08); // 100 finished sq ft at the default 21" coil / 16.88" SS450 pan width
   const [flatWidth, setFlatWidth] = useState(48);
   const [accType, setAccType] = useState("Screws");
-  const [accSpec, setAccSpec] = useState(ACCESSORY_SPECS.Screws[0]);
-  const [accProfile, setAccProfile] = useState(PROFILES[0]);
+  const [accSpec, setAccSpec] = useState(activeCatalog.accessories.specs.Screws[0]);
+  const [accProfile, setAccProfile] = useState(PROFILES()[0]);
   const [accQty, setAccQty] = useState(1);
   const [accSealColor, setAccSealColor] = useState("match"); // "match" | "Clear" | a color name
   const [accessories, setAccessories] = useState([]);
@@ -3884,13 +4069,13 @@ export default function ShopOrderApp() {
   const [milesLookupNote, setMilesLookupNote] = useState("");
   const [ribStyle, setRibStyle] = useState(null);
   const [clipRelief, setClipRelief] = useState(null);
-  const [profile, setProfile] = useState(PROFILES[0]);
+  const [profile, setProfile] = useState(PROFILES()[0]);
   const [showPanelCatalog, setShowPanelCatalog] = useState(false);
   const [catalogUserLoc, setCatalogUserLoc] = useState(null); // {lat,lng} once the contractor shares their location
   const [catalogLocStatus, setCatalogLocStatus] = useState("idle"); // "idle" | "asking" | "denied"
 
   useEffect(() => {
-    const takeup = PROFILE_INFO[profile]?.takeup || 0;
+    const takeup = activeCatalog.profiles[profile]?.takeup || 0;
     setWidth(Math.max(0, Math.round((coilWidth - takeup) * 100) / 100));
   }, [coilWidth, profile]);
   // Clips default to the panel profile being ordered, so "Clips — <profile>" matches the panel.
@@ -3911,10 +4096,10 @@ export default function ShopOrderApp() {
   const [coilCalcOD, setCoilCalcOD] = useState(48);
   const [coilCalcID, setCoilCalcID] = useState(20);
   const [coilCalcWidth, setCoilCalcWidth] = useState(21);
-  const [gaugeId, setGaugeId] = useState(GAUGE_OPTIONS[0].id);
-  const [paintId, setPaintId] = useState(PAINT_OPTIONS[0].id);
-  const [brand, setBrand] = useState(BRANDS[0]);
-  const [colorName, setColorName] = useState(COLORS_BY_BRAND[BRANDS[0]][0].name);
+  const [gaugeId, setGaugeId] = useState(activeCatalog.gauges.painted[0].id);
+  const [paintId, setPaintId] = useState(activeCatalog.paints[0].id);
+  const [brand, setBrand] = useState(activeCatalog.brands[0]);
+  const [colorName, setColorName] = useState(activeCatalog.colors[activeCatalog.brands[0]][0].name);
   const [colorSearch, setColorSearch] = useState("");
   const [quantity, setQuantity] = useState(4);
   const [sheetWidth, setSheetWidth] = useState(48);
@@ -4271,8 +4456,8 @@ export default function ShopOrderApp() {
     if (coilOverMax) return null;
     const per = coilPriceForWidth(+coilWidth || 0, coilWidthScale);
     if (per === null) return null;
-    const pvdfM = PAINT_OPTIONS.find((p) => p.id === "pvdf")?.mult || 1;
-    const m = brand === "Copper" ? 1 : (PAINT_OPTIONS.find((p) => p.id === paintId) || PAINT_OPTIONS[0]).mult;
+    const pvdfM = activeCatalog.paints.find((p) => p.id === "pvdf")?.mult || 1;
+    const m = brand === "Copper" ? 1 : (activeCatalog.paints.find((p) => p.id === paintId) || activeCatalog.paints[0]).mult;
     return Math.round(per * (m / pvdfM) * 100) / 100;
   };
   useEffect(() => {
@@ -4359,6 +4544,53 @@ export default function ShopOrderApp() {
     if (v !== null) setFabPricePerFt(v);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [priceList, profile]);
+
+  // The catalog the selected shop offers: the platform catalog with the shop's selection over
+  // it (its own paint lines and profiles, what it switched off). Resolved into the module-level
+  // activeCatalog that every picker and estimate reads, then a re-render; the same resolution
+  // submit-order does for the order's shop. Signed out, or with no selection saved, it is the
+  // platform catalog, which is today's catalog for every shop.
+  const [platformCatalog, setPlatformCatalog] = useState(DEFAULT_CATALOG);
+  const [catalogSelection, setCatalogSelection] = useState(null);
+  const [catalogTick, setCatalogTick] = useState(0);
+  useEffect(() => {
+    let stale = false;
+    (async () => {
+      const platform = await loadPlatformCatalog();
+      const selection = user && shopId ? await loadShopCatalogSelection(shopId) : null;
+      if (stale) return;
+      setPlatformCatalog(platform);
+      setCatalogSelection(selection);
+      setActiveCatalog(resolveCatalog(platform, selection));
+      setCatalogTick((t) => t + 1);
+    })();
+    return () => { stale = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shopId, user?.id]);
+  const saveCatalogSelection = async (next) => {
+    setCatalogSelection(next);
+    setActiveCatalog(resolveCatalog(platformCatalog, next));
+    setCatalogTick((t) => t + 1);
+    try { await shopStorage.set(shopId, "catalog", JSON.stringify(next)); }
+    catch (e) { console.error("storage error", e); }
+  };
+  // A pick the new catalog does not offer moves to the first thing it does, so the form and
+  // the estimate never show a brand, color or profile the shop will refuse.
+  useEffect(() => {
+    if (catalogTick === 0) return;
+    const c = activeCatalog;
+    const listed = listedProfiles(c);
+    if (listed.length && !listed.includes(profile)) setProfile(listed[0]);
+    if (listed.length && !listed.includes(accProfile)) setAccProfile(listed[0]);
+    if (!c.brands.includes(brand) && !c.unpainted.includes(brand)) {
+      const b = c.brands[0] || c.unpainted[0];
+      if (b) handleBrandChange(b);
+    } else if (!getColorsForBrand(brand, paintId).some((x) => x.name === colorName)) {
+      const first = getColorsForBrand(brand, paintId)[0];
+      if (first) setColorName(first.name);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [catalogTick]);
 
   // This account's tier at the selected shop: its own shop_customers row, none meaning retail.
   useEffect(() => {
@@ -4916,7 +5148,7 @@ export default function ShopOrderApp() {
 
   const colorObj = findColor(colorName, brand, paintId);
   const activeGauge = findGauge(gaugeId, brand);
-  const activePaint = brand === "Copper" ? { mult: 1 } : (PAINT_OPTIONS.find((p) => p.id === paintId) || PAINT_OPTIONS[0]);
+  const activePaint = brand === "Copper" ? { mult: 1 } : (activeCatalog.paints.find((p) => p.id === paintId) || activeCatalog.paints[0]);
   const activePremiumMult = colorObj?.premium ? 1.12 : 1;
   const activeRates = getSellRates(gaugeId, brand, priceList, profile, sellTier);
   const ratePerSqft = activeRates.coilSqft * activePaint.mult * activePremiumMult;
@@ -4926,7 +5158,7 @@ export default function ShopOrderApp() {
   const activeFlatProcessingFee = activeFlatProcessingItem ? sellRate(activeFlatProcessingItem, sellTier) : 0;
   const flatSheetPrice = (((+flatWidth || 0) * (+flatLength || 0)) / 144) * activeFlatMaterialRate * activePaint.mult * activePremiumMult + activeFlatProcessingFee;
   const interpolatedCoilPerFt = coilPriceForWidth(+metalCoilWidth || 0, coilWidthScale);
-  const pvdfMultRef = PAINT_OPTIONS.find((p) => p.id === "pvdf")?.mult || 1;
+  const pvdfMultRef = activeCatalog.paints.find((p) => p.id === "pvdf")?.mult || 1;
   const metalCoilPricePerFt = interpolatedCoilPerFt !== null
     ? interpolatedCoilPerFt * (activePaint.mult / pvdfMultRef)
     : ((+metalCoilWidth || 0) / 12) * ratePerSqft;
@@ -4934,19 +5166,19 @@ export default function ShopOrderApp() {
     setBrand(nextBrand);
     // paintId hasn't been updated yet at this point (that happens below), so figure out
     // what paint type this brand will actually end up on before picking its default color.
-    const nextPaintId = PVDF_24GA_ONLY_BRANDS.includes(nextBrand) || PVDF_ONLY_BRANDS.includes(nextBrand) ? "pvdf" : paintId;
+    const nextPaintId = activeCatalog.rules.pvdf24gaOnly.includes(nextBrand) || activeCatalog.rules.pvdfOnly.includes(nextBrand) ? "pvdf" : paintId;
     setColorName(getColorsForBrand(nextBrand, nextPaintId)[0].name);
     setColorSearch("");
     // gauge ids like "24ga" are reused across different option sets with different prices,
     // so switching brands always resets to that brand's own first (correct) gauge option.
-    const nextGaugeSet = nextBrand === "Copper" ? COPPER_WEIGHT_OPTIONS
-      : nextBrand === "G90 Galvanized" ? G90_GAUGE_OPTIONS
-      : nextBrand === "Galvalume" ? GALVALUME_GAUGE_OPTIONS
-      : nextBrand === "Bonderized" ? BONDERIZED_GAUGE_OPTIONS
-      : PVDF_24GA_ONLY_BRANDS.includes(nextBrand) ? GAUGE_OPTIONS.filter((g) => g.id === "24ga")
-      : GAUGE_OPTIONS;
+    const nextGaugeSet = nextBrand === "Copper" ? activeCatalog.gauges.Copper
+      : nextBrand === "G90 Galvanized" ? activeCatalog.gauges["G90 Galvanized"]
+      : nextBrand === "Galvalume" ? activeCatalog.gauges.Galvalume
+      : nextBrand === "Bonderized" ? activeCatalog.gauges.Bonderized
+      : activeCatalog.rules.pvdf24gaOnly.includes(nextBrand) ? activeCatalog.gauges.painted.filter((g) => g.id === "24ga")
+      : activeCatalog.gauges.painted;
     setGaugeId(nextGaugeSet[0].id);
-    if (PVDF_24GA_ONLY_BRANDS.includes(nextBrand) || PVDF_ONLY_BRANDS.includes(nextBrand)) {
+    if (activeCatalog.rules.pvdf24gaOnly.includes(nextBrand) || activeCatalog.rules.pvdfOnly.includes(nextBrand)) {
       setPaintId("pvdf"); // Kynar 500/Hylar 5000 (PVDF) only — no SMP
     }
   };
@@ -4969,7 +5201,7 @@ export default function ShopOrderApp() {
     : shapeType === "part3d"
     ? { type: "part3d", partType, partW, partD, partH, partCapH, partPostH, partOverhang, partShelf, partLeg, capRibs, outletShape, flangeW, flangeD, outletDiameter, outletLength, topTrim, bodyTaper, taperStart, taperLength, flangeTapered, flangeLength, outletRoundTapered, capStyle, scupOutlet, scupRoofMode, scupFlange, scupDeckLeg, scupProj, scupPlateW, scupPlateH, scupBoxW, scupBoxD, scupBoxH, scupDsSize, scupDsLen, quantity, gaugeId, paintId, brand, colorName }
     : { type: "trim", points, quantity, lengthPerPiece, gaugeId, paintId, brand, colorName };
-  const estimate = computePrice(draft, priceList, coilWidthScale, sellTier);
+  const estimate = computePrice(draft, priceList, coilWidthScale, sellTier, activeCatalog);
   const girth = profileGirth(points, hemStart, hemEnd); // legs plus the end folds — the width the shear cuts
   // Qty / sheet width are "" while a field is cleared for retyping — treat that as 0 so
   // this stays numeric (dropWidth.toFixed on "" used to white-screen the whole app).
@@ -4981,9 +5213,9 @@ export default function ShopOrderApp() {
   const resetForm = () => {
     dropWizard(); // the order is sent: every entry the wizard pushed goes; a tab entry beneath still leads back to its list
     setOrderStep("type");
-    setShapeType("panel"); setWidth(16.88); setHeight(853.08); setCoilWidth(21); setProfile(PROFILES[0]); setRunLocation("Shop"); setJobSiteAddress(""); setJobSiteMiles(""); setMilesLookupNote(""); setSupplierCo("Fortified Metal"); setRibStyle(null); setClipRelief(null);
+    setShapeType("panel"); setWidth(16.88); setHeight(853.08); setCoilWidth(21); setProfile(PROFILES()[0]); setRunLocation("Shop"); setJobSiteAddress(""); setJobSiteMiles(""); setMilesLookupNote(""); setSupplierCo("Fortified Metal"); setRibStyle(null); setClipRelief(null);
     setFlatWidth(48); setFlatLength(120); setMetalCoilWidth(21); setMetalCoilLength(12000);
-    setAccessories([]); setAccType("Screws"); setAccSpec(ACCESSORY_SPECS.Screws[0]); setAccProfile(PROFILES[0]); setAccQty(1);
+    setAccessories([]); setAccType("Screws"); setAccSpec(activeCatalog.accessories.specs.Screws[0]); setAccProfile(PROFILES()[0]); setAccQty(1);
     setPartType("collector"); setPartW(12); setPartD(8); setPartH(10); setPartCapH(6); setPartView("3d"); setCapStyle("pyramid");
     setOutletShape("box"); setFlangeW(4); setFlangeD(4); setOutletDiameter(4); setOutletLength(6); setFlangeTapered(true);
     setFlangeLength(4); setOutletRoundTapered(false);
@@ -4993,7 +5225,7 @@ export default function ShopOrderApp() {
     setScupDsSize("4×5"); setScupDsLen(10);
     setPoints(TRIM_PRESETS["Eave / Drip Edge"]); setPreset("Eave / Drip Edge");
     setHemStart("none"); setHemEnd("none"); setPaintSide("right");
-    setMaterialCategory("painted"); setGaugeId(GAUGE_OPTIONS[0].id); setPaintId(PAINT_OPTIONS[0].id); setBrand(BRANDS[0]); setColorName(COLORS_BY_BRAND[BRANDS[0]][0].name);
+    setMaterialCategory("painted"); setGaugeId(activeCatalog.gauges.painted[0].id); setPaintId(activeCatalog.paints[0].id); setBrand(activeCatalog.brands[0]); setColorName(activeCatalog.colors[activeCatalog.brands[0]][0].name);
     setQuantity(4); setLengthPerPiece(10); setSheetWidth(48); setPartName("");
     setEditingId(null); setBoxReturn(null); editSnapshot.current = null; setRoofBoxOpen(false); setBox3dReturn(false);
     setCustomerName(""); setPhone(""); setNotes("");
@@ -5015,7 +5247,7 @@ export default function ShopOrderApp() {
       name: partName.trim() || base?.name || `Part ${basket.length + 1}`,
       points, hemStart, hemEnd, paintSide, quantity, lengthPerPiece, sheetWidth,
       girth, partsPerSheet, sheetsNeeded, dropWidth, photo: partPhoto, pitch: drawnPitch, ...own,
-      price: computePrice({ type: "trim", points, quantity, lengthPerPiece, ...own }, priceList, coilWidthScale, sellTier),
+      price: computePrice({ type: "trim", points, quantity, lengthPerPiece, ...own }, priceList, coilWidthScale, sellTier, activeCatalog),
     };
   };
   // Every part the order is made of: the list, plus the canvas draft as one more — or, while a
@@ -5061,7 +5293,7 @@ export default function ShopOrderApp() {
     setHemStart(it.hemStart || "none"); setHemEnd(it.hemEnd || "none"); setPaintSide(it.paintSide || "left");
     setPartName(it.name); setQuantity(it.quantity); setLengthPerPiece(it.lengthPerPiece); setSheetWidth(it.sheetWidth);
     setPartPhoto(it.photo || null); setDrawnPitch(it.pitch || 4);
-    setMaterialCategory(UNPAINTED_MATERIALS.includes(it.brand) ? "unpainted" : "painted");
+    setMaterialCategory(activeCatalog.unpainted.includes(it.brand) ? "unpainted" : "painted");
     if (it.gaugeId) setGaugeId(it.gaugeId); if (it.paintId) setPaintId(it.paintId);
     if (it.brand) setBrand(it.brand); if (it.colorName) setColorName(it.colorName); // brand then colour directly — handleBrandChange would reset the colour
     setViewResetKey((k) => k + 1);
@@ -5188,7 +5420,7 @@ export default function ShopOrderApp() {
       quantity: qty, lengthPerPiece, sheetWidth: sheetWidthNum,
       girth: g, partsPerSheet: pps, sheetsNeeded: pps > 0 ? Math.ceil(qty / pps) : 0, dropWidth: pps > 0 ? Math.max(0, sheetWidthNum - pps * g) : sheetWidthNum,
       photo: null, pitch: it.pitch ?? roofBoxPitch, gaugeId: kitGaugeId, paintId, brand, colorName, colorHex: colorObj.hex,
-      price: computePrice({ type: "trim", points: it.points, quantity: qty, lengthPerPiece, gaugeId: kitGaugeId, paintId, brand, colorName }, priceList, coilWidthScale, sellTier),
+      price: computePrice({ type: "trim", points: it.points, quantity: qty, lengthPerPiece, gaugeId: kitGaugeId, paintId, brand, colorName }, priceList, coilWidthScale, sellTier, activeCatalog),
     };
   };
   const roofBoxPicked = roofKit.filter((it) => !it.tool3d && (roofBoxSel[it.id] || 0) > 0).map((it) => roofBoxItem(it, Math.max(1, Math.round(+roofBoxSel[it.id] || 1))));
@@ -5251,7 +5483,7 @@ export default function ShopOrderApp() {
   const screwLots = accType === "Screws";
   const accClipSpec = accType === "Clips" ? clipSpecForProfile(accProfile) : null;
   // Fastener-flange and flush wall/soffit panels screw straight through the flange.
-  const accNoClip = accType === "Clips" && ["FF100", "FWQ100"].includes(PROFILE_INFO[accProfile]?.code);
+  const accNoClip = accType === "Clips" && ["FF100", "FWQ100"].includes(activeCatalog.profiles[accProfile]?.code);
   useEffect(() => {
     // Fresh sensible qty per accessory type: screws start at a full lot, everything else at 1.
     setAccQty(screwLots ? 100 : 1);
@@ -5338,7 +5570,7 @@ export default function ShopOrderApp() {
           status: "Pending",
           createdAt: new Date().toISOString(),
         };
-        order.price = computePrice(order, priceList, coilWidthScale, sellTier);
+        order.price = computePrice(order, priceList, coilWidthScale, sellTier, activeCatalog);
         return order;
       });
       const saved = await insertOrders(newOrders);
@@ -5424,7 +5656,7 @@ export default function ShopOrderApp() {
       status: "Pending",
       createdAt: new Date().toISOString(),
     };
-    order.price = computePrice(order, priceList, coilWidthScale, sellTier);
+    order.price = computePrice(order, priceList, coilWidthScale, sellTier, activeCatalog);
     const saved = await insertOrders([order]);
     setSubmitting(false);
     if (!saved) return; // insertOrders already said so — keep the form so they can retry
@@ -5436,7 +5668,7 @@ export default function ShopOrderApp() {
   };
 
   /* ---------- Job Vault ---------- */
-  const vaultCurrentPrice = (item) => computePrice(item.payload || {}, priceList, coilWidthScale, sellTier);
+  const vaultCurrentPrice = (item) => computePrice(item.payload || {}, priceList, coilWidthScale, sellTier, activeCatalog);
   // An item alerts when today's price is above the last price the member acknowledged
   // (or the price at save time, if they never dismissed an alert).
   const vaultIncrease = (item) => {
@@ -5545,7 +5777,7 @@ export default function ShopOrderApp() {
       job_name: jobName,
       kind: p.type,
       payload: p,
-      saved_price: computePrice(p, priceList, coilWidthScale, sellTier),
+      saved_price: computePrice(p, priceList, coilWidthScale, sellTier, activeCatalog),
     }));
     const { data, error } = await supabase.from("vault_items").insert(rows).select();
     setSavingVault(false);
@@ -5583,7 +5815,7 @@ export default function ShopOrderApp() {
     setTab("order");
     setShapeType(kind);
     setOrderStep("details");
-    setMaterialCategory(UNPAINTED_MATERIALS.includes(p.brand) ? "unpainted" : "painted");
+    setMaterialCategory(activeCatalog.unpainted.includes(p.brand) ? "unpainted" : "painted");
     if (p.gaugeId) setGaugeId(p.gaugeId);
     if (p.paintId) setPaintId(p.paintId);
     // brand then color directly — handleBrandChange would reset the color
@@ -5606,7 +5838,7 @@ export default function ShopOrderApp() {
       // width re-derives from coilWidth + profile; submitted orders store only width,
       // so reconstruct coilWidth from it when reordering
       if (p.coilWidth != null) setCoilWidth(p.coilWidth);
-      else if (p.width != null) setCoilWidth(p.width + (PROFILE_INFO[p.profile]?.takeup ?? 0));
+      else if (p.width != null) setCoilWidth(p.width + (activeCatalog.profiles[p.profile]?.takeup ?? 0));
       if (p.height != null) setHeight(p.height);
       setRibStyle(p.ribStyle ?? null);
       setClipRelief(p.clipRelief ?? null);
@@ -5762,7 +5994,7 @@ export default function ShopOrderApp() {
               {[{ id: "painted", label: "Painted" }, { id: "unpainted", label: "Unpainted" }].map((c) => (
                 <button key={c.id} onClick={() => {
                   setMaterialCategory(c.id);
-                  handleBrandChange(c.id === "unpainted" ? UNPAINTED_MATERIALS[0] : BRANDS[0]);
+                  handleBrandChange(c.id === "unpainted" ? activeCatalog.unpainted[0] : activeCatalog.brands[0]);
                 }}
                   style={{
                     flex: 1, padding: "8px 4px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
@@ -5779,8 +6011,8 @@ export default function ShopOrderApp() {
                   Bare/mill-finish materials — no paint, no color chart, just a few SKUs.
                 </div>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 10 }}>
-                  {UNPAINTED_MATERIALS.map((mName) => {
-                    const swatch = COLORS_BY_BRAND[mName]?.[0]?.hex || "#999";
+                  {activeCatalog.unpainted.map((mName) => {
+                    const swatch = activeCatalog.colors[mName]?.[0]?.hex || "#999";
                     const active = brand === mName;
                     return (
                       <button key={mName} onClick={() => handleBrandChange(mName)}
@@ -5801,10 +6033,10 @@ export default function ShopOrderApp() {
                     {brand === "Copper" ? "Copper Weight" : "Gauge"}
                     <select value={gaugeId} onChange={(e) => setGaugeId(e.target.value)}
                       style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: theme.inputBg }}>
-                      {(brand === "Copper" ? COPPER_WEIGHT_OPTIONS
-                        : brand === "G90 Galvanized" ? G90_GAUGE_OPTIONS
-                        : brand === "Galvalume" ? GALVALUME_GAUGE_OPTIONS
-                        : BONDERIZED_GAUGE_OPTIONS).map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+                      {(brand === "Copper" ? activeCatalog.gauges.Copper
+                        : brand === "G90 Galvanized" ? activeCatalog.gauges["G90 Galvanized"]
+                        : brand === "Galvalume" ? activeCatalog.gauges.Galvalume
+                        : activeCatalog.gauges.Bonderized).map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
                     </select>
                   </label>
                 </div>
@@ -5812,7 +6044,7 @@ export default function ShopOrderApp() {
                   <span style={{ width: 40, height: 40, borderRadius: 6, background: colorObj?.hex || "#ccc", border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />
                   <span style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{colorName}</span>
                 </div>
-                {UNPAINTED_FLATS_ONLY_BRANDS.includes(brand) && (
+                {activeCatalog.rules.unpaintedFlatsOnly.includes(brand) && (
                   <div style={{
                     display: "flex", alignItems: "center", gap: 8, marginTop: 8, padding: "8px 10px",
                     background: darkMode ? "#332A0C" : "#FBF3D9", border: `1px solid ${SAFETY}`, borderRadius: 6,
@@ -5842,30 +6074,30 @@ export default function ShopOrderApp() {
                     Brand
                     <select value={brand} onChange={(e) => handleBrandChange(e.target.value)}
                       style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: theme.inputBg }}>
-                      {BRANDS.map((b) => <option key={b}>{b}</option>)}
+                      {activeCatalog.brands.map((b) => <option key={b}>{b}</option>)}
                     </select>
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Gauge
-                    <select value={gaugeId} onChange={(e) => setGaugeId(e.target.value)} disabled={PVDF_24GA_ONLY_BRANDS.includes(brand)}
-                      style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: PVDF_24GA_ONLY_BRANDS.includes(brand) ? theme.pageBg : theme.inputBg, opacity: PVDF_24GA_ONLY_BRANDS.includes(brand) ? 0.7 : 1 }}>
-                      {(PVDF_24GA_ONLY_BRANDS.includes(brand) ? GAUGE_OPTIONS.filter((g) => g.id === "24ga") : GAUGE_OPTIONS).map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
+                    <select value={gaugeId} onChange={(e) => setGaugeId(e.target.value)} disabled={activeCatalog.rules.pvdf24gaOnly.includes(brand)}
+                      style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: activeCatalog.rules.pvdf24gaOnly.includes(brand) ? theme.pageBg : theme.inputBg, opacity: activeCatalog.rules.pvdf24gaOnly.includes(brand) ? 0.7 : 1 }}>
+                      {(activeCatalog.rules.pvdf24gaOnly.includes(brand) ? activeCatalog.gauges.painted.filter((g) => g.id === "24ga") : activeCatalog.gauges.painted).map((g) => <option key={g.id} value={g.id}>{g.label}</option>)}
                     </select>
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Paint Type
-                    <select value={paintId} onChange={(e) => handlePaintChange(e.target.value)} disabled={PVDF_24GA_ONLY_BRANDS.includes(brand) || PVDF_ONLY_BRANDS.includes(brand)}
-                      style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: (PVDF_24GA_ONLY_BRANDS.includes(brand) || PVDF_ONLY_BRANDS.includes(brand)) ? theme.pageBg : theme.inputBg, opacity: (PVDF_24GA_ONLY_BRANDS.includes(brand) || PVDF_ONLY_BRANDS.includes(brand)) ? 0.7 : 1 }}>
-                      {(PVDF_24GA_ONLY_BRANDS.includes(brand) || PVDF_ONLY_BRANDS.includes(brand) ? PAINT_OPTIONS.filter((p) => p.id === "pvdf") : PAINT_OPTIONS).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+                    <select value={paintId} onChange={(e) => handlePaintChange(e.target.value)} disabled={activeCatalog.rules.pvdf24gaOnly.includes(brand) || activeCatalog.rules.pvdfOnly.includes(brand)}
+                      style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: (activeCatalog.rules.pvdf24gaOnly.includes(brand) || activeCatalog.rules.pvdfOnly.includes(brand)) ? theme.pageBg : theme.inputBg, opacity: (activeCatalog.rules.pvdf24gaOnly.includes(brand) || activeCatalog.rules.pvdfOnly.includes(brand)) ? 0.7 : 1 }}>
+                      {(activeCatalog.rules.pvdf24gaOnly.includes(brand) || activeCatalog.rules.pvdfOnly.includes(brand) ? activeCatalog.paints.filter((p) => p.id === "pvdf") : activeCatalog.paints).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
                     </select>
                   </label>
                 </div>
-                {PVDF_ONLY_BRANDS.includes(brand) && (
+                {activeCatalog.rules.pvdfOnly.includes(brand) && (
                   <div style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: -4, marginBottom: 8 }}>
                     {brand} is Kynar 500/Hylar 5000 (PVDF) only — no SMP.
                   </div>
                 )}
-                {PVDF_24GA_ONLY_BRANDS.includes(brand) && (
+                {activeCatalog.rules.pvdf24gaOnly.includes(brand) && (
                   <div style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: -4, marginBottom: 8 }}>
                     {brand} is Kynar 500/Hylar 5000 (PVDF), 24 gauge only.
                   </div>
@@ -6837,7 +7069,7 @@ export default function ShopOrderApp() {
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: "block", fontSize: 13, fontWeight: 700, color: theme.text }}>{profile}</span>
                     <span style={{ display: "block", fontSize: 10, color: theme.textSecondary, marginTop: 2 }}>
-                      {(PANEL_VENDORS.find((v) => v.profiles.includes(profile))?.name || "Special order")} — tap to browse all panels
+                      {(panelVendors().find((v) => v.profiles.includes(profile))?.name || "Special order")} — tap to browse all panels
                     </span>
                   </span>
                   <ChevronDown size={16} color={theme.textSecondary} style={{ flexShrink: 0 }} />
@@ -6874,19 +7106,19 @@ export default function ShopOrderApp() {
                           📍 {catalogLocStatus === "asking" ? "Locating…" : catalogLocStatus === "denied" ? "Location unavailable — check browser permissions" : "Show each vendor's distance from me"}
                         </button>
                       )}
-                      {PANEL_VENDORS.map((vend) => (
+                      {panelVendors().map((vend) => (
                         <div key={vend.id} style={{ marginBottom: 16 }}>
                           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, borderBottom: `2px solid ${SAFETY}`, paddingBottom: 5, marginBottom: 8 }}>
                             <div style={{ minWidth: 0 }}>
                               <span className="disp" style={{ fontSize: 13, color: theme.text }}>{vend.name}</span>
                               <span style={{ fontSize: 9.5, color: theme.textSecondary, marginLeft: 6 }}>{vend.tagline}</span>
                             </div>
-                            <span style={{ fontSize: 10, color: theme.textSecondary, whiteSpace: "nowrap", flexShrink: 0 }}>
+                            {vend.city && <span style={{ fontSize: 10, color: theme.textSecondary, whiteSpace: "nowrap", flexShrink: 0 }}>
                               {vend.city}, {vend.state}
                               {catalogUserLoc && (
                                 <span className="mono" style={{ color: SAFETY, fontWeight: 700 }}> · ~{Math.round(distanceMiles(catalogUserLoc, vend))} mi</span>
                               )}
-                            </span>
+                            </span>}
                           </div>
                           {vend.profiles.length === 0 ? (
                             <div style={{ fontSize: 11, color: theme.textSecondary, padding: "6px 0 2px" }}>
@@ -6898,7 +7130,7 @@ export default function ShopOrderApp() {
                                 const active = profile === p;
                                 const dash = p.indexOf("–");
                                 const pCode = dash > 0 ? p.slice(0, dash).trim() : p;
-                                const pSpec = dash > 0 ? p.slice(dash + 1).trim() : (PROFILE_INFO[p]?.desc || "");
+                                const pSpec = dash > 0 ? p.slice(dash + 1).trim() : (activeCatalog.profiles[p]?.desc || "");
                                 return (
                                   <button key={p} onClick={() => { setProfile(p); setShowPanelCatalog(false); }} className="tap-bounce"
                                     style={{
@@ -7017,7 +7249,7 @@ export default function ShopOrderApp() {
                         setWidthEditing(val);
                         if (val !== "") {
                           const newWidth = Math.max(0, +val);
-                          const takeup = PROFILE_INFO[profile]?.takeup || 0;
+                          const takeup = activeCatalog.profiles[profile]?.takeup || 0;
                           setWidth(newWidth);
                           setCoilWidth(Math.max(0, Math.min(48, Math.round((newWidth + takeup) * 100) / 100)));
                         }
@@ -7619,9 +7851,9 @@ export default function ShopOrderApp() {
                 Screws, clips, sealant, and closures to finish the job — added to this order.
               </div>
               <div style={{ display: "flex", gap: 6, marginTop: 8, flexWrap: "wrap" }}>
-                {ACCESSORY_TYPES.map((t) => (
+                {activeCatalog.accessories.types.map((t) => (
                   <button key={t} type="button"
-                    onClick={() => { setAccType(t); setAccSpec(ACCESSORY_SPECS[t]?.[0] || ""); }}
+                    onClick={() => { setAccType(t); setAccSpec(activeCatalog.accessories.specs[t]?.[0] || ""); }}
                     style={{
                       padding: "6px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
                       border: `1px solid ${accType === t ? INK : "#D9D5C7"}`, background: accType === t ? INK : "#fff", color: accType === t ? "#fff" : INK_DEEP,
@@ -7632,9 +7864,9 @@ export default function ShopOrderApp() {
               </div>
               <div className="disp" style={{ fontSize: 10, color: theme.textSecondary, marginTop: 8 }}>Dry In</div>
               <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
-                {DRY_IN_TYPES.map((t) => (
+                {activeCatalog.accessories.dryIn.map((t) => (
                   <button key={t} type="button"
-                    onClick={() => { setAccType(t); setAccSpec(ACCESSORY_SPECS[t]?.[0] || ""); }}
+                    onClick={() => { setAccType(t); setAccSpec(activeCatalog.accessories.specs[t]?.[0] || ""); }}
                     style={{
                       padding: "6px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
                       border: `1px solid ${accType === t ? INK : "#D9D5C7"}`, background: accType === t ? INK : "#fff", color: accType === t ? "#fff" : INK_DEEP,
@@ -7660,7 +7892,7 @@ export default function ShopOrderApp() {
                     Panel Profile
                     <select value={accProfile} onChange={(e) => setAccProfile(e.target.value)}
                       style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, background: theme.inputBg }}>
-                      {PROFILES.map((p) => <option key={p}>{p}</option>)}
+                      {PROFILES().map((p) => <option key={p}>{p}</option>)}
                     </select>
                   </label>
                 ) : (
@@ -7668,7 +7900,7 @@ export default function ShopOrderApp() {
                     Spec
                     <select value={accSpec} onChange={(e) => setAccSpec(e.target.value)}
                       style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 13, background: theme.inputBg }}>
-                      {ACCESSORY_SPECS[accType].map((s) => <option key={s}>{s}</option>)}
+                      {activeCatalog.accessories.specs[accType].map((s) => <option key={s}>{s}</option>)}
                     </select>
                   </label>
                 )}
@@ -8080,6 +8312,8 @@ export default function ShopOrderApp() {
               </div>
               </>)}
 
+              <CatalogSection platform={platformCatalog} selection={catalogSelection} onChange={saveCatalogSelection} theme={theme} shopName={selectedShop ? selectedShop.name : "this shop"} />
+
               <div style={{ marginBottom: 18 }}>
                 <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>Raw Material Cost (per sq ft)</div>
                 {!materialCostsLoaded ? (
@@ -8283,7 +8517,7 @@ export default function ShopOrderApp() {
                         {tierRow("tier2", tierShort("tier2"))}
                         {tierRow("greenleaf", tierShort("greenleaf"))}
                         {(() => {
-                          const spec = Object.values(CLIP_SPECS).find((cs) => p.name.toUpperCase().startsWith(cs.code));
+                          const spec = Object.values(activeCatalog.clips).find((cs) => p.name.toUpperCase().startsWith(cs.code));
                           if (!spec) return null;
                           return (
                             <div className="mono" style={{ fontSize: 10.5, color: theme.text, marginTop: 6, background: theme.highlight, borderRadius: 5, padding: "6px 9px" }}>
@@ -8751,7 +8985,7 @@ export default function ShopOrderApp() {
 
                       {isOpen && group.items.map((o, idx) => {
                         const gauge = findGauge(o.gaugeId, o.brand);
-                        const paint = PAINT_OPTIONS.find((p) => p.id === o.paintId);
+                        const paint = activeCatalog.paints.find((p) => p.id === o.paintId);
                         const StatusIcon = STATUS_ICON[o.status];
                         return (
                           <div key={o.id} style={{ display: "flex", gap: 10, marginTop: 10, paddingTop: 10, borderTop: "1px solid #F0EDE3" }}>
