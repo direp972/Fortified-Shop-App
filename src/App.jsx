@@ -7978,7 +7978,7 @@ export default function ShopOrderApp() {
                 </div>
               ) : null}
               <div style={{ background: theme.card, borderRadius: 10, padding: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
-                <div className="disp" style={{ fontSize: 16, color: theme.text, textAlign: "center", marginBottom: 2 }}>Fortified Sheet Metal</div>
+                <div className="disp" style={{ fontSize: 16, color: theme.text, textAlign: "center", marginBottom: 2 }}>{selectedShop ? selectedShop.name : "Fortified Sheet Metal"}</div>
                 <div style={{ fontSize: 11, color: theme.textSecondary, textAlign: "center", marginBottom: 10 }}>
                   {priceListTier === "tier1" ? "Preferred Customer Pricing" : priceListTier === "greenleaf" ? "Greenleaf Pricing" : "Standard Pricing"}
                 </div>
