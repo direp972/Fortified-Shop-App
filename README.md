@@ -196,7 +196,7 @@ staff (`public.staff`) keep every power across every shop. Design and the reason
   `20261017220436_phase1_cleanup_legacy_keys.sql` then deleted them, returned `app_storage` to plain
   signed-in read/write (it holds only the idea box now), and dropped `customers.tier`.
 - **A shop onboards itself** (Phase 2, `docs/phase2-self-serve-shop-design.md`, migration
-  `20261020210000_phase2_self_serve_shops.sql`). A listing becomes a shop the moment its owner
+  `20261020181706_phase2_self_serve_shops.sql`). A listing becomes a shop the moment its owner
   is linked (ordering off); Shop Floor → **Shop Settings** walks the owner through prices,
   order email and phone, people, tier names and the ordering switch, which needs an order
   email and a saved price list (the default shop is exempt). Owners invite people by email
