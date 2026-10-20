@@ -105,7 +105,16 @@ async function loadListings() {
   const cols = "id,name,badges,address,city,area_keywords,lat,lng,locations,abilities,colors,coil_desc,fab_desc,website,phone,photos,logo_url,logo_bg,licensed_states,featured,gmaps_url,updated_at,created_at";
   const r = await fetch(`${SUPA}/rest/v1/directory_public?select=${cols}&order=featured.desc,name.asc`, { headers: { apikey: KEY } });
   if (!r.ok) throw new Error(`directory_listings fetch failed: HTTP ${r.status}`);
-  return r.json();
+  const rows = await r.json();
+  // The shops that take orders through RoofCoil, with the slug their ?shop= link uses. A
+  // failure here only costs the "Order from this shop" button, never the build.
+  try {
+    const q = await fetch(`${SUPA}/rest/v1/rpc/shop_slugs`, { method: "POST", headers: { apikey: KEY, "Content-Type": "application/json" }, body: "{}" });
+    const slugs = q.ok ? await q.json() : [];
+    const byId = new Map((Array.isArray(slugs) ? slugs : []).map((s) => [s.id, s.slug]));
+    for (const row of rows) if (row && byId.has(row.id)) row.order_slug = byId.get(row.id);
+  } catch (e) { console.warn("prerender: shop_slugs unavailable, no order links", e?.message || e); }
+  return rows;
 }
 
 function normalize(rows) {
@@ -125,6 +134,7 @@ function normalize(rows) {
       const photos = (Array.isArray(l.photos) ? l.photos : []).map(safeUrl).filter(Boolean).slice(0, 6);
       return {
         id: l.id, name, slug, url: `${SITE}/suppliers/${slug}`, path: `/suppliers/${slug}`,
+        orderUrl: typeof l.order_slug === "string" && l.order_slug ? `https://shop.roofcoil.com/?shop=${encodeURIComponent(l.order_slug)}` : null,
         badges: Array.isArray(l.badges) ? l.badges : [],
         featured: !!l.featured,
         address: clean(l.address), city: clean(l.city),
@@ -373,6 +383,10 @@ ${NAV("Directory")}
       ${l.locs.length ? l.locs.map((x) => `<p><b>${esc(x.city || "Location")}</b>${x.address ? "<br>" + esc(x.address) : ""}${x.abilities ? `<br><span class="mono" style="font-size:10.5px;color:var(--steel)">runs: ${esc(x.abilities.join(", "))}</span>` : ""}</p>`).join("") : `<p>${esc(l.city || "Location on request")}</p>`}
       ${cityQuery ? `<a class="btn dark" style="margin-top:8px" href="/suppliers.html?loc=${encodeURIComponent(cityQuery)}">More shops near ${esc(cityQuery)}</a>` : ""}
     </div>
+    ${l.orderUrl ? `<div class="step"><h3>Order from this shop</h3>
+      <p>${esc(l.name)} takes trim, panel and 3D-part orders through RoofCoil: draw the part, pick the color, and it goes straight to their shop at their prices.</p>
+      <a class="btn" href="${esc(l.orderUrl)}">Open the Panel &amp; Trim app →</a>
+    </div>` : ""}
     <div class="step"><h3>Is this your shop?</h3>
       <p>Keep the listing current — abilities, colors, photos and locations — and contractors searching by what the job needs will keep finding you.</p>
       <a class="btn dark" href="/manage-listing.html#claim=${l.id}">Manage this listing</a>
