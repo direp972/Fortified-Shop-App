@@ -13,6 +13,9 @@
 //                   approve or dismiss it in the directory admin.
 //   claim_decided — listing_claim_alert: a claim was approved (by the domain match or by
 //                   staff) or dismissed. Emails the claimant.
+//   shop_invite   — shop_invite_alert: a shop's owner invited an email to run the shop
+//                   (public.shop_invites). Emails the address: "create an account with this
+//                   email" for a pending invite, "you've been added" when the account existed.
 //
 // Settings come from the function's environment first, then from Supabase Vault
 // through public.get_secret (service role only), so each can be set with one SQL
@@ -26,6 +29,9 @@ import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const PHONE = "972-944-7963";
 const SITE = "https://www.roofcoil.com";
+const APP = "https://shop.roofcoil.com";
+// Where a shop's owner sets prices, the order email, and switches ordering on.
+const SHOP_SETUP = `Set your prices and switch ordering on at ${APP}/ → Shop Floor → Shop Settings.`;
 
 const sb = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -108,8 +114,10 @@ async function listingLive(record: Record<string, any>) {
       : `Keep it current: create a free RoofCoil account with this email address (Sign in / Sign up on any page), then reply to this email and we'll link the listing to it so you can propose changes at ${SITE}/manage-listing.html.`,
     ``,
     record?.accepts_orders
-      ? `Ordering is switched on: orders placed for your shop in the Panel & Trim app go to your order email, and you can work them on your own Shop Floor at https://shop.roofcoil.com/.`
-      : `Want to take orders through RoofCoil? Contractors can send trim, panel and 3D-part orders straight to your shop from the Panel & Trim app. Reply to this email or switch it on from Manage your listing and we'll set it up.`,
+      ? `Ordering is switched on: orders placed for your shop in the Panel & Trim app go to your order email, and you can work them on your own Shop Floor at ${APP}/.`
+      : linked
+        ? `Want to take orders through RoofCoil? Contractors can send trim, panel and 3D-part orders straight to your shop from the Panel & Trim app, priced at your own price list. ${SHOP_SETUP}`
+        : `Want to take orders through RoofCoil? Contractors can send trim, panel and 3D-part orders straight to your shop from the Panel & Trim app. Once the listing is linked to your account, you set your prices and switch ordering on yourself.`,
     ``,
     `Questions? Reply here or call ${PHONE}.`,
     ``,
@@ -173,7 +181,7 @@ async function claimDecided(record: Record<string, any>) {
       `Manage your listing: ${SITE}/manage-listing.html`,
       `Change the phone, website, abilities, colors and the two card sentences there and send them in. We review edits, usually within a business day.`,
       ``,
-      `Want to take orders through RoofCoil? Switch it on in step 5 of Manage your listing and contractors can send trim, panel and 3D-part orders to your shop from the Panel & Trim app.`,
+      `Want to take orders through RoofCoil? ${SHOP_SETUP} Contractors can then send trim, panel and 3D-part orders to your shop from the Panel & Trim app, priced at your own price list.`,
       ``,
       `Questions? Reply here or call ${PHONE}.`,
       ``,
@@ -189,12 +197,53 @@ async function claimDecided(record: Record<string, any>) {
   console.log("listing-alert claim_decided", name, record?.status, await sendMail(to, subject, body));
 }
 
+// An invite to run a shop. The link carries no secret: the invite is accepted by whichever
+// account proves it owns this email address through the normal confirmation, so a forwarded
+// email gives nobody else anything.
+async function shopInvite(record: Record<string, any>) {
+  const to = isEmail(record?.email) ? record.email : null;
+  const shop = record?.shop_name || "a shop";
+  if (!to) { console.log("listing-alert shop_invite: no email for", shop); return; }
+  const by = isEmail(record?.invited_by_email) ? record.invited_by_email : "The shop";
+  const role = record?.role === "owner" ? "an owner" : "staff";
+  const link = `${APP}/${record?.shop_slug ? `?shop=${encodeURIComponent(String(record.shop_slug))}` : ""}`;
+  const accepted = record?.status === "accepted";
+  const until = record?.expires_at ? new Date(record.expires_at).toLocaleDateString("en-US", { month: "long", day: "numeric" }) : null;
+  const subject = accepted ? `You've been added to ${shop} on RoofCoil` : `${shop} invited you to RoofCoil`;
+  const body = (accepted
+    ? [
+      `${by} added you to ${shop} on RoofCoil.com as ${role}.`,
+      ``,
+      `Sign in with this email address and you'll find the shop's Shop Floor, Price List and settings:`,
+      `${link}#signin`,
+      ``,
+      `Questions? Reply here or call ${PHONE}.`,
+      ``,
+      `RoofCoil.com · ${PHONE}`,
+    ]
+    : [
+      `${by} invited you to run ${shop} on RoofCoil.com as ${role}.`,
+      ``,
+      `Create a free account with this email address (${to}) and the shop is yours to work:`,
+      `${link}#signup`,
+      ``,
+      until ? `The invite is good until ${until}.` : null,
+      `Already have a RoofCoil account under a different email? Ask ${by} to invite that address instead.`,
+      ``,
+      `Questions? Reply here or call ${PHONE}.`,
+      ``,
+      `RoofCoil.com · ${PHONE}`,
+    ]).filter((l) => l !== null).join("\n");
+  console.log("listing-alert shop_invite", shop, record?.status, await sendMail(to, subject, body));
+}
+
 async function process(kind: string, record: Record<string, any>) {
   try {
     if (kind === "listing_live") await listingLive(record);
     else if (kind === "edit_decided") await editDecided(record);
     else if (kind === "claim") await claim(record);
     else if (kind === "claim_decided") await claimDecided(record);
+    else if (kind === "shop_invite") await shopInvite(record);
     else await application(record);
   } catch (e) {
     console.error("listing-alert failed", kind, e);

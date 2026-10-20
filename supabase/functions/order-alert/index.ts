@@ -110,10 +110,17 @@ async function sendSms(shortText: string) {
 
 type Shop = { id: string; name: string; phone: string | null; order_email: string | null; accepts_orders: boolean } | null;
 
+// The sign-off under every customer email: the shop that is making the order when the order
+// is routed to a shop, the Fortified desk otherwise (orders with no shop email go there).
+function signOff(routed: boolean, shopName: string, shopPhone: string) {
+  return routed ? `RoofCoil.com · ${shopName}${shopPhone ? ` · ${shopPhone}` : ""}` : `RoofCoil.com · ${DEFAULT_SHOP} · ${PHONE}`;
+}
+
 // The customer's copy: what they ordered, who is making it, and how to reach that shop.
-function customerMail(name: string, shopName: string, shopPhone: string, po: string, items: Record<string, unknown>[], total: number) {
+function customerMail(name: string, shopName: string, shopPhone: string, po: string, items: Record<string, unknown>[], total: number, routed = false) {
   const first = (name || "").trim().split(/\s+/)[0];
   const hi = first ? `Hi ${first},` : "Hi there,";
+  const sign = signOff(routed, shopName, shopPhone);
   const lines = items.map(describeItem);
   const text = [
     hi, "",
@@ -124,7 +131,7 @@ function customerMail(name: string, shopName: string, shopPhone: string, po: str
     "",
     `You can see this order any time under Past Orders: https://shop.roofcoil.com/`,
     "",
-    `RoofCoil.com · Fortified Metals · ${PHONE}`,
+    sign,
   ].join("\n");
   const html = `<div style="background:#F6F4EE;padding:28px 12px;font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;color:#1C1C1E">
   <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;padding:28px 26px;border:1px solid #E7E2D6">
@@ -134,7 +141,7 @@ function customerMail(name: string, shopName: string, shopPhone: string, po: str
     <ul style="font-size:13.5px;line-height:1.6;padding-left:18px;margin:0 0 14px">${lines.map((l) => `<li>${esc(l.replace(/^- /, ""))}</li>`).join("")}</ul>
     <p style="font-size:14px;margin:0 0 18px"><b>Estimated total: ${esc(money(total))}</b> <span style="color:#4E6273">(final pricing confirmed by the shop)</span></p>
     <p style="margin:0 0 20px"><a href="https://shop.roofcoil.com/" style="display:inline-block;background:#0F3D5C;color:#fff;font-weight:700;font-size:14px;text-decoration:none;padding:11px 18px;border-radius:9px">See your orders</a></p>
-    <div style="margin-top:22px;padding-top:14px;border-top:1px solid #E7E2D6;font-size:12px;color:#8A94A6;line-height:1.5">RoofCoil.com · Fortified Metals · ${PHONE}</div>
+    <div style="margin-top:22px;padding-top:14px;border-top:1px solid #E7E2D6;font-size:12px;color:#8A94A6;line-height:1.5">${esc(sign)}</div>
   </div></div>`;
   return { subject: `Order received${po ? ` — ${po}` : ""} · ${shopName}`, text, html };
 }
@@ -146,9 +153,10 @@ const STATUS_LINE: Record<string, { subject: string; lead: string }> = {
 };
 
 // The customer's status note: which pieces reached the status, and who to call.
-function statusMail(name: string, status: string, shopName: string, shopPhone: string, po: string, items: Record<string, unknown>[]) {
+function statusMail(name: string, status: string, shopName: string, shopPhone: string, po: string, items: Record<string, unknown>[], routed = false) {
   const first = (name || "").trim().split(/\s+/)[0];
   const hi = first ? `Hi ${first},` : "Hi there,";
+  const sign = signOff(routed, shopName, shopPhone);
   const words = STATUS_LINE[status] || { subject: `is now ${status}`, lead: `is now ${status}` };
   const lines = items.map(describeItem);
   const text = [
@@ -158,7 +166,7 @@ function statusMail(name: string, status: string, shopName: string, shopPhone: s
     "", ...lines, "",
     `See your orders any time under Past Orders: https://shop.roofcoil.com/`,
     "",
-    `RoofCoil.com · Fortified Metals · ${PHONE}`,
+    sign,
   ].join("\n");
   const html = `<div style="background:#F6F4EE;padding:28px 12px;font-family:Inter,Segoe UI,Helvetica,Arial,sans-serif;color:#1C1C1E">
   <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;padding:28px 26px;border:1px solid #E7E2D6">
@@ -167,7 +175,7 @@ function statusMail(name: string, status: string, shopName: string, shopPhone: s
     <p style="font-size:15px;line-height:1.55;margin:0 0 14px">Your order${po ? ` <b>${esc(po)}</b>` : ""} at <b>${esc(shopName)}</b> ${esc(words.lead)}.${shopPhone ? ` Questions? Call <a href="tel:${esc(shopPhone.replace(/[^\d+]/g, ""))}" style="color:#0F3D5C">${esc(shopPhone)}</a>.` : ""}</p>
     <ul style="font-size:13.5px;line-height:1.6;padding-left:18px;margin:0 0 18px">${lines.map((l) => `<li>${esc(l.replace(/^- /, ""))}</li>`).join("")}</ul>
     <p style="margin:0 0 20px"><a href="https://shop.roofcoil.com/" style="display:inline-block;background:#0F3D5C;color:#fff;font-weight:700;font-size:14px;text-decoration:none;padding:11px 18px;border-radius:9px">See your orders</a></p>
-    <div style="margin-top:22px;padding-top:14px;border-top:1px solid #E7E2D6;font-size:12px;color:#8A94A6;line-height:1.5">RoofCoil.com · Fortified Metals · ${PHONE}</div>
+    <div style="margin-top:22px;padding-top:14px;border-top:1px solid #E7E2D6;font-size:12px;color:#8A94A6;line-height:1.5">${esc(sign)}</div>
   </div></div>`;
   return { subject: `Your order${po ? ` ${po}` : ""} ${words.subject} · ${shopName}`, text, html };
 }
@@ -219,7 +227,7 @@ async function statusChange(record: Record<string, any>) {
       if (error) confirmation = { skipped: `user lookup: ${error.message}` };
       else if (!to) confirmation = { skipped: "account has no email" };
       else {
-        const m = statusMail(first.customerName || "", status, shopName, shopPhone, po, items);
+        const m = statusMail(first.customerName || "", status, shopName, shopPhone, po, items, routed);
         confirmation = await sendEmail(m.subject, m.text, to, m.html);
       }
     }
@@ -302,7 +310,7 @@ async function process(record: Record<string, any>) {
       if (error) confirmation = { skipped: `user lookup: ${error.message}` };
       else if (!to) confirmation = { skipped: "account has no email" };
       else {
-        const m = customerMail(customer, shopName, shopPhone, po, items, total);
+        const m = customerMail(customer, shopName, shopPhone, po, items, total, routed);
         confirmation = await sendEmail(m.subject, m.text, to, m.html);
       }
     }

@@ -195,6 +195,17 @@ staff (`public.staff`) keep every power across every shop. Design and the reason
   `shop_settings` by migration `20261017213414_shops_tenant.sql`; the cleanup migration
   `20261017220436_phase1_cleanup_legacy_keys.sql` then deleted them, returned `app_storage` to plain
   signed-in read/write (it holds only the idea box now), and dropped `customers.tier`.
+- **A shop onboards itself** (Phase 2, `docs/phase2-self-serve-shop-design.md`, migration
+  `20261020181706_phase2_self_serve_shops.sql`). A listing becomes a shop the moment its owner
+  is linked (ordering off); Shop Floor → **Shop Settings** walks the owner through prices,
+  order email and phone, people, tier names and the ordering switch, which needs an order
+  email and a saved price list (the default shop is exempt). Owners invite people by email
+  (`shop_invites`; accepted by whichever account confirms that email), the listing's owner
+  account can never be removed, `?shop=<slug>` works next to `?shop=<id>`, tier names live
+  per shop under `shop_settings` key `tier-labels`, and PO numbers come from each shop's
+  own counter, assigned by `submit-order`. Deploy order: the migration (additive), then
+  `submit-order`, `listing-alert` and `order-alert`, then the build; a later cleanup drops
+  `next_po_number()`, `po_number_seq` and `ordering_shop(uuid)`.
 
 ## How the New Order tab moves
 
