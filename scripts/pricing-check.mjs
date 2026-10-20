@@ -2,7 +2,7 @@
 // Run: node scripts/pricing-check.mjs   (exits non-zero on the first failing check)
 import assert from "node:assert/strict";
 import { computePrice, getSellRates, sellTierFor, sellRate, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE } from "../supabase/functions/_shared/pricing.mjs";
-import { DEFAULT_CATALOG, findGauge, findColor, listedProfiles, clipSpecForProfile, catalogToRows, catalogFromRows, isUsableCatalog } from "../supabase/functions/_shared/catalog.mjs";
+import { DEFAULT_CATALOG, findGauge, findColor, listedProfiles, clipSpecForProfile, catalogToRows, catalogFromRows, isUsableCatalog, resolveCatalog, isOffered, getColorsForBrand } from "../supabase/functions/_shared/catalog.mjs";
 
 const close = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-9, `${msg}: got ${a}, wanted ${b}`);
 const price = (order, tier) => computePrice(order, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE, tier);
@@ -85,5 +85,52 @@ assert.ok(rows.every((r) => typeof r.key === "string" && r.key.length > 0 && typ
 assert.equal(new Set(rows.map((r) => r.kind + "|" + r.parent_key + "|" + r.key)).size, rows.length, "rows are unique by kind, parent and key");
 assert.ok(isUsableCatalog(DEFAULT_CATALOG) && !isUsableCatalog({ brands: [] }), "usability check");
 close(computePrice(trim, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE, "tier1", catalogFromRows(rows)), price(trim, "tier1"), "pricing from rows equals pricing from the default");
+
+// A shop's selection over the platform catalog: switched-off brands, colors and profiles leave
+// the pickers but still resolve for old orders; the shop's own paint line and profile price
+// like platform ones; retired items stay resolvable; the server refuses what is not offered.
+const selection = {
+  brands: { Berridge: false },
+  colors: { "Una-Clad": { Brandywine: false } },
+  materials: { Bonderized: false },
+  profiles: { 'US-150 – 1.5" Mechanical Seam': false },
+  custom: {
+    brands: [{ name: "B Select", base: "painted-steel", paints: ["pvdf", "smp"], gauges: ["24ga", "26ga"], colors: [{ name: "B Bronze", hex: "#4A3E36" }, { name: "B Slate", hex: "#565B5E", premium: true }] },
+             { name: "B Kynar Only", base: "painted-steel", paints: ["pvdf"], gauges: ["24ga"], colors: [{ name: "B White", hex: "#EEEEEE" }] }],
+    profiles: [{ name: 'B-150 – 1.5" Snap-Lock', code: "B150", family: "snap", takeup: 4.25, desc: "the shop's own" }],
+  },
+  retired: { brands: [{ name: "B Old", colors: [{ name: "B Old Red", hex: "#AA0000", premium: true }] }], profiles: [{ name: "B-100 – 1\" Snap-Lock", code: "B100", family: "snap", takeup: 3 }] },
+};
+const shop = resolveCatalog(DEFAULT_CATALOG, selection);
+assert.deepEqual(resolveCatalog(DEFAULT_CATALOG, null), DEFAULT_CATALOG, "no selection is the platform catalog");
+assert.ok(!shop.brands.includes("Berridge") && shop.brands.includes("B Select") && shop.brands.includes("B Kynar Only"), "brands follow the selection");
+assert.ok(!shop.unpainted.includes("Bonderized") && shop.unpainted.includes("Copper"), "materials follow the selection");
+assert.ok(!getColorsForBrand(shop, "Una-Clad", "pvdf").some((c) => c.name === "Brandywine"), "a switched-off color leaves the picker");
+assert.equal(findColor(shop, "Brandywine", "Una-Clad", "pvdf")?.hex, "#6E2F28", "but still resolves");
+assert.equal(findColor(shop, "Buckskin", "Berridge", "pvdf")?.hex, "#8A7B65", "a switched-off brand's color still resolves");
+assert.equal(findColor(shop, "B Old Red", "B Old", "pvdf")?.premium, true, "a retired brand's color still resolves");
+assert.ok(!shop.brands.includes("B Old"), "a retired brand is not offered");
+assert.ok(!listedProfiles(shop).includes('US-150 – 1.5" Mechanical Seam') && shop.profiles['US-150 – 1.5" Mechanical Seam'].takeup === 4.5, "a switched-off profile leaves the pickers but keeps its takeup");
+assert.ok(listedProfiles(shop).includes('B-150 – 1.5" Snap-Lock') && shop.profiles['B-150 – 1.5" Snap-Lock'].vendor === "shop", "the shop's own profile is listed");
+assert.ok(!listedProfiles(shop).includes('B-100 – 1" Snap-Lock') && shop.profiles['B-100 – 1" Snap-Lock'].retired, "a retired profile still resolves");
+assert.deepEqual(shop.rules.pvdfOnly.filter((b) => b.startsWith("B ")), [], "two paints and two gauges: no rule");
+assert.deepEqual(shop.rules.pvdf24gaOnly.filter((b) => b.startsWith("B ")), ["B Kynar Only"], "PVDF and 24 ga only: the Berridge-style rule");
+assert.equal(findGauge(shop, "24ga", "B Select").trimFt, 2.75, "a painted paint line prices from the painted gauge table");
+const ownTrim = { ...trim, brand: "B Select", colorName: "B Slate" };
+close(computePrice(ownTrim, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE, "tier2", shop), computePrice({ ...trim, colorName: "Burnished Slate" }, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE, "tier2", DEFAULT_CATALOG), "a premium color of the shop's own line prices like a platform premium color");
+assert.ok(computePrice(ownTrim, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE, "tier2", shop) > computePrice({ ...ownTrim, colorName: "B Bronze" }, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE, "tier2", shop), "and more than its standard color");
+const ownPanel = { ...panel, profile: 'B-150 – 1.5" Snap-Lock' };
+const withRow = [...DEFAULT_PRICE_LIST, { id: "pb150", category: "Roof Panel", name: "B-150 Fabrication (per linear ft)", cost: 0, tier1: 2.5, tier2: 2.5, greenleaf: 2.5 }];
+assert.ok(computePrice(ownPanel, withRow, DEFAULT_COIL_WIDTH_SCALE, "tier2", shop) > computePrice(ownPanel, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE, "tier2", shop), "the shop's own profile picks up the fabrication row named after its first word, like the platform's");
+assert.ok(isOffered(shop, trim).ok, "a platform item the shop kept is offered");
+assert.ok(!isOffered(shop, { ...trim, brand: "Berridge", colorName: "Buckskin" }).ok, "a switched-off brand is refused");
+assert.ok(!isOffered(shop, { ...trim, brand: "Una-Clad", colorName: "Brandywine" }).ok, "a switched-off color is refused");
+assert.ok(isOffered(shop, ownTrim).ok && isOffered(shop, ownPanel).ok, "the shop's own line and profile are offered");
+assert.ok(!isOffered(DEFAULT_CATALOG, ownPanel).ok, "the shop's own profile is not offered at a shop without it");
+assert.ok(!isOffered(shop, { ...panel, profile: 'US-150 – 1.5" Mechanical Seam' }).ok, "a switched-off profile is refused");
+assert.ok(!isOffered(shop, { ...trim, brand: "Bonderized", colorName: "Bonderized (Mill Finish)" }).ok && isOffered(shop, { ...trim, brand: "Copper", colorName: "Natural Copper (Mill Finish)" }).ok, "bare metals follow the selection");
+const collide = resolveCatalog(DEFAULT_CATALOG, { custom: { brands: [{ name: "Berridge", colors: [{ name: "X", hex: "#000000" }] }], profiles: [{ name: 'SS450 – 1.5" Snap-Lock', code: "SS450", family: "snap", takeup: 1 }] } });
+assert.deepEqual(collide.colors.Berridge, DEFAULT_CATALOG.colors.Berridge, "a custom item cannot shadow a platform item");
+assert.equal(collide.profiles['SS450 – 1.5" Snap-Lock'].takeup, 4.125, "nor a platform profile");
 
 console.log("pricing-check: all checks passed");

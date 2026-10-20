@@ -278,7 +278,9 @@ export function getColorsForBrand(catalog, brand, paintId) {
 export function findColor(catalog, name, brand, paintId) {
   const preferred = getColorsForBrand(catalog, brand, paintId).find((c) => c.name === name);
   if (preferred) return preferred;
-  for (const entry of Object.values(catalog.colors)) {
+  // a shop's resolved catalog keeps every color it ever offered under allColors, so an old
+  // order's color still resolves after the shop switches it off
+  for (const entry of Object.values(catalog.allColors || catalog.colors)) {
     const lists = Array.isArray(entry) ? [entry] : Object.values(entry);
     for (const list of lists) {
       const hit = list.find((c) => c.name === name);
@@ -366,4 +368,73 @@ export function catalogFromRows(rows) {
 export function isUsableCatalog(c) {
   return !!c && Array.isArray(c.brands) && c.brands.length > 0 && Array.isArray(c.paints) && c.paints.length > 0
     && Array.isArray(c.gauges?.painted) && c.gauges.painted.length > 0 && !!c.profiles && Object.keys(c.profiles).length > 0 && !!c.colors && Object.keys(c.colors).length > 0;
+}
+
+/* ----------------------------------- a shop's selection ----------------------------------- */
+// What a shop offers, over the platform catalog: one document in shop_settings (key
+// `catalog`, docs/catalog-as-data-design.md §2.2). Platform brands, colors, bare metals and
+// profiles default to on and are switched off by name; the shop's own paint lines (with
+// their colors) and profiles live under `custom`; what it removed again lives under
+// `retired` so an old order still resolves. The result has the DEFAULT_CATALOG shape plus
+// allColors (every color ever offered, for findColor) — pickers read brands, unpainted,
+// colors and listedProfiles, which carry the offer only.
+export function resolveCatalog(platform, selection) {
+  const base = platform || DEFAULT_CATALOG;
+  if (!selection || typeof selection !== "object" || Array.isArray(selection)) return base;
+  const off = (map, key) => !!map && map[key] === false;
+  const brandsOff = selection.brands || {}, colorsOff = selection.colors || {}, materialsOff = selection.materials || {}, profilesOff = selection.profiles || {};
+  const custom = selection.custom || {}, retired = selection.retired || {};
+  const taken = new Set([...base.brands, ...base.unpainted, ...Object.keys(base.colors)]);
+  const customBrands = (Array.isArray(custom.brands) ? custom.brands : []).filter((b) => b && typeof b.name === "string" && b.name.trim() && !taken.has(b.name));
+  const retiredBrands = (Array.isArray(retired.brands) ? retired.brands : []).filter((b) => b && typeof b.name === "string" && b.name.trim() && !taken.has(b.name));
+  const customProfiles = (Array.isArray(custom.profiles) ? custom.profiles : []).filter((q) => q && typeof q.name === "string" && q.name.trim() && !base.profiles[q.name]);
+  const retiredProfiles = (Array.isArray(retired.profiles) ? retired.profiles : []).filter((q) => q && typeof q.name === "string" && q.name.trim() && !base.profiles[q.name]);
+
+  const brands = [...base.brands.filter((b) => !off(brandsOff, b)), ...customBrands.map((b) => b.name)];
+  const unpainted = base.unpainted.filter((m) => !off(materialsOff, m));
+  const colorList = (list) => (Array.isArray(list) ? list : []).filter((c) => c && typeof c.name === "string").map((c) => ({ name: c.name, hex: c.hex, ...(c.premium ? { premium: true } : {}) }));
+  const colors = {}, allColors = {};
+  for (const [group, entry] of Object.entries(base.colors)) {
+    const list = Array.isArray(entry) ? entry : [...(entry.pvdf || []), ...(entry.smp || [])];
+    allColors[group] = list;
+    const groupOn = base.brands.includes(group) ? !off(brandsOff, group) : base.unpainted.includes(group) ? !off(materialsOff, group) : true;
+    if (groupOn) colors[group] = list.filter((c) => !off(colorsOff[group], c.name));
+  }
+  for (const b of customBrands) { const list = colorList(b.colors); allColors[b.name] = list; colors[b.name] = list; }
+  for (const b of retiredBrands) allColors[b.name] = colorList(b.colors);
+
+  const pvdfOnly = (b) => Array.isArray(b.paints) && b.paints.length === 1 && b.paints[0] === "pvdf";
+  const ga24Only = (b) => Array.isArray(b.gauges) && b.gauges.length === 1 && b.gauges[0] === "24ga";
+  const rules = {
+    pvdfOnly: [...base.rules.pvdfOnly, ...customBrands.filter((b) => pvdfOnly(b) && !ga24Only(b)).map((b) => b.name)],
+    pvdf24gaOnly: [...base.rules.pvdf24gaOnly, ...customBrands.filter((b) => pvdfOnly(b) && ga24Only(b)).map((b) => b.name)],
+    unpaintedFlatsOnly: base.rules.unpaintedFlatsOnly,
+  };
+  const gauges = { ...base.gauges };
+  for (const b of [...customBrands, ...retiredBrands]) if (b.base === "copper") gauges[b.name] = base.gauges.Copper;
+
+  const profiles = {};
+  for (const [name, q] of Object.entries(base.profiles)) profiles[name] = !q.delisted && off(profilesOff, name) ? { ...q, delisted: true, switchedOff: true } : q;
+  const profileFields = (q) => ({ code: String(q.code || "").trim(), family: q.family || "mech", takeup: Number(q.takeup) || 0, vendor: "shop", desc: q.desc || "" });
+  for (const q of customProfiles) profiles[q.name] = profileFields(q);
+  for (const q of retiredProfiles) profiles[q.name] = { ...profileFields(q), delisted: true, retired: true };
+
+  return { ...base, brands, brandGroups: { Painted: brands }, unpainted, rules, colors, allColors, gauges, profiles };
+}
+
+// Whether a shop's catalog offers what an order asks for: its brand or bare metal, its color
+// for a painted brand, and its profile for a panel. submit-order refuses what the pickers
+// would not have shown; delisted, switched-off and retired items still resolve for
+// pricing history but are not offered.
+export function isOffered(catalog, order) {
+  const brand = order?.brand;
+  const painted = catalog.brands.includes(brand), bare = catalog.unpainted.includes(brand);
+  if (!painted && !bare) return { ok: false, reason: `That shop doesn't offer ${brand || "that material"}.` };
+  if (painted && order.colorName && !getColorsForBrand(catalog, brand, order.paintId).some((c) => c.name === order.colorName)) {
+    return { ok: false, reason: `That shop doesn't offer ${order.colorName} in ${brand}.` };
+  }
+  if (order.type === "panel" && order.profile && !listedProfiles(catalog).includes(order.profile)) {
+    return { ok: false, reason: `That shop doesn't roll ${order.profile}.` };
+  }
+  return { ok: true };
 }

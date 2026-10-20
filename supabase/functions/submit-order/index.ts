@@ -29,7 +29,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { computePrice, sellTierFor, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE } from "../_shared/pricing.mjs";
-import { DEFAULT_CATALOG, catalogFromRows, isUsableCatalog } from "../_shared/catalog.mjs";
+import { DEFAULT_CATALOG, catalogFromRows, isUsableCatalog, resolveCatalog, isOffered } from "../_shared/catalog.mjs";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -56,6 +56,14 @@ async function shopList(shopId: string, key: string, fallback: any[]): Promise<a
   const { data, error } = await admin.from("shop_settings").select("value").eq("shop_id", shopId).eq("key", key).maybeSingle();
   if (error) throw new Error(`shop_settings ${key}: ${error.message}`);
   return Array.isArray(data?.value) ? data.value : fallback;
+}
+
+// A shop's catalog selection (shop_settings key 'catalog'), or null when it has none.
+async function shopSelection(shopId: string) {
+  const { data, error } = await admin.from("shop_settings").select("value").eq("shop_id", shopId).eq("key", "catalog").maybeSingle();
+  if (error) throw new Error(`shop_settings catalog: ${error.message}`);
+  const v = data?.value;
+  return v && typeof v === "object" && !Array.isArray(v) ? v : null;
 }
 
 // The platform catalog (public.catalog_items) as the object pricing reads, or the code
@@ -115,13 +123,15 @@ Deno.serve(async (req: Request) => {
 
   let tier: string, priceList, coilWidthScale, catalog, hadTierRow = false;
   try {
-    const [{ data: shopCustomer, error: tierErr }, list, scale, cat] = await Promise.all([
+    const [{ data: shopCustomer, error: tierErr }, list, scale, platform, selection] = await Promise.all([
       admin.from("shop_customers").select("tier").eq("shop_id", shopId).eq("user_id", user.id).maybeSingle(),
       shopList(shopId, "price-list", DEFAULT_PRICE_LIST),
       shopList(shopId, "coil-width-scale", DEFAULT_COIL_WIDTH_SCALE),
       loadCatalog(),
+      shopSelection(shopId),
     ]);
-    catalog = cat;
+    // the shop's own catalog: the platform's with its switches and additions, exactly as the app resolved it
+    catalog = resolveCatalog(platform, selection);
     if (tierErr) throw new Error(`shop_customers: ${tierErr.message}`);
     hadTierRow = !!shopCustomer;
     tier = sellTierFor(shopCustomer);
@@ -140,8 +150,10 @@ Deno.serve(async (req: Request) => {
     if (!TYPES.includes(raw.type)) return json({ error: `Unknown order type "${raw.type}".` }, 400);
     if (typeof raw.id !== "string" || !ORDER_ID.test(raw.id)) return json({ error: "Bad order id." }, 400);
     const { userId: _userId, ...order } = raw; // the app's local-only field; user_id is the column
+    // Only what the shop offers: a brand, color or profile the pickers would not have shown is refused.
+    const offered = isOffered(catalog, order);
+    if (!offered.ok) return json({ error: offered.reason }, 400);
     let price: number;
-    // The platform catalog; a shop's own selection over it arrives with catalog-as-data step 3.
     try { price = computePrice(order, priceList, coilWidthScale, tier, catalog); } catch { return json({ error: "That order can't be priced." }, 400); }
     if (!Number.isFinite(price) || price < 0) return json({ error: "That order can't be priced." }, 400);
     order.price = price;
