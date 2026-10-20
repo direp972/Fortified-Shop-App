@@ -3626,6 +3626,7 @@ function ShopSettingsView({ shopId, info, reloadInfo, isOwner, userId, theme, fl
     if (error) return fail(error, "Couldn't save that — try again.");
     flash({ ok: "Saved — your link changed.", invalid: "A link name is 3–60 lower-case letters, digits and hyphens.", reserved: "That name is reserved — pick another.", taken: "Another shop has that name.", live: "Ordering is on, so the link stays as it is — it may already be in use." }[data] || "Couldn't save that.");
     if (data === "ok") { await reloadInfo(); refreshAuth(); }
+    else setSlugDraft(info.slug || ""); // a refused name does not linger in the field
   });
   const savePo = () => run("po", async () => {
     const next = parseInt(poNext, 10);
@@ -3633,6 +3634,7 @@ function ShopSettingsView({ shopId, info, reloadInfo, isOwner, userId, theme, fl
     if (error) return fail(error, "Couldn't save that — try again.");
     flash(data === "ok" ? "Saved." : data === "too-low" ? `The next number can't go below ${info.po_next} — numbers are never reused.` : "The prefix is up to 8 letters, digits or hyphens, and the next number is 1 or more.");
     if (data === "ok") await reloadInfo();
+    else { setPoPrefix(info.po_prefix ?? "PO-"); setPoNext(String(info.po_next ?? 1001)); } // back to what the server kept
   });
   const saveLabels = () => run("labels", async () => {
     const next = {};
@@ -3792,7 +3794,7 @@ function ShopSettingsView({ shopId, info, reloadInfo, isOwner, userId, theme, fl
         ) : roster.map((m) => (
           <div key={m.user_id} style={{ ...card, display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{m.name || "(no name)"}{m.user_id === userId ? " (you)" : ""}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{m.name || (m.email ? m.email.split("@")[0] : "(no name)")}{m.user_id === userId ? " (you)" : ""}</div>
               <div style={{ fontSize: 10.5, color: theme.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.email}{m.is_listing_owner ? " · listing owner" : ""}</div>
             </div>
             {isOwner && !m.is_listing_owner && m.user_id !== userId ? (
@@ -4109,6 +4111,11 @@ export default function ShopOrderApp() {
   const [notes, setNotes] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [shopFloorView, setShopFloorView] = useState("jobs"); // "jobs" | "materials" | "settings"
+  // Opening Shop Settings re-reads the shop (an order since then moved its PO counter, a
+  // colleague may have changed something), so the screen never shows a stale number.
+  useEffect(() => {
+    if (tab === "dashboard" && shopFloorView === "settings") reloadShopInfo();
+  }, [tab, shopFloorView, reloadShopInfo]);
   const [expandedJobs, setExpandedJobs] = useState({});
   const [matStatus, setMatStatus] = useState({}); // materials pull board: lineKey -> "instock" | "pulled"
   const matSaveChain = useRef(Promise.resolve()); // serializes board writes so rapid taps can't land out of order
@@ -5576,6 +5583,7 @@ export default function ShopOrderApp() {
       const saved = await insertOrders(newOrders);
       setSubmitting(false);
       if (!saved) return; // insertOrders already said so — keep the parts so they can retry
+      if (canManageShop) reloadShopInfo(); // the shop's PO counter just moved
       const totalPrice = saved.reduce((s, o) => s + o.price, 0);
       const po = saved[0]?.poNumber;
       setToast(`Order sent — ${po ? `${po}, ` : ""}${newOrders.length} part${newOrders.length === 1 ? "" : "s"}, estimate ${money(totalPrice)}. The shop will confirm final pricing.`);
@@ -5660,7 +5668,8 @@ export default function ShopOrderApp() {
     const saved = await insertOrders([order]);
     setSubmitting(false);
     if (!saved) return; // insertOrders already said so — keep the form so they can retry
-    setToast(`Order sent — estimate ${money(saved[0].price)}. The shop will confirm final pricing.`);
+    if (canManageShop) reloadShopInfo(); // the shop's PO counter just moved
+    setToast(`Order sent — ${saved[0]?.poNumber ? `${saved[0].poNumber}, ` : ""}estimate ${money(saved[0].price)}. The shop will confirm final pricing.`);
     if (box3dReturn) { // reached from the Commercial Kit: the trim order is still being built, so back to it — name, phone and notes kept
       dropNav("part3d"); setBox3dReturn(false); setBoxNote(`${PART3D_LABELS[partType]} sent as its own order — pick the next piece.`); openRoofBox("com");
     } else resetForm();
@@ -6330,10 +6339,13 @@ export default function ShopOrderApp() {
         </div>
       )}
 
+      {/* Pinned to the top of the viewport, not the page: a save made far down Shop Settings
+          or the Backend still gets its "Saved." where the eye is. */}
       {toast && (
-        <div className="pop-in" style={{
-          background: `linear-gradient(90deg, #FBF3D9, #F5E6C3)`, borderBottom: `3px solid ${SAFETY}`, color: theme.text,
-          padding: "11px 20px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8,
+        <div className="pop-in" role="status" style={{
+          position: "fixed", top: 10, left: 0, right: 0, margin: "0 auto", width: "fit-content", zIndex: 1200, maxWidth: "min(92vw, 640px)", boxSizing: "border-box",
+          background: `linear-gradient(90deg, #FBF3D9, #F5E6C3)`, border: `1px solid ${SAFETY}`, borderBottom: `3px solid ${SAFETY}`, borderRadius: 10, color: theme.text,
+          boxShadow: "0 6px 20px rgba(0,0,0,0.18)", padding: "11px 20px", fontSize: 13, fontWeight: 600, display: "flex", alignItems: "center", gap: 8,
         }}>
           <span style={{ fontSize: 16 }}>✨</span>
           {toast}
@@ -8166,7 +8178,7 @@ export default function ShopOrderApp() {
                   customers.map((c) => (
                     <div key={c.id} style={{ background: theme.card, borderRadius: 8, padding: 10, marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{c.name || "(no name)"}</div>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{c.name || (c.email ? c.email.split("@")[0] : "(no name)")}</div>
                         <div style={{ fontSize: 10.5, color: theme.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.email}</div>
                       </div>
                       <select value={c.tier} onChange={(e) => updateCustomerTier(c.id, e.target.value)}
