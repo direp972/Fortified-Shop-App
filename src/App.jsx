@@ -299,7 +299,7 @@ function generatePanelIsoSvg(profileLabel, ribStyle, idSuffix) {
 // The panel catalog's sections, from the active catalog: the New Tech profiles, Adax's,
 // and the selected shop's own (vendor "shop"), the last one only when it has some.
 const panelVendors = () => {
-  const listed = PROFILES()();
+  const listed = PROFILES();
   const own = listed.filter((p) => activeCatalog.profiles[p].vendor === "shop");
   return [
     {
