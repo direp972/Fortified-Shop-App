@@ -302,3 +302,68 @@ export const listedProfiles = (catalog) => Object.keys(catalog.profiles).filter(
 export const profileInfo = (catalog, profile) => catalog.profiles[profile] || null;
 export const profileFamily = (catalog, profile) => catalog.profiles[profile]?.family || "mech";
 export const clipSpecForProfile = (catalog, profile) => catalog.clips[catalog.profiles[profile]?.code] || null;
+
+/* ------------------------------------ rows and back ------------------------------------ */
+// The platform table (public.catalog_items) holds this same catalog as rows: one per brand,
+// bare metal, color, gauge, paint, profile, clip and accessory, with parent_key tying a
+// color to its brand, a gauge to its table and an accessory spec to its type ('' when there
+// is no parent). catalogToRows writes the seed migration; catalogFromRows rebuilds the
+// object the lookups read. They are inverses: pricing-check asserts that
+// catalogFromRows(catalogToRows(DEFAULT_CATALOG)) deep-equals DEFAULT_CATALOG, whatever
+// order the rows come back in. sort keeps every list in its original order, and the order
+// of the color and gauge groups too, because findColor's search across brands follows it.
+export const CATALOG_KINDS = ["brand", "material", "color", "gauge", "paint", "profile", "clip", "accessory"];
+
+export function catalogToRows(catalog) {
+  const rows = [];
+  const push = (kind, parent_key, key, data, sort, delisted = false) => rows.push({ kind, parent_key, key, data, sort, delisted });
+  catalog.brands.forEach((b, i) => push("brand", "", b, { pvdfOnly: catalog.rules.pvdfOnly.includes(b), pvdf24gaOnly: catalog.rules.pvdf24gaOnly.includes(b) }, i));
+  catalog.unpainted.forEach((m, i) => push("material", "", m, { flatsOnly: catalog.rules.unpaintedFlatsOnly.includes(m) }, i));
+  Object.entries(catalog.colors).forEach(([group, entry], gi) => {
+    const list = Array.isArray(entry) ? entry : [...(entry.pvdf || []), ...(entry.smp || [])];
+    list.forEach((c, i) => push("color", group, c.name, { hex: c.hex, ...(c.premium ? { premium: true } : {}) }, gi * 1000 + i));
+  });
+  Object.entries(catalog.gauges).forEach(([set, list], gi) => list.forEach((g, i) => push("gauge", set, g.id, { label: g.label, panelSqft: g.panelSqft, trimFt: g.trimFt }, gi * 100 + i)));
+  catalog.paints.forEach((p, i) => push("paint", "", p.id, { label: p.label, mult: p.mult }, i));
+  Object.entries(catalog.profiles).forEach(([name, p], i) => { const { delisted, ...rest } = p; push("profile", "", name, rest, i, !!delisted); });
+  Object.entries(catalog.clips).forEach(([code, c], i) => push("clip", "", code, { code: c.code, perBox: c.perBox }, i));
+  catalog.accessories.types.forEach((t, i) => push("accessory", "", t, { dryIn: false }, i));
+  catalog.accessories.dryIn.forEach((t, i) => push("accessory", "", t, { dryIn: true }, 100 + i));
+  Object.entries(catalog.accessories.specs).forEach(([type, specs], gi) => specs.forEach((s, i) => push("accessory", type, s, {}, gi * 100 + i)));
+  return rows;
+}
+
+export function catalogFromRows(rows) {
+  const by = (kind) => rows.filter((r) => r.kind === kind).sort((a, b) => a.sort - b.sort);
+  const parent = (r) => (r.parent_key == null ? "" : r.parent_key);
+  const brandRows = by("brand");
+  const brands = brandRows.map((r) => r.key);
+  const materialRows = by("material");
+  const rules = {
+    pvdfOnly: brandRows.filter((r) => r.data?.pvdfOnly).map((r) => r.key),
+    pvdf24gaOnly: brandRows.filter((r) => r.data?.pvdf24gaOnly).map((r) => r.key),
+    unpaintedFlatsOnly: materialRows.filter((r) => r.data?.flatsOnly).map((r) => r.key),
+  };
+  const colors = {};
+  for (const r of by("color")) (colors[parent(r)] ||= []).push({ name: r.key, hex: r.data?.hex, ...(r.data?.premium ? { premium: true } : {}) });
+  const gauges = {};
+  for (const r of by("gauge")) (gauges[parent(r)] ||= []).push({ id: r.key, label: r.data?.label, panelSqft: r.data?.panelSqft, trimFt: r.data?.trimFt });
+  const paints = by("paint").map((r) => ({ id: r.key, label: r.data?.label, mult: r.data?.mult }));
+  const profiles = {};
+  for (const r of by("profile")) profiles[r.key] = { ...(r.data || {}), ...(r.delisted ? { delisted: true } : {}) };
+  const clips = {};
+  for (const r of by("clip")) clips[r.key] = { code: r.data?.code, perBox: r.data?.perBox };
+  const accessoryRows = by("accessory");
+  const types = accessoryRows.filter((r) => !parent(r) && !r.data?.dryIn).map((r) => r.key);
+  const dryIn = accessoryRows.filter((r) => !parent(r) && r.data?.dryIn).map((r) => r.key);
+  const specs = {};
+  for (const r of accessoryRows.filter((r) => parent(r))) (specs[parent(r)] ||= []).push(r.key);
+  return { brands, brandGroups: { Painted: brands }, unpainted: materialRows.map((r) => r.key), rules, colors, gauges, paints, profiles, clips, accessories: { types, dryIn, specs } };
+}
+
+// What pricing and the pickers cannot do without; a table that lacks any of it is not
+// used, and the caller keeps DEFAULT_CATALOG.
+export function isUsableCatalog(c) {
+  return !!c && Array.isArray(c.brands) && c.brands.length > 0 && Array.isArray(c.paints) && c.paints.length > 0
+    && Array.isArray(c.gauges?.painted) && c.gauges.painted.length > 0 && !!c.profiles && Object.keys(c.profiles).length > 0 && !!c.colors && Object.keys(c.colors).length > 0;
+}

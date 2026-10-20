@@ -2,7 +2,7 @@
 // Run: node scripts/pricing-check.mjs   (exits non-zero on the first failing check)
 import assert from "node:assert/strict";
 import { computePrice, getSellRates, sellTierFor, sellRate, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE } from "../supabase/functions/_shared/pricing.mjs";
-import { DEFAULT_CATALOG, findGauge, findColor, listedProfiles, clipSpecForProfile } from "../supabase/functions/_shared/catalog.mjs";
+import { DEFAULT_CATALOG, findGauge, findColor, listedProfiles, clipSpecForProfile, catalogToRows, catalogFromRows, isUsableCatalog } from "../supabase/functions/_shared/catalog.mjs";
 
 const close = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-9, `${msg}: got ${a}, wanted ${b}`);
 const price = (order, tier) => computePrice(order, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE, tier);
@@ -72,5 +72,18 @@ assert.ok(listed.includes('SS450 – 1.5" Snap-Lock') && !listed.includes("BB750
 assert.ok(DEFAULT_CATALOG.profiles["BB750 – Board and Batten"], "but still resolve for old orders");
 assert.equal(clipSpecForProfile(DEFAULT_CATALOG, 'SS450 – 1.5" Snap-Lock').code, "SG-114-24-SL", "clip spec by profile");
 assert.equal(clipSpecForProfile(DEFAULT_CATALOG, 'FWQ100 – 1" Flush Wall / Soffit'), null, "profiles without clips");
+
+// The platform table holds the catalog as rows: writing the default out and reading it back
+// gives the default again, in every order the rows might come back in, including the order
+// of the color groups that findColor searches across.
+const rows = catalogToRows(DEFAULT_CATALOG);
+assert.deepEqual(catalogFromRows(rows), DEFAULT_CATALOG, "rows round-trip to the default catalog");
+assert.deepEqual(catalogFromRows([...rows].reverse()), DEFAULT_CATALOG, "row order does not matter");
+assert.deepEqual(Object.keys(catalogFromRows([...rows].reverse()).colors), Object.keys(DEFAULT_CATALOG.colors), "color groups keep their order");
+assert.deepEqual(Object.keys(catalogFromRows([...rows].reverse()).profiles), Object.keys(DEFAULT_CATALOG.profiles), "profiles keep their order");
+assert.ok(rows.every((r) => typeof r.key === "string" && r.key.length > 0 && typeof r.parent_key === "string"), "every row has a key and a parent (empty when none)");
+assert.equal(new Set(rows.map((r) => r.kind + "|" + r.parent_key + "|" + r.key)).size, rows.length, "rows are unique by kind, parent and key");
+assert.ok(isUsableCatalog(DEFAULT_CATALOG) && !isUsableCatalog({ brands: [] }), "usability check");
+close(computePrice(trim, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE, "tier1", catalogFromRows(rows)), price(trim, "tier1"), "pricing from rows equals pricing from the default");
 
 console.log("pricing-check: all checks passed");
