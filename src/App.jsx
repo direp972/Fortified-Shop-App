@@ -4,7 +4,8 @@ import * as THREE from "three";
 import { storage, shopStorage } from "./lib/storage";
 import { supabase } from "./lib/supabaseClient";
 import { useAuth } from "./lib/AuthProvider";
-import { GAUGE_OPTIONS, COPPER_WEIGHT_OPTIONS, G90_GAUGE_OPTIONS, GALVALUME_GAUGE_OPTIONS, BONDERIZED_GAUGE_OPTIONS, PAINT_OPTIONS, COLORS_BY_BRAND, scupperSpec, scupperBack, MILEAGE_FREE, MILEAGE_RATE, mileageCharge, getColorsForBrand, findColor, findGauge, coilPriceForWidth, findFabItem, getSellRates, computePrice, sellRate, sellTierFor, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE } from "../supabase/functions/_shared/pricing.mjs";
+import { scupperSpec, scupperBack, MILEAGE_FREE, MILEAGE_RATE, mileageCharge, coilPriceForWidth, findFabItem, getSellRates, computePrice, sellRate, sellTierFor, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE } from "../supabase/functions/_shared/pricing.mjs";
+import { DEFAULT_CATALOG, GAUGE_OPTIONS, COPPER_WEIGHT_OPTIONS, G90_GAUGE_OPTIONS, GALVALUME_GAUGE_OPTIONS, BONDERIZED_GAUGE_OPTIONS, PAINT_OPTIONS, COLORS_BY_BRAND, BRAND_GROUPS, BRANDS, UNPAINTED_MATERIALS, PVDF_24GA_ONLY_BRANDS, PVDF_ONLY_BRANDS, UNPAINTED_FLATS_ONLY_BRANDS, PROFILE_INFO, PROFILES, CLIP_SPECS, ACCESSORY_TYPES, DRY_IN_TYPES, ACCESSORY_SPECS, getColorsForBrand as catalogColorsForBrand, findColor as catalogFindColor, findGauge as catalogFindGauge } from "../supabase/functions/_shared/catalog.mjs";
 
 /* ---------------------------------- tokens ---------------------------------- */
 const INK = "#0F3D5C";        // blueprint ink
@@ -41,60 +42,16 @@ const MATERIAL_DENSITIES = {
   copper: { label: "Copper", density: 0.323 },
 };
 
-const BRAND_GROUPS = {
-  Painted: ["Fortified Metal", "Una-Clad", "Adax Metals", "Berridge"],
-};
-const BRANDS = [...BRAND_GROUPS.Painted]; // painted brands only — unpainted materials live in their own dropdown
-const UNPAINTED_MATERIALS = ["G90 Galvanized", "Copper", "Galvalume", "Bonderized"];
-const PVDF_24GA_ONLY_BRANDS = ["Berridge"];
-const PVDF_ONLY_BRANDS = ["Una-Clad"]; // no SMP, but any gauge is fine
-const UNPAINTED_FLATS_ONLY_BRANDS = ["G90 Galvanized"];
+// The catalog this build offers: the brands, colors, metals, gauges, paints, profiles and
+// accessories in supabase/functions/_shared/catalog.mjs, which is also what submit-order
+// prices against. Everything below reads it through these names; when a shop's own catalog
+// arrives (docs/catalog-as-data-design.md) the resolved catalog takes DEFAULT_CATALOG's place
+// here and the lookups follow it.
+const CATALOG = DEFAULT_CATALOG;
+const getColorsForBrand = (brand, paintId) => catalogColorsForBrand(CATALOG, brand, paintId);
+const findColor = (name, brand, paintId) => catalogFindColor(CATALOG, name, brand, paintId);
+const findGauge = (gaugeId, brand) => catalogFindGauge(CATALOG, gaugeId, brand);
 
-const PROFILE_INFO = {
-  // Takeups (coil width − finished coverage) are NTM's published "material usage" figures,
-  // taken from the official profile drawings / Material Usage Guide (verified 2026-08-19).
-  // NTM marks them APPROX., measured with clip relief engaged where that's standard.
-  'SS450 – 1.5" Snap-Lock': { code: "SS450", family: "snap", takeup: 4.125, desc: "Popular residential snap-lock; the clip flares over the male leg." },
-  'SS150 – 1.5" Mechanical Seam': { code: "SS150", family: "mech", takeup: 4, desc: "Taller mechanical seam for added rigidity on architectural runs." },
-  'SSQ200 – 2" Mechanical Seam': { code: "SSQ200", family: "mech", takeup: 5.8125, desc: "Commercial workhorse mechanical seam, rated for open-purlin spans down to 2:12 slope." },
-  'SSQ675 – 1.75" Snap-Lock': { code: "SSQ675", family: "snap", takeup: 6.125, desc: "Taller snap-lock profile for a more pronounced seam line." },
-  'FWQ100 – 1" Flush Wall / Soffit': { code: "FWQ100", family: "flush", takeup: 4, desc: "Flat panel with adjustable reveal for soffits, fascia, underdeck, and flush wall siding." },
-  "BB750 – Board and Batten": { code: "BB750", family: "batten", takeup: 3.625, delisted: true, desc: "Vertical board-and-batten wall siding profile with a farmhouse look." },
-  'SS100 – 1" Mechanical Seam': { code: "SS100", family: "mech", takeup: 3, desc: "Low-profile double-lock mechanical seam. 28–22 ga. steel, aluminum, or copper." },
-  'SSQ210A – 2" ARMCO Mechanical Seam': { code: "SSQ210A", family: "mecharmco", takeup: 6.125, delisted: true, desc: "SSQ200 seam plus an extra down leg for added strength in high-wind, severe-weather markets." },
-  'SSQ550 – 1.5" Snap-Lock': { code: "SSQ550", family: "snap", takeup: 5.125, delisted: true, desc: "1.5\" snap-lock, alternate roller set." },
-  'TRQ250 – 2.5" Mechanical Seam Trapezoid': { code: "TRQ250", family: "trapezoid", takeup: 5.625, delisted: true, desc: "Tallest seam in the lineup, with an anti-capillary leg for commercial/industrial roofs." },
-  'SS450SL – 1.5" Snap-Lock': { code: "SS450SL", family: "snapbump", takeup: 4.375, delisted: true, desc: "Same profile as SS450 with a self-locking bump on the male leg." },
-  'FF100 – 1" Snap-Lock, Slotted Flange': { code: "FF100", family: "flange", takeup: 4.0625, desc: "Fastened through a flange on the male leg, then the female leg snaps over it — no clips." },
-  'FF150 – 1.5" Snap-Lock, Slotted Flange': { code: "FF150", family: "flange", takeup: 5.3125, delisted: true, desc: "Taller fastener-flange snap-lock, no clips required." },
-  'SSQ275 – 2" Snap-Lock / Mech. Seam': { code: "SSQ275", family: "newlock", takeup: 6.5, delisted: true, desc: "Proprietary two-in-one profile — install as snap-lock, seam it later if the job calls for it." },
-  // Adax Metals (Weatherford, TX) — licensed Ultra Seam profiles they roll in-house.
-  // vendor: "adax" routes these into the Adax section of the panel catalog; entries
-  // without a vendor field are the New Tech Machinery profiles above. Ultra Seam publishes NO
-  // coil-width/material-usage specs (checked every data sheet 2026-08-19), so these
-  // takeups are estimates borrowed from the equivalent NTM seam geometry above —
-  // replace with Adax's real numbers when the shop gets them.
-  'US-100CS – 1" Snap-On Cap Seam': { code: "US-100CS", family: "batten", takeup: 3, vendor: "adax", delisted: true, desc: 'Snap-on cap over a 1" seam; 12–20" pan widths, flat or striated.' },
-  'US-100NS – 1" Nail Strip': { code: "US-100NS", family: "flange", takeup: 3, vendor: "adax", desc: 'Fastener-flange nail strip for roof or siding; Class 4 hail rated.' },
-  'US-150 – 1.5" Mechanical Seam': { code: "US-150", family: "mech", takeup: 4.5, vendor: "adax", desc: 'Single- or double-lock mechanical seam; UL-90, curved version available.' },
-  'US-150LS – 1.5" Snap-Lock': { code: "US-150LS", family: "snap", takeup: 4.5, vendor: "adax", desc: "Lok-Seam snap-together — no field seaming; HVHZ approved, Class 4 hail." },
-  'US-175LS – 1.75" Snap-Lock': { code: "US-175LS", family: "snap", takeup: 4.375, vendor: "adax", desc: "Taller Lok-Seam snap-lock with concealed clips; UL-90, Class A fire." },
-  'US-200 – 2" Mechanical Seam': { code: "US-200", family: "mech", takeup: 6, vendor: "adax", desc: 'Heavy 2" mechanical seam for long, low-slope commercial runs; UL-90.' },
-  'US-200SB – 2" Seam + Snap-On Batten': { code: "US-200SB", family: "batten", takeup: 6, vendor: "adax", delisted: true, desc: "US-200 pan with a decorative snap-on batten cap over the seam." },
-  'US-100FP – 1" Flush Wall / Soffit': { code: "US-100FP", family: "flush", takeup: 4, vendor: "adax", desc: "Flush wall and soffit panel; plain, beaded, or vented versions." },
-};
-// Delisted profiles stay in PROFILE_INFO so old orders and vault items still
-// render and reprice, but they're hidden from every picker and the catalog.
-const PROFILES = Object.keys(PROFILE_INFO).filter((k) => !PROFILE_INFO[k].delisted);
-
-// Fixed-clip part numbers by panel profile — clips sell by the box.
-const CLIP_SPECS = {
-  SS100: { code: "FG-100-24", perBox: 1000 },    // 1" mechanical seam
-  SS150: { code: "FG-158-24", perBox: 500 },     // 1.5" mechanical seam
-  SSQ200: { code: "FG-218-24", perBox: 300 },    // 2" mechanical seam
-  SS450: { code: "SG-114-24-SL", perBox: 800 },  // 1.5" snap-lock
-  SSQ675: { code: "SG-178-18", perBox: 500 },    // 1.75" snap-lock
-};
 const clipSpecForProfile = (profile) => CLIP_SPECS[PROFILE_INFO[profile]?.code] || null;
 
 function profileFamily(profile) {
@@ -649,16 +606,6 @@ function part3dSummary(o) {
 }
 const CAP_RIB_STYLES = ["hip", "pyramid", "gable", "stevenson", "texas", "twotier"]; // roofs that can carry standing seam ribs
 
-const ACCESSORY_TYPES = ["Screws", "Butyl Tape", "Pipe Boots", "Sealant", "Clips"];
-const DRY_IN_TYPES = ["Underlayment", "Cap Nails", "High Temp Ice & Water"];
-const ACCESSORY_SPECS = {
-  Screws: ['1" XLP Screws', "DP1 Screws", "DP3 Screws"],
-  "Butyl Tape": ['1" Butyl Tape', '3/8" Butyl Tape'],
-  "Pipe Boots": ['1"', '1.5"', '2"', '3"', '4"', '5"', '6"', '7"', '8"'],
-  Underlayment: ['Synthetic Underlayment — 42" × 1,000 sq ft roll'],
-  "Cap Nails": ["Plastic Cap Nails (2,000/box)"],
-  "High Temp Ice & Water": ["Palisade SA-HT — 2 sq roll"],
-};
 const STATUS_ICON = { Pending: Clock, "In Production": Hammer, "Ready for Pickup": PackageCheck, Completed: Truck };
 const STATUS_COLOR = { Pending: STEEL, "In Production": AMBER, "Ready for Pickup": INK, Completed: GREEN };
 

@@ -2,6 +2,7 @@
 // Run: node scripts/pricing-check.mjs   (exits non-zero on the first failing check)
 import assert from "node:assert/strict";
 import { computePrice, getSellRates, sellTierFor, sellRate, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE } from "../supabase/functions/_shared/pricing.mjs";
+import { DEFAULT_CATALOG, findGauge, findColor, listedProfiles, clipSpecForProfile, catalogToRows, catalogFromRows, isUsableCatalog } from "../supabase/functions/_shared/catalog.mjs";
 
 const close = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-9, `${msg}: got ${a}, wanted ${b}`);
 const price = (order, tier) => computePrice(order, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE, tier);
@@ -53,5 +54,36 @@ close(computePrice(box, feeOnly, [], "tier1") - computePrice(box, feeOnly, [], "
 
 // An empty price list falls back to the hardcoded gauge rates regardless of tier.
 close(computePrice(trim, [], [], "tier1"), computePrice(trim, [], [], "greenleaf"), "fallback rates ignore tier");
+
+// The catalog is a parameter: passing the default explicitly changes nothing, and the
+// lookups pick the right gauge table by material, the right color by brand, and keep
+// delisted profiles out of the pickers while still resolving them.
+close(computePrice(trim, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE, "tier1", DEFAULT_CATALOG), price(trim, "tier1"), "explicit catalog equals the default");
+close(computePrice(panel, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE, "tier2", DEFAULT_CATALOG), price(panel, "tier2"), "explicit catalog equals the default (panel)");
+assert.equal(findGauge(DEFAULT_CATALOG, "24ga", "Fortified Metal").trimFt, 2.75, "painted 24 ga fallback trim rate");
+assert.equal(findGauge(DEFAULT_CATALOG, "16oz", "Copper").label, "16 oz Copper", "copper weights come from the copper table");
+assert.equal(findGauge(DEFAULT_CATALOG, "24ga", "Copper").id, "16oz", "an unknown id falls back to the material's first gauge");
+assert.equal(findGauge(DEFAULT_CATALOG, "22ga", "G90 Galvanized").trimFt, 3.00, "bare metals keep their own gauge tables");
+assert.equal(findColor(DEFAULT_CATALOG, "Regal White", "Fortified Metal", "smp").hex, "#E3E1DC", "color by brand");
+assert.equal(findColor(DEFAULT_CATALOG, "Burnished Slate", "Una-Clad", "pvdf").premium, true, "premium flag follows the color");
+assert.equal(findColor(DEFAULT_CATALOG, "Award Blue", "Fortified Metal", "pvdf")?.name, "Award Blue", "a color is found across brands when its own brand lacks it");
+const listed = listedProfiles(DEFAULT_CATALOG);
+assert.ok(listed.includes('SS450 – 1.5" Snap-Lock') && !listed.includes("BB750 – Board and Batten"), "delisted profiles stay out of the pickers");
+assert.ok(DEFAULT_CATALOG.profiles["BB750 – Board and Batten"], "but still resolve for old orders");
+assert.equal(clipSpecForProfile(DEFAULT_CATALOG, 'SS450 – 1.5" Snap-Lock').code, "SG-114-24-SL", "clip spec by profile");
+assert.equal(clipSpecForProfile(DEFAULT_CATALOG, 'FWQ100 – 1" Flush Wall / Soffit'), null, "profiles without clips");
+
+// The platform table holds the catalog as rows: writing the default out and reading it back
+// gives the default again, in every order the rows might come back in, including the order
+// of the color groups that findColor searches across.
+const rows = catalogToRows(DEFAULT_CATALOG);
+assert.deepEqual(catalogFromRows(rows), DEFAULT_CATALOG, "rows round-trip to the default catalog");
+assert.deepEqual(catalogFromRows([...rows].reverse()), DEFAULT_CATALOG, "row order does not matter");
+assert.deepEqual(Object.keys(catalogFromRows([...rows].reverse()).colors), Object.keys(DEFAULT_CATALOG.colors), "color groups keep their order");
+assert.deepEqual(Object.keys(catalogFromRows([...rows].reverse()).profiles), Object.keys(DEFAULT_CATALOG.profiles), "profiles keep their order");
+assert.ok(rows.every((r) => typeof r.key === "string" && r.key.length > 0 && typeof r.parent_key === "string"), "every row has a key and a parent (empty when none)");
+assert.equal(new Set(rows.map((r) => r.kind + "|" + r.parent_key + "|" + r.key)).size, rows.length, "rows are unique by kind, parent and key");
+assert.ok(isUsableCatalog(DEFAULT_CATALOG) && !isUsableCatalog({ brands: [] }), "usability check");
+close(computePrice(trim, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE, "tier1", catalogFromRows(rows)), price(trim, "tier1"), "pricing from rows equals pricing from the default");
 
 console.log("pricing-check: all checks passed");

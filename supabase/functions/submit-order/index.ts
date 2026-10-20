@@ -33,6 +33,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { computePrice, sellTierFor, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE } from "../_shared/pricing.mjs";
+import { DEFAULT_CATALOG, catalogFromRows, isUsableCatalog } from "../_shared/catalog.mjs";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -59,6 +60,22 @@ async function shopList(shopId: string, key: string, fallback: any[]): Promise<a
   const { data, error } = await admin.from("shop_settings").select("value").eq("shop_id", shopId).eq("key", key).maybeSingle();
   if (error) throw new Error(`shop_settings ${key}: ${error.message}`);
   return Array.isArray(data?.value) ? data.value : fallback;
+}
+
+// The platform catalog (public.catalog_items) as the object pricing reads, or the code
+// default when the table is unreachable, empty or missing something pricing needs.
+async function loadCatalog() {
+  const { data, error } = await admin.from("catalog_items").select("kind, parent_key, key, data, sort, delisted");
+  if (error) { console.error("catalog_items", error.message); return DEFAULT_CATALOG; }
+  if (!data || data.length === 0) return DEFAULT_CATALOG;
+  try {
+    const catalog = catalogFromRows(data);
+    if (!isUsableCatalog(catalog)) { console.error("catalog_items: incomplete, using the default"); return DEFAULT_CATALOG; }
+    return catalog;
+  } catch (e) {
+    console.error("catalog_items", (e as Error).message);
+    return DEFAULT_CATALOG;
+  }
 }
 
 Deno.serve(async (req: Request) => {
@@ -100,13 +117,15 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  let tier: string, priceList, coilWidthScale, hadTierRow = false;
+  let tier: string, priceList, coilWidthScale, catalog, hadTierRow = false;
   try {
-    const [{ data: shopCustomer, error: tierErr }, list, scale] = await Promise.all([
+    const [{ data: shopCustomer, error: tierErr }, list, scale, cat] = await Promise.all([
       admin.from("shop_customers").select("tier").eq("shop_id", shopId).eq("user_id", user.id).maybeSingle(),
       shopList(shopId, "price-list", DEFAULT_PRICE_LIST),
       shopList(shopId, "coil-width-scale", DEFAULT_COIL_WIDTH_SCALE),
+      loadCatalog(),
     ]);
+    catalog = cat;
     if (tierErr) throw new Error(`shop_customers: ${tierErr.message}`);
     hadTierRow = !!shopCustomer;
     tier = sellTierFor(shopCustomer);
@@ -126,7 +145,8 @@ Deno.serve(async (req: Request) => {
     if (typeof raw.id !== "string" || !ORDER_ID.test(raw.id)) return json({ error: "Bad order id." }, 400);
     const { userId: _userId, poNumber: _po, ...order } = raw; // userId is local to the app (user_id is the column); the PO number is the shop's to give
     let price: number;
-    try { price = computePrice(order, priceList, coilWidthScale, tier); } catch { return json({ error: "That order can't be priced." }, 400); }
+    // The platform catalog; a shop's own selection over it arrives with catalog-as-data step 3.
+    try { price = computePrice(order, priceList, coilWidthScale, tier, catalog); } catch { return json({ error: "That order can't be priced." }, 400); }
     if (!Number.isFinite(price) || price < 0) return json({ error: "That order can't be priced." }, 400);
     order.price = price;
     order.tier = tier;

@@ -1,176 +1,11 @@
-// Pricing, and the catalog data it needs, shared by the app (src/App.jsx) and the
-// submit-order Edge Function (supabase/functions/submit-order), so an order is priced on the
-// server by exactly the code that priced the estimate on the screen. Plain ESM with no
-// imports: Vite bundles it into the app and Deno loads it as-is. Keep it that way —
-// anything React- or DOM-specific belongs in App.jsx.
-
-/* ---------------------------------- catalog ---------------------------------- */
-export const GAUGE_OPTIONS = [
-  { id: "24ga", label: "24 Gauge", panelSqft: 3.75, trimFt: 2.75 },
-  { id: "26ga", label: "26 Gauge", panelSqft: 3.00, trimFt: 2.20 },
-];
-
-export const COPPER_WEIGHT_OPTIONS = [
-  { id: "16oz", label: "16 oz Copper", panelSqft: 14.50, trimFt: 10.75 },
-  { id: "20oz", label: "20 oz Copper", panelSqft: 17.75, trimFt: 13.25 },
-];
-
-export const G90_GAUGE_OPTIONS = [
-  { id: "16ga", label: "16 Gauge", panelSqft: 6.25, trimFt: 4.60 },
-  { id: "18ga", label: "18 Gauge", panelSqft: 5.35, trimFt: 3.95 },
-  { id: "20ga", label: "20 Gauge", panelSqft: 4.55, trimFt: 3.35 },
-  { id: "22ga", label: "22 Gauge", panelSqft: 4.05, trimFt: 3.00 },
-  { id: "24ga", label: "24 Gauge", panelSqft: 3.35, trimFt: 2.50 },
-];
-
-export const GALVALUME_GAUGE_OPTIONS = [
-  { id: "24ga", label: "24 Gauge", panelSqft: 3.45, trimFt: 2.55 },
-  { id: "26ga", label: "26 Gauge", panelSqft: 2.85, trimFt: 2.10 },
-];
-
-export const BONDERIZED_GAUGE_OPTIONS = [
-  { id: "24ga", label: "24 Gauge", panelSqft: 3.60, trimFt: 2.65 },
-  { id: "26ga", label: "26 Gauge", panelSqft: 3.00, trimFt: 2.20 },
-];
-
-export const PAINT_OPTIONS = [
-  { id: "pvdf", label: "PVDF (Kynar 500)", mult: 1.15 },
-  { id: "smp", label: "40YR SMP", mult: 1.0 },
-];
-
-export const COLORS_BY_BRAND = {
-  "Fortified Metal": [
-    { name: "Regal White", hex: "#E3E1DC" },
-    { name: "Almond", hex: "#D9C9AE" },
-    { name: "Sandstone", hex: "#C7BEB0" },
-    { name: "Surrey Beige", hex: "#A9906F" },
-    { name: "Ash Gray", hex: "#9C9088" },
-    { name: "Slate Gray", hex: "#706A66" },
-    { name: "Burnished Slate", hex: "#565B5E", premium: true },
-    { name: "Charcoal Gray", hex: "#55504C" },
-    { name: "Medium Bronze", hex: "#4A3E36" },
-    { name: "Aged Bronze", hex: "#4A3B34" },
-    { name: "Mansard Brown", hex: "#3E2A24" },
-    { name: "Dark Bronze", hex: "#3A322C" },
-    { name: "Matte Black", hex: "#26262A" },
-    { name: "Regal Blue", hex: "#1C5C7A", premium: true },
-    { name: "Evergreen", hex: "#1F3D2E", premium: true },
-    { name: "Copper Metallic", hex: "#A0602E", premium: true },
-    { name: "Paint Grip Ultra SMP", hex: "#8B8B8B", premium: true },
-    { name: "Galvalume", hex: "#D8D6D0", premium: true },
-    { name: "Texas Silver Metallic", hex: "#B0B4B7", premium: true },
-  ],
-  "Una-Clad": [
-    { name: "Stone White", hex: "#EDEBE3" },
-    { name: "Bone White", hex: "#EDE8DD" },
-    { name: "Almond", hex: "#D9C9A8" },
-    { name: "Sandstone", hex: "#C2A97E" },
-    { name: "Slate Gray", hex: "#5C6268" },
-    { name: "Cityscape", hex: "#7C7F82" },
-    { name: "Charcoal Gray", hex: "#4A4E52" },
-    { name: "Sierra Tan", hex: "#B79A6E" },
-    { name: "Medium Bronze", hex: "#5C4A38" },
-    { name: "Dark Bronze", hex: "#4A3B2E" },
-    { name: "Extra Dark Bronze", hex: "#332920" },
-    { name: "Matte Black", hex: "#2B2B2B" },
-    { name: "Mountain Black", hex: "#1E1E1E", premium: true },
-    { name: "Brandywine", hex: "#6E2F28" },
-    { name: "Colonial Red", hex: "#7B2B25" },
-    { name: "Terra Cotta", hex: "#B5623E" },
-    { name: "Mansard Brown", hex: "#4A3826" },
-    { name: "Regal Red", hex: "#8C2A28", premium: true },
-    { name: "Award Blue", hex: "#2E5C8C", premium: true },
-    { name: "Sky Blue", hex: "#6E9FBF" },
-    { name: "Electric Blue", hex: "#2A5FA8" },
-    { name: "Regal Blue", hex: "#2E4A66", premium: true },
-    { name: "Amazon Blue", hex: "#1F4A5C", premium: true },
-    { name: "Teal", hex: "#2E6E6A", premium: true },
-    { name: "Patina Green", hex: "#5C8264" },
-    { name: "Dark Ivy", hex: "#2A3F2C" },
-    { name: "Sherwood Green", hex: "#38513B" },
-    { name: "Hartford Green", hex: "#1F3D2B", premium: true },
-    { name: "Hemlock Green", hex: "#445940" },
-    { name: "Tropical Patina", hex: "#4E8C74", premium: true },
-    { name: "Aged Zinc", hex: "#9096A0", premium: true },
-    { name: "Vintage", hex: "#8A9088", premium: true },
-    { name: "Burnished Slate", hex: "#565B5E", premium: true },
-    { name: "Silver Metallic", hex: "#B7BABD", premium: true },
-    { name: "Classic Copper", hex: "#A05A3A", premium: true },
-    { name: "Champagne Metallic", hex: "#C8B98A", premium: true },
-  ],
-  "Adax Metals": [
-    { name: "Regal White", hex: "#E3E1DC" },
-    { name: "Almond", hex: "#D9C9AE" },
-    { name: "Sandstone", hex: "#C7BEB0" },
-    { name: "Surrey Beige", hex: "#A9906F" },
-    { name: "Ash Gray", hex: "#9C9088" },
-    { name: "Slate Gray", hex: "#706A66" },
-    { name: "Charcoal Gray", hex: "#55504C" },
-    { name: "Medium Bronze", hex: "#4A3E36" },
-    { name: "Aged Bronze", hex: "#4A3B34" },
-    { name: "Mansard Brown", hex: "#3E2A24" },
-    { name: "Dark Bronze", hex: "#3A322C" },
-    { name: "Matte Black", hex: "#26262A" },
-    { name: "Colonial Red", hex: "#7A2422", premium: true },
-    { name: "Regal Blue", hex: "#1C5C7A", premium: true },
-    { name: "Evergreen", hex: "#1F3D2E", premium: true },
-    { name: "Copper Metallic", hex: "#A0602E", premium: true },
-    { name: "Pre-Weathered Galvalume", hex: "#8B8D8A", premium: true },
-    { name: "Paint Grip Ultra SMP", hex: "#8B8B8B", premium: true },
-    { name: "Crimson Red SMP", hex: "#A31F1F", premium: true },
-    { name: "Galvalume", hex: "#D8D6D0", premium: true },
-  ],
-  "Copper": [
-    { name: "Natural Copper (Mill Finish)", hex: "#B87333" },
-  ],
-  "G90 Galvanized": [
-    { name: "G90 Galvanized (Mill Finish)", hex: "#B8BCC0" },
-  ],
-  "Galvalume": [
-    { name: "Galvalume (Mill Finish)", hex: "#C4C7C6" },
-  ],
-  "Bonderized": [
-    { name: "Bonderized (Mill Finish)", hex: "#A8A398" },
-  ],
-  "Berridge": [
-    // Standard Colors
-    { name: "Buckskin", hex: "#8A7B65" },
-    { name: "Parchment", hex: "#D9D6C9" },
-    { name: "Almond", hex: "#E4E6D3" },
-    { name: "Aged Bronze", hex: "#3E2E22" },
-    { name: "Shasta White", hex: "#EDEDE8" },
-    { name: "Forest Green", hex: "#1F4739" },
-    { name: "Patina Green", hex: "#5F9384" },
-    { name: "Sierra Tan", hex: "#B9AD8B" },
-    { name: "Medium Bronze", hex: "#4B3A2B" },
-    { name: "Charcoal Grey", hex: "#3D3D3F" },
-    { name: "Hemlock Green", hex: "#5C7B6C" },
-    { name: "Bristol Blue", hex: "#3A6E85" },
-    { name: "Terra-Cotta", hex: "#B0562F" },
-    { name: "Dark Bronze", hex: "#2E2318" },
-    { name: "Zinc Grey", hex: "#75797C" },
-    { name: "Hartford Green", hex: "#1D3B33" },
-    { name: "Royal Blue", hex: "#1B4863" },
-    { name: "Colonial Red", hex: "#7A2E2A" },
-    { name: "Copper Brown", hex: "#3A2A20" },
-    { name: "Matte Black", hex: "#232324" },
-    { name: "Teal Green", hex: "#2E7266" },
-    { name: "Burgundy", hex: "#4A1F22" },
-    { name: "Deep Red", hex: "#A32030" },
-    // Premium Colors
-    { name: "Natural White", hex: "#F5F3EA", premium: true },
-    { name: "Award Blue", hex: "#1B3E6F", premium: true },
-    // Metallic Colors
-    { name: "Champagne", hex: "#A99C86", premium: true },
-    { name: "Copper-Cote", hex: "#B5652C", premium: true },
-    { name: "Antique Copper-Cote", hex: "#8C8A6E", premium: true },
-    { name: "Zinc-Cote", hex: "#8B8D8E", premium: true },
-    { name: "Lead-Cote", hex: "#6E6F71", premium: true },
-    { name: "Preweathered Galvalume", hex: "#8C8D8A", premium: true },
-    // Natural Metal Finish
-    { name: "Acrylic-Coated Galvalume", hex: "#C9CACA" },
-  ],
-};
+// Pricing, shared by the app (src/App.jsx) and the submit-order Edge Function
+// (supabase/functions/submit-order), so an order is priced on the server by exactly the code
+// that priced the estimate on the screen. The catalog it prices against (gauges and their
+// fallback rates, paint multipliers, premium colors) comes from catalog.mjs next to it and
+// is passed in, defaulting to DEFAULT_CATALOG. Plain ESM whose only import is that sibling:
+// Vite bundles both into the app and Deno loads them as-is. Keep it that way — anything
+// React- or DOM-specific belongs in App.jsx.
+import { DEFAULT_CATALOG, findColor, findGauge } from "./catalog.mjs";
 
 // One resolved set of scupper numbers, shared by the model, the blank, the price and the
 // ticket. They used to be defaulted and clamped separately in each, so a plate typed
@@ -221,41 +56,6 @@ export function scupperBack(k) {
 // $2/mile one way past 40 miles from the nearest roll-forming base.
 export const MILEAGE_FREE = 40, MILEAGE_RATE = 2;
 export const mileageCharge = (miles) => Math.max(0, (+miles || 0) - MILEAGE_FREE) * MILEAGE_RATE;
-
-// Most brands have one flat color list. Some (Quality Metals, currently delisted) have
-// different palettes for PVDF vs SMP, stored as { pvdf: [...], smp: [...] } instead —
-// this always returns a flat array either way.
-export function getColorsForBrand(brand, paintId) {
-  const entry = COLORS_BY_BRAND[brand];
-  if (!entry) return [];
-  if (Array.isArray(entry)) return entry;
-  return entry[paintId] || entry.pvdf || entry.smp || [];
-}
-
-export function findColor(name, brand, paintId) {
-  const preferred = getColorsForBrand(brand, paintId).find((c) => c.name === name);
-  if (preferred) return preferred;
-  for (const entry of Object.values(COLORS_BY_BRAND)) {
-    const lists = Array.isArray(entry) ? [entry] : Object.values(entry);
-    for (const list of lists) {
-      const hit = list.find((c) => c.name === name);
-      if (hit) return hit;
-    }
-  }
-  return null;
-}
-
-// Gauge IDs (e.g. "24ga") are reused across different material option sets with different
-// prices, so lookup has to pick the right set by brand FIRST, then find within it — a plain
-// id-only search would silently match the wrong table.
-export function findGauge(gaugeId, brand) {
-  const set = brand === "Copper" ? COPPER_WEIGHT_OPTIONS
-    : brand === "G90 Galvanized" ? G90_GAUGE_OPTIONS
-    : brand === "Galvalume" ? GALVALUME_GAUGE_OPTIONS
-    : brand === "Bonderized" ? BONDERIZED_GAUGE_OPTIONS
-    : GAUGE_OPTIONS;
-  return set.find((g) => g.id === gaugeId) || set[0] || GAUGE_OPTIONS[0];
-}
 
 // The shop's price list and coil width scale as first seeded, and what the app and the
 // server fall back to until the shop has saved its own (shop_settings keys price-list and
@@ -366,8 +166,8 @@ export function findFabItem(priceList, profile, tier) {
   return (code && fabItems.find((p) => p.name.toLowerCase().startsWith(code))) || fabItems.find((p) => p.name.toLowerCase().startsWith("panel")) || fabItems[0] || null;
 }
 
-export function getSellRates(gaugeId, brand, priceList, profile, tier) {
-  const gauge = findGauge(gaugeId, brand);
+export function getSellRates(gaugeId, brand, priceList, profile, tier, catalog = DEFAULT_CATALOG) {
+  const gauge = findGauge(catalog, gaugeId, brand);
   const fallback = { coilSqft: gauge.panelSqft, panelSqft: gauge.panelSqft, fabSqft: 0, trimFt: gauge.trimFt };
   if (!priceList || priceList.length === 0) return fallback;
 
@@ -397,10 +197,10 @@ export function getSellRates(gaugeId, brand, priceList, profile, tier) {
   return { coilSqft, panelSqft, fabSqft, trimFt };
 }
 
-export function computePrice(order, priceList, coilWidthScale, tier) {
-  const rates = getSellRates(order.gaugeId, order.brand, priceList, order.profile, tier);
-  const paint = order.brand === "Copper" ? { mult: 1 } : (PAINT_OPTIONS.find((p) => p.id === order.paintId) || PAINT_OPTIONS[0]);
-  const colorObj = findColor(order.colorName, order.brand, order.paintId);
+export function computePrice(order, priceList, coilWidthScale, tier, catalog = DEFAULT_CATALOG) {
+  const rates = getSellRates(order.gaugeId, order.brand, priceList, order.profile, tier, catalog);
+  const paint = order.brand === "Copper" ? { mult: 1 } : (catalog.paints.find((p) => p.id === order.paintId) || catalog.paints[0]);
+  const colorObj = findColor(catalog, order.colorName, order.brand, order.paintId);
   const premiumMult = colorObj?.premium ? 1.12 : 1;
   if (order.type === "metal") {
     const flatSqft = ((order.flatWidth || 0) * (order.flatLength || 0)) / 144;
@@ -421,7 +221,7 @@ export function computePrice(order, priceList, coilWidthScale, tier) {
     // PVDF/SMP ratio for SMP orders, rather than getting the PVDF multiplier stacked
     // on top of an already-PVDF price.
     const interpolatedPerFt = coilPriceForWidth(order.coilWidth, coilWidthScale);
-    const pvdfMult = PAINT_OPTIONS.find((p) => p.id === "pvdf")?.mult || 1;
+    const pvdfMult = catalog.paints.find((p) => p.id === "pvdf")?.mult || 1;
     const coilFeet = (order.coilLength || 0) / 12;
     const coilCost = interpolatedPerFt !== null
       ? interpolatedPerFt * (paint.mult / pvdfMult) * coilFeet
