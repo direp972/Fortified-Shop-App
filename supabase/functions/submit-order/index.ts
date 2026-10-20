@@ -29,6 +29,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { computePrice, sellTierFor, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE } from "../_shared/pricing.mjs";
+import { DEFAULT_CATALOG } from "../_shared/catalog.mjs";
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -122,7 +123,8 @@ Deno.serve(async (req: Request) => {
     if (typeof raw.id !== "string" || !ORDER_ID.test(raw.id)) return json({ error: "Bad order id." }, 400);
     const { userId: _userId, ...order } = raw; // the app's local-only field; user_id is the column
     let price: number;
-    try { price = computePrice(order, priceList, coilWidthScale, tier); } catch { return json({ error: "That order can't be priced." }, 400); }
+    // The catalog the shop offers; the default until shops carry their own (catalog-as-data step 3).
+    try { price = computePrice(order, priceList, coilWidthScale, tier, DEFAULT_CATALOG); } catch { return json({ error: "That order can't be priced." }, 400); }
     if (!Number.isFinite(price) || price < 0) return json({ error: "That order can't be priced." }, 400);
     order.price = price;
     order.tier = tier;
