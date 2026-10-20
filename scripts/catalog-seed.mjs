@@ -1,7 +1,14 @@
 // Writes the SQL that seeds public.catalog_items from DEFAULT_CATALOG, so the rows equal
 // the code's constants exactly. Run: node scripts/catalog-seed.mjs > out.sql, and paste the
-// output into a migration (the first one is 20261020155956_catalog_items.sql). Re-running it
-// after the catalog changes in code gives an upsert that brings the table back in line.
+// output into a migration (the first one is 20261020155956_catalog_items.sql).
+//
+// Since step 4 the table is the source of truth: platform staff edit it in Backend →
+// Platform catalog (delist, relist, swatches, premium flags, new paint lines, colors and
+// profiles), and DEFAULT_CATALOG is only what the app, submit-order and the build fall back
+// to when the table cannot be read. The upsert this script writes puts every seeded row
+// back to the code's values — relisting what staff delisted, undoing their swatch edits —
+// and leaves the rows staff added alone. So run it to seed a fresh project, or on purpose
+// after folding the staff's edits into DEFAULT_CATALOG; never as a routine refresh.
 import { DEFAULT_CATALOG, catalogToRows } from "../supabase/functions/_shared/catalog.mjs";
 
 const q = (s) => "'" + String(s).replace(/'/g, "''") + "'";

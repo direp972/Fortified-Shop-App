@@ -295,7 +295,17 @@ export function findColor(catalog, name, brand, paintId) {
 // id-only search would silently match the wrong table.
 export function findGauge(catalog, gaugeId, brand) {
   const set = catalog.gauges[brand] || catalog.gauges.painted;
-  return set.find((g) => g.id === gaugeId) || set[0] || catalog.gauges.painted[0];
+  const hit = set.find((g) => g.id === gaugeId);
+  if (hit) return hit;
+  // a gauge platform staff delisted is out of the pickers but still prices the orders made before
+  const all = catalog.allGauges && (catalog.allGauges[brand] || catalog.allGauges.painted);
+  return (all && all.find((g) => g.id === gaugeId)) || set[0] || catalog.gauges.painted[0];
+}
+
+// The paint system by id: the offered list first, then every paint the platform ever had
+// (allPaints), so an order placed before a paint was delisted keeps its multiplier.
+export function findPaint(catalog, paintId) {
+  return catalog.paints.find((p) => p.id === paintId) || (catalog.allPaints || []).find((p) => p.id === paintId) || null;
 }
 
 // Delisted profiles stay in the catalog so old orders and vault items still render and
@@ -311,9 +321,16 @@ export const clipSpecForProfile = (catalog, profile) => catalog.clips[catalog.pr
 // color to its brand, a gauge to its table and an accessory spec to its type ('' when there
 // is no parent). catalogToRows writes the seed migration; catalogFromRows rebuilds the
 // object the lookups read. They are inverses: pricing-check asserts that
-// catalogFromRows(catalogToRows(DEFAULT_CATALOG)) deep-equals DEFAULT_CATALOG, whatever
-// order the rows come back in. sort keeps every list in its original order, and the order
-// of the color and gauge groups too, because findColor's search across brands follows it.
+// catalogFromRows(catalogToRows(DEFAULT_CATALOG)) is DEFAULT_CATALOG again (plus the all*
+// maps below), whatever order the rows come back in. sort keeps every list in its original
+// order, and the order of the color and gauge groups too, because findColor's search across
+// brands follows it.
+//
+// A delisted row, of any kind, leaves the offer: brands, unpainted, colors, gauges, paints,
+// clips and accessories hold only what the pickers, the public pages and isOffered may
+// show. It still resolves for the orders placed before: allColors, allGauges and allPaints
+// hold every row, delisted or not, and findColor, findGauge and findPaint fall through to
+// them. Profiles keep the flag on the entry itself, as the code default always has.
 export const CATALOG_KINDS = ["brand", "material", "color", "gauge", "paint", "profile", "clip", "accessory"];
 
 export function catalogToRows(catalog) {
@@ -338,29 +355,47 @@ export function catalogToRows(catalog) {
 export function catalogFromRows(rows) {
   const by = (kind) => rows.filter((r) => r.kind === kind).sort((a, b) => a.sort - b.sort);
   const parent = (r) => (r.parent_key == null ? "" : r.parent_key);
+  const listed = (r) => !r.delisted;
   const brandRows = by("brand");
-  const brands = brandRows.map((r) => r.key);
+  const brands = brandRows.filter(listed).map((r) => r.key);
   const materialRows = by("material");
+  const unpainted = materialRows.filter(listed).map((r) => r.key);
+  // rules follow every brand row, delisted too, so an old order of a delisted brand still
+  // loads into the form under the brand's own constraints
   const rules = {
     pvdfOnly: brandRows.filter((r) => r.data?.pvdfOnly).map((r) => r.key),
     pvdf24gaOnly: brandRows.filter((r) => r.data?.pvdf24gaOnly).map((r) => r.key),
     unpaintedFlatsOnly: materialRows.filter((r) => r.data?.flatsOnly).map((r) => r.key),
   };
-  const colors = {};
-  for (const r of by("color")) (colors[parent(r)] ||= []).push({ name: r.key, hex: r.data?.hex, ...(r.data?.premium ? { premium: true } : {}) });
-  const gauges = {};
-  for (const r of by("gauge")) (gauges[parent(r)] ||= []).push({ id: r.key, label: r.data?.label, panelSqft: r.data?.panelSqft, trimFt: r.data?.trimFt });
-  const paints = by("paint").map((r) => ({ id: r.key, label: r.data?.label, mult: r.data?.mult }));
+  // a color is offered when it is listed and its paint line or bare metal is too
+  const groupOn = new Set([...brands, ...unpainted]);
+  const knownGroup = new Set([...brandRows, ...materialRows].map((r) => r.key));
+  const colors = {}, allColors = {};
+  for (const r of by("color")) {
+    const g = parent(r), c = { name: r.key, hex: r.data?.hex, ...(r.data?.premium ? { premium: true } : {}) };
+    (allColors[g] ||= []).push(c);
+    if (listed(r) && (groupOn.has(g) || !knownGroup.has(g))) (colors[g] ||= []).push(c);
+  }
+  for (const b of brands) colors[b] ||= []; // a paint line with every color delisted still has a (empty) list
+  const gauges = {}, allGauges = {};
+  for (const r of by("gauge")) {
+    const g = parent(r), o = { id: r.key, label: r.data?.label, panelSqft: r.data?.panelSqft, trimFt: r.data?.trimFt };
+    (allGauges[g] ||= []).push(o);
+    gauges[g] ||= [];
+    if (listed(r)) gauges[g].push(o);
+  }
+  const paintRows = by("paint"), paintOf = (r) => ({ id: r.key, label: r.data?.label, mult: r.data?.mult });
+  const paints = paintRows.filter(listed).map(paintOf), allPaints = paintRows.map(paintOf);
   const profiles = {};
   for (const r of by("profile")) profiles[r.key] = { ...(r.data || {}), ...(r.delisted ? { delisted: true } : {}) };
   const clips = {};
-  for (const r of by("clip")) clips[r.key] = { code: r.data?.code, perBox: r.data?.perBox };
-  const accessoryRows = by("accessory");
+  for (const r of by("clip").filter(listed)) clips[r.key] = { code: r.data?.code, perBox: r.data?.perBox };
+  const accessoryRows = by("accessory").filter(listed);
   const types = accessoryRows.filter((r) => !parent(r) && !r.data?.dryIn).map((r) => r.key);
   const dryIn = accessoryRows.filter((r) => !parent(r) && r.data?.dryIn).map((r) => r.key);
   const specs = {};
   for (const r of accessoryRows.filter((r) => parent(r))) (specs[parent(r)] ||= []).push(r.key);
-  return { brands, brandGroups: { Painted: brands }, unpainted: materialRows.map((r) => r.key), rules, colors, gauges, paints, profiles, clips, accessories: { types, dryIn, specs } };
+  return { brands, brandGroups: { Painted: brands }, unpainted, rules, colors, gauges, paints, profiles, clips, accessories: { types, dryIn, specs }, allColors, allGauges, allPaints };
 }
 
 // What pricing and the pickers cannot do without; a table that lacks any of it is not
@@ -384,7 +419,10 @@ export function resolveCatalog(platform, selection) {
   const off = (map, key) => !!map && map[key] === false;
   const brandsOff = selection.brands || {}, colorsOff = selection.colors || {}, materialsOff = selection.materials || {}, profilesOff = selection.profiles || {};
   const custom = selection.custom || {}, retired = selection.retired || {};
-  const taken = new Set([...base.brands, ...base.unpainted, ...Object.keys(base.colors)]);
+  // every color the platform ever had, delisted lines included: their names stay taken and
+  // their colors keep resolving for the shop's old orders
+  const baseAll = base.allColors || base.colors;
+  const taken = new Set([...base.brands, ...base.unpainted, ...Object.keys(base.colors), ...Object.keys(baseAll)]);
   const customBrands = (Array.isArray(custom.brands) ? custom.brands : []).filter((b) => b && typeof b.name === "string" && b.name.trim() && !taken.has(b.name));
   const retiredBrands = (Array.isArray(retired.brands) ? retired.brands : []).filter((b) => b && typeof b.name === "string" && b.name.trim() && !taken.has(b.name));
   const customProfiles = (Array.isArray(custom.profiles) ? custom.profiles : []).filter((q) => q && typeof q.name === "string" && q.name.trim() && !base.profiles[q.name]);
@@ -393,10 +431,12 @@ export function resolveCatalog(platform, selection) {
   const brands = [...base.brands.filter((b) => !off(brandsOff, b)), ...customBrands.map((b) => b.name)];
   const unpainted = base.unpainted.filter((m) => !off(materialsOff, m));
   const colorList = (list) => (Array.isArray(list) ? list : []).filter((c) => c && typeof c.name === "string").map((c) => ({ name: c.name, hex: c.hex, ...(c.premium ? { premium: true } : {}) }));
+  const flat = (entry) => (Array.isArray(entry) ? entry : [...(entry.pvdf || []), ...(entry.smp || [])]);
   const colors = {}, allColors = {};
+  for (const [group, entry] of Object.entries(baseAll)) allColors[group] = flat(entry);
   for (const [group, entry] of Object.entries(base.colors)) {
-    const list = Array.isArray(entry) ? entry : [...(entry.pvdf || []), ...(entry.smp || [])];
-    allColors[group] = list;
+    const list = flat(entry);
+    allColors[group] ||= list;
     const groupOn = base.brands.includes(group) ? !off(brandsOff, group) : base.unpainted.includes(group) ? !off(materialsOff, group) : true;
     if (groupOn) colors[group] = list.filter((c) => !off(colorsOff[group], c.name));
   }

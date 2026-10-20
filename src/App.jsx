@@ -5,8 +5,8 @@ import { storage, shopStorage } from "./lib/storage";
 import { supabase } from "./lib/supabaseClient";
 import { useAuth } from "./lib/AuthProvider";
 import { scupperSpec, scupperBack, MILEAGE_FREE, MILEAGE_RATE, mileageCharge, coilPriceForWidth, findFabItem, getSellRates, computePrice, sellRate, sellTierFor, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE } from "../supabase/functions/_shared/pricing.mjs";
-import { DEFAULT_CATALOG, listedProfiles, resolveCatalog, getColorsForBrand as catalogColorsForBrand, findColor as catalogFindColor, findGauge as catalogFindGauge } from "../supabase/functions/_shared/catalog.mjs";
-import { loadPlatformCatalog, loadShopCatalogSelection } from "./lib/catalog";
+import { DEFAULT_CATALOG, listedProfiles, resolveCatalog, getColorsForBrand as catalogColorsForBrand, findColor as catalogFindColor, findGauge as catalogFindGauge, findPaint as catalogFindPaint } from "../supabase/functions/_shared/catalog.mjs";
+import { loadPlatformCatalog, loadPlatformCatalogRows, invalidatePlatformCatalog, addCatalogItem, setCatalogItemDelisted, setCatalogItemData, loadShopCatalogSelection } from "./lib/catalog";
 
 /* ---------------------------------- tokens ---------------------------------- */
 const INK = "#0F3D5C";        // blueprint ink
@@ -3546,6 +3546,276 @@ function CatalogSection({ platform, selection, onChange, theme, shopName }) {
   );
 }
 
+/* -------------------------- Backend: Platform catalog (staff) -------------------------- */
+// Platform staff only: the reference catalog every shop starts from, row by row as
+// public.catalog_items holds it (docs/catalog-as-data-design.md §2.1, step 4). Names are
+// what orders store, so nothing here is renamed or deleted: a row is delisted (it leaves
+// every shop's pickers, the public pages and submit-order, and still resolves for the
+// orders placed before) or relisted; a color's swatch and premium flag are edited; paint
+// lines, colors and profiles are added. Every write goes to the table (RLS: staff only)
+// and then the platform catalog reloads on this page, so the pickers and the shop's own
+// Catalog section follow at once; other pages pick it up on their next load.
+const PLATFORM_RULES = [["any", "PVDF or SMP, 24 or 26 ga"], ["pvdf", "PVDF only, 24 or 26 ga (like Una-Clad)"], ["pvdf24", "PVDF and 24 ga only (like Berridge)"]];
+function PlatformCatalogSection({ theme, userId, onChanged }) {
+  const [rows, setRows] = useState(null);       // null while loading
+  const [failed, setFailed] = useState(false);  // the table could not be read
+  const [open, setOpen] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const [hexDraft, setHexDraft] = useState({});
+  const [adding, setAdding] = useState("");     // "brand" | "profile" | "color:<paint line>"
+  const [nb, setNb] = useState({ name: "", rule: "any" });
+  const [nc, setNc] = useState({ name: "", hex: "", premium: false });
+  const [np, setNp] = useState({ name: "", code: "", family: "snap", takeup: "", vendor: "", desc: "" });
+  const say = (m) => { setNote(m); setTimeout(() => setNote(""), 6000); };
+  const load = useCallback(async () => {
+    const r = await loadPlatformCatalogRows();
+    setFailed(!r); setRows(r || []);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const rid = (r) => `${r.kind}|${r.parent_key}|${r.key}`;
+  const of = (kind, parent) => (rows || []).filter((r) => r.kind === kind && (parent === undefined || r.parent_key === parent)).sort((a, b) => a.sort - b.sort);
+  const listedCount = (kind, parent) => of(kind, parent).filter((r) => !r.delisted).length;
+  const exists = (kind, parent, key) => (rows || []).some((r) => r.kind === kind && r.parent_key === parent && r.key.toLowerCase() === key.toLowerCase());
+  const nextSort = (kind, parent) => of(kind, parent).reduce((m, r) => Math.max(m, r.sort), -1) + 1;
+
+  // One write, then fresh rows here and a fresh catalog everywhere on this page. Resolves
+  // true when it saved, false when it did not (the note says why).
+  const write = async (fn, done) => {
+    if (busy) return false;
+    setBusy(true);
+    try {
+      await fn();
+      invalidatePlatformCatalog();
+      const r = await loadPlatformCatalogRows();
+      setRows(r || []); setFailed(!r);
+      await onChanged();
+      if (done) say(done);
+      return true;
+    } catch (e) {
+      console.error("catalog_items", e);
+      say(`That didn't save: ${e?.message || "check your connection, and that you are still platform staff"}.`);
+      return false;
+    } finally { setBusy(false); }
+  };
+  const toggle = (r) => {
+    if (!r.delisted) {
+      const last = r.kind === "brand" && listedCount("brand", "") <= 1 ? "paint line" : r.kind === "paint" && listedCount("paint", "") <= 1 ? "paint system"
+        : r.kind === "gauge" && r.parent_key === "painted" && listedCount("gauge", "painted") <= 1 ? "painted gauge" : r.kind === "profile" && listedCount("profile", "") <= 1 ? "profile" : null;
+      if (last) { say(`Keep at least one ${last} listed — the tools can't run without one.`); return; }
+    }
+    write(() => setCatalogItemDelisted(r, !r.delisted, userId), r.delisted ? `${r.key} is back in every shop's pickers.` : `${r.key} is delisted: out of every shop's pickers and the public pages; past orders still read right.`);
+  };
+  const clearDraft = (r) => setHexDraft((d) => { const n = { ...d }; delete n[rid(r)]; return n; });
+  const saveHex = (r) => {
+    const v = String(hexDraft[rid(r)] ?? "").trim().toUpperCase();
+    if (!v || v === String(r.data?.hex || "").toUpperCase()) { clearDraft(r); return; }
+    if (!HEX.test(v)) { say(`A swatch is six hex digits, like #4A3E36 — "${v}" isn't.`); return; }
+    write(() => setCatalogItemData(r, { ...(r.data || {}), hex: v }, userId), `${r.key} is now ${v} everywhere.`).then((ok) => { if (ok) clearDraft(r); });
+  };
+  const savePremium = (r, premium) => {
+    const data = { ...(r.data || {}) };
+    if (premium) data.premium = true; else delete data.premium;
+    write(() => setCatalogItemData(r, data, userId), `${r.key} is ${premium ? "a premium color (×1.12)" : "a standard color"} now.`);
+  };
+  const addBrand = () => {
+    const name = nb.name.trim();
+    if (!name) { say("Give the paint line a name."); return; }
+    if (exists("brand", "", name) || exists("material", "", name)) { say("That name is already in the catalog."); return; }
+    write(() => addCatalogItem({ kind: "brand", parent_key: "", key: name, data: { pvdfOnly: nb.rule === "pvdf", pvdf24gaOnly: nb.rule === "pvdf24" }, sort: nextSort("brand", "") }, userId), `${name} is in the catalog — now give it colors.`)
+      .then((ok) => { if (ok) { setNb({ name: "", rule: "any" }); setAdding(""); setOpen((o) => ({ ...o, [`brand|${name}`]: true })); } });
+  };
+  const addColor = (pl) => {
+    const name = nc.name.trim(), hex = nc.hex.trim().toUpperCase();
+    if (!name) { say("Give the color a name — the name orders will store."); return; }
+    if (exists("color", pl, name)) { say(`${pl} already has a color called ${name}.`); return; }
+    if (!HEX.test(hex)) { say("A swatch is six hex digits, like #4A3E36."); return; }
+    write(() => addCatalogItem({ kind: "color", parent_key: pl, key: name, data: { hex, ...(nc.premium ? { premium: true } : {}) }, sort: nextSort("color", pl) }, userId), `${name} added to ${pl}.`)
+      .then((ok) => { if (ok) { setNc({ name: "", hex: "", premium: false }); setAdding(""); } });
+  };
+  const addProfile = () => {
+    const name = np.name.trim(), code = np.code.trim(), takeup = Number(np.takeup);
+    if (!name || !code) { say("A profile needs a name (as the pickers show it) and a code (the short code the panel catalog shows, like SS450)."); return; }
+    if (exists("profile", "", name)) { say("That profile name is already in the catalog."); return; }
+    if (!Number.isFinite(takeup) || takeup < 0) { say("Takeup is the coil width minus the finished coverage, in inches."); return; }
+    const data = { code, family: np.family, takeup, desc: np.desc.trim() };
+    if (np.vendor.trim()) data.vendor = np.vendor.trim();
+    write(() => addCatalogItem({ kind: "profile", parent_key: "", key: name, data, sort: nextSort("profile", "") }, userId), `${name} is in the catalog for every shop.`)
+      .then((ok) => { if (ok) { setNp({ name: "", code: "", family: "snap", takeup: "", vendor: "", desc: "" }); setAdding(""); } });
+  };
+
+  const row = { background: theme.card, borderRadius: 8, padding: "8px 10px", marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" };
+  const small = { fontSize: 10.5, color: theme.textSecondary };
+  const head = { ...small, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".06em", margin: "12px 0 4px" };
+  const rowLine = { display: "flex", alignItems: "center", gap: 8, padding: "3px 0" };
+  const input = { width: "100%", padding: 8, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 12, background: theme.inputBg, color: theme.text, boxSizing: "border-box", marginTop: 4 };
+  const btn = (primary) => ({ padding: "5px 10px", borderRadius: 6, border: primary ? "none" : `1px solid ${theme.border}`, background: primary ? INK : "transparent", color: primary ? "#fff" : theme.text, fontSize: 11, fontWeight: 700, cursor: busy ? "wait" : "pointer", opacity: busy ? 0.6 : 1, whiteSpace: "nowrap" });
+  const nameStyle = (r) => ({ fontSize: 12.5, fontWeight: 600, color: theme.text, textDecoration: r.delisted ? "line-through" : "none", opacity: r.delisted ? 0.55 : 1 });
+  const tag = (r) => (r.delisted ? <span style={{ ...small, fontWeight: 700, color: "#B3261E", marginLeft: 6, textDecoration: "none" }}>delisted</span> : null);
+  const toggleBtn = (r) => <button type="button" disabled={busy} onClick={() => toggle(r)} style={btn(false)}>{r.delisted ? "Relist" : "Delist"}</button>;
+  const swatch = (hex) => <span style={{ width: 14, height: 14, borderRadius: 3, background: HEX.test(hex || "") ? hex : "#8A94A6", border: "1px solid rgba(0,0,0,0.15)", flexShrink: 0 }} />;
+  const colorRow = (c) => (
+    <div key={rid(c)} style={rowLine}>
+      {swatch(c.data?.hex)}
+      <span style={{ ...nameStyle(c), flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.key}{tag(c)}</span>
+      <input value={hexDraft[rid(c)] ?? (c.data?.hex || "")} onChange={(e) => setHexDraft((d) => ({ ...d, [rid(c)]: e.target.value }))} onBlur={() => saveHex(c)} onKeyDown={(e) => { if (e.key === "Enter") e.target.blur(); }}
+        disabled={busy} spellCheck={false} title="Swatch hex — Enter or clicking away saves it" style={{ ...input, width: 84, marginTop: 0, padding: 5, fontFamily: "monospace" }} />
+      <label style={{ ...small, display: "flex", alignItems: "center", gap: 4, cursor: "pointer", whiteSpace: "nowrap" }}><input type="checkbox" checked={!!c.data?.premium} disabled={busy} onChange={(e) => savePremium(c, e.target.checked)} /> premium</label>
+      {toggleBtn(c)}
+    </div>
+  );
+  const familyLabel = (f) => (PROFILE_FAMILIES.find((x) => x[0] === f) || [])[1] || f;
+
+  return (
+    <div style={{ marginBottom: 18 }}>
+      <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 6 }}>Platform catalog</div>
+      <div style={{ ...small, marginBottom: 8 }}>
+        The reference catalog every shop starts from: the paint lines and colors, bare metals, gauges, paint systems, profiles, clips and accessories the shop tools, the directory and the public pages read.
+        Names are what orders store, so nothing here is renamed or deleted — delist what should leave every shop's pickers (past orders still read right), relist to bring it back, fix a swatch or premium flag, add a paint line, a color or a profile. Changes are live for every shop on its next load.
+      </div>
+      {note && <div role="alert" style={{ fontSize: 12, color: "#B3261E", background: "#FDECEA", padding: 8, borderRadius: 6, marginBottom: 8 }}>{note}</div>}
+      {rows === null ? (
+        <div style={{ color: theme.textSecondary, fontSize: 12, padding: 10 }}>Loading…</div>
+      ) : failed ? (
+        <div style={{ ...row, fontSize: 12, color: theme.text }}>The catalog table could not be read, so everything is running on the code default for now. <button type="button" onClick={load} style={btn(false)}>Try again</button></div>
+      ) : (<>
+        <div style={head}>Paint lines</div>
+        {of("brand", "").map((b) => {
+          const colors = of("color", b.key), key = `brand|${b.key}`, isOpen = !!open[key];
+          const rule = b.data?.pvdf24gaOnly ? "PVDF + 24 ga only" : b.data?.pvdfOnly ? "PVDF only" : "PVDF / SMP";
+          return (
+            <div key={rid(b)} style={row}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ ...nameStyle(b), flex: 1 }}>{b.key}{tag(b)} <span style={{ ...small, fontWeight: 400 }}>{rule} · {colors.filter((c) => !c.delisted).length} of {colors.length} colors listed</span></span>
+                <button type="button" onClick={() => setOpen((o) => ({ ...o, [key]: !isOpen }))} style={btn(false)}>{isOpen ? "Hide colors" : "Colors"}</button>
+                {toggleBtn(b)}
+              </div>
+              {isOpen && (
+                <div style={{ marginTop: 8 }}>
+                  {colors.map(colorRow)}
+                  {adding === `color:${b.key}` ? (
+                    <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr auto auto auto", gap: 6, alignItems: "end", marginTop: 6 }}>
+                      <label style={{ ...small, display: "block" }}>Name<input value={nc.name} onChange={(e) => setNc({ ...nc, name: e.target.value })} placeholder="e.g. Slate Blue" style={input} /></label>
+                      <label style={{ ...small, display: "block" }}>Hex<input value={nc.hex} onChange={(e) => setNc({ ...nc, hex: e.target.value })} placeholder="#4A3E36" spellCheck={false} style={{ ...input, fontFamily: "monospace" }} /></label>
+                      <label style={{ ...small, display: "flex", alignItems: "center", gap: 4, paddingBottom: 9, whiteSpace: "nowrap" }}><input type="checkbox" checked={nc.premium} onChange={(e) => setNc({ ...nc, premium: e.target.checked })} /> premium</label>
+                      <button type="button" onClick={() => addColor(b.key)} disabled={busy} style={{ ...btn(true), marginBottom: 1 }}>Add color</button>
+                      <button type="button" onClick={() => setAdding("")} style={{ ...btn(false), marginBottom: 1 }}>Cancel</button>
+                    </div>
+                  ) : (
+                    <button type="button" onClick={() => { setNc({ name: "", hex: "", premium: false }); setAdding(`color:${b.key}`); }} style={{ ...btn(false), marginTop: 6 }}>+ Add a color to {b.key}</button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {adding === "brand" ? (
+          <div style={row}>
+            <label style={{ ...small, display: "block" }}>Name<input value={nb.name} onChange={(e) => setNb({ ...nb, name: e.target.value })} placeholder="e.g. Sherwin-Williams Coil" style={input} /></label>
+            <label style={{ ...small, display: "block", marginTop: 8 }}>Paints and gauges<select value={nb.rule} onChange={(e) => setNb({ ...nb, rule: e.target.value })} style={input}>{PLATFORM_RULES.map(([id, l]) => <option key={id} value={id}>{l}</option>)}</select></label>
+            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+              <button type="button" onClick={addBrand} disabled={busy} style={btn(true)}>Add paint line</button>
+              <button type="button" onClick={() => setAdding("")} style={btn(false)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setAdding("brand")} style={{ ...btn(false), marginBottom: 6 }}>+ Add a paint line for every shop</button>
+        )}
+
+        <div style={head}>Bare metals</div>
+        {of("material", "").map((m) => (
+          <div key={rid(m)} style={row}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ ...nameStyle(m), flex: 1 }}>{m.key}{tag(m)} {m.data?.flatsOnly && <span style={{ ...small, fontWeight: 400 }}>flats only</span>}</span>
+              {toggleBtn(m)}
+            </div>
+            {of("color", m.key).map(colorRow)}
+          </div>
+        ))}
+
+        <div style={head}>Gauges and weights</div>
+        {[...new Set(of("gauge").map((g) => g.parent_key))].map((set) => (
+          <div key={set} style={row}>
+            <div style={{ ...small, fontWeight: 700, marginBottom: 2 }}>{set === "painted" ? "Painted steel — every paint line" : set}</div>
+            {of("gauge", set).map((g) => (
+              <div key={rid(g)} style={rowLine}>
+                <span style={{ ...nameStyle(g), flex: 1 }}>{g.data?.label || g.key}{tag(g)} <span style={{ ...small, fontWeight: 400 }}>{g.key} · fallback ${g.data?.panelSqft}/sq ft panel · ${g.data?.trimFt}/ft trim</span></span>
+                {toggleBtn(g)}
+              </div>
+            ))}
+          </div>
+        ))}
+
+        <div style={head}>Paint systems</div>
+        <div style={row}>
+          {of("paint", "").map((p) => (
+            <div key={rid(p)} style={rowLine}>
+              <span style={{ ...nameStyle(p), flex: 1 }}>{p.data?.label || p.key}{tag(p)} <span style={{ ...small, fontWeight: 400 }}>{p.key} · ×{p.data?.mult}</span></span>
+              {toggleBtn(p)}
+            </div>
+          ))}
+        </div>
+
+        <div style={head}>Panel profiles</div>
+        {of("profile", "").map((q) => (
+          <div key={rid(q)} style={{ ...row, display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={nameStyle(q)}>{q.key}{tag(q)} <span style={{ ...small, fontWeight: 400 }}>{q.data?.code} · {familyLabel(q.data?.family)} · takeup {q.data?.takeup}"{q.data?.vendor ? ` · ${q.data.vendor}` : ""}</span></div>
+              {q.data?.desc && <div style={small}>{q.data.desc}</div>}
+            </div>
+            {toggleBtn(q)}
+          </div>
+        ))}
+        {adding === "profile" ? (
+          <div style={row}>
+            <label style={{ ...small, display: "block" }}>Name, as the pickers show it<input value={np.name} onChange={(e) => setNp({ ...np, name: e.target.value })} placeholder={'e.g. SS200 – 2" Snap-Lock'} style={input} /></label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginTop: 8 }}>
+              <label style={{ ...small, display: "block" }}>Code<input value={np.code} onChange={(e) => setNp({ ...np, code: e.target.value })} placeholder="SS200" style={input} /></label>
+              <label style={{ ...small, display: "block" }}>Seam<select value={np.family} onChange={(e) => setNp({ ...np, family: e.target.value })} style={input}>{PROFILE_FAMILIES.map(([id, l]) => <option key={id} value={id}>{l}</option>)}</select></label>
+              <label style={{ ...small, display: "block" }}>Takeup (in)<input type="number" step="0.0625" value={np.takeup} onChange={(e) => setNp({ ...np, takeup: e.target.value })} placeholder="4.125" style={input} /></label>
+              <label style={{ ...small, display: "block" }}>Vendor<input value={np.vendor} onChange={(e) => setNp({ ...np, vendor: e.target.value })} placeholder="blank = New Tech, adax = Adax" style={input} /></label>
+            </div>
+            <label style={{ ...small, display: "block", marginTop: 8 }}>Description<input value={np.desc} onChange={(e) => setNp({ ...np, desc: e.target.value })} style={input} /></label>
+            <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+              <button type="button" onClick={addProfile} disabled={busy} style={btn(true)}>Add profile</button>
+              <button type="button" onClick={() => setAdding("")} style={btn(false)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <button type="button" onClick={() => setAdding("profile")} style={{ ...btn(false), marginBottom: 6 }}>+ Add a profile for every shop</button>
+        )}
+
+        <div style={head}>Clips</div>
+        <div style={row}>
+          {of("clip", "").map((c) => (
+            <div key={rid(c)} style={rowLine}>
+              <span style={{ ...nameStyle(c), flex: 1 }}>{c.key}{tag(c)} <span style={{ ...small, fontWeight: 400 }}>{c.data?.code} · {c.data?.perBox} per box</span></span>
+              {toggleBtn(c)}
+            </div>
+          ))}
+        </div>
+
+        <div style={head}>Accessories</div>
+        {of("accessory", "").map((t) => (
+          <div key={rid(t)} style={row}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ ...nameStyle(t), flex: 1 }}>{t.key}{tag(t)} {t.data?.dryIn && <span style={{ ...small, fontWeight: 400 }}>dry-in</span>}</span>
+              {toggleBtn(t)}
+            </div>
+            {of("accessory", t.key).map((s) => (
+              <div key={rid(s)} style={{ ...rowLine, paddingLeft: 16 }}>
+                <span style={{ ...nameStyle(s), flex: 1, fontWeight: 500, fontSize: 11.5 }}>{s.key}{tag(s)}</span>
+                {toggleBtn(s)}
+              </div>
+            ))}
+          </div>
+        ))}
+      </>)}
+    </div>
+  );
+}
+
 /* ------------------------------- shop settings -------------------------------- */
 // Shop Floor → Shop Settings: where a shop's people set it up and run it. The setup
 // checklist is derived from facts that already live somewhere (a saved price list, an order
@@ -4007,7 +4277,7 @@ export default function ShopOrderApp() {
   const [height, setHeight] = useState(853.08); // 100 finished sq ft at the default 21" coil / 16.88" SS450 pan width
   const [flatWidth, setFlatWidth] = useState(48);
   const [accType, setAccType] = useState("Screws");
-  const [accSpec, setAccSpec] = useState(activeCatalog.accessories.specs.Screws[0]);
+  const [accSpec, setAccSpec] = useState(activeCatalog.accessories.specs.Screws?.[0] || "");
   const [accProfile, setAccProfile] = useState(PROFILES()[0]);
   const [accQty, setAccQty] = useState(1);
   const [accSealColor, setAccSealColor] = useState("match"); // "match" | "Clear" | a color name
@@ -4099,7 +4369,7 @@ export default function ShopOrderApp() {
   const [gaugeId, setGaugeId] = useState(activeCatalog.gauges.painted[0].id);
   const [paintId, setPaintId] = useState(activeCatalog.paints[0].id);
   const [brand, setBrand] = useState(activeCatalog.brands[0]);
-  const [colorName, setColorName] = useState(activeCatalog.colors[activeCatalog.brands[0]][0].name);
+  const [colorName, setColorName] = useState(activeCatalog.colors[activeCatalog.brands[0]]?.[0]?.name || "");
   const [colorSearch, setColorSearch] = useState("");
   const [quantity, setQuantity] = useState(4);
   const [sheetWidth, setSheetWidth] = useState(48);
@@ -4456,8 +4726,8 @@ export default function ShopOrderApp() {
     if (coilOverMax) return null;
     const per = coilPriceForWidth(+coilWidth || 0, coilWidthScale);
     if (per === null) return null;
-    const pvdfM = activeCatalog.paints.find((p) => p.id === "pvdf")?.mult || 1;
-    const m = brand === "Copper" ? 1 : (activeCatalog.paints.find((p) => p.id === paintId) || activeCatalog.paints[0]).mult;
+    const pvdfM = catalogFindPaint(activeCatalog, "pvdf")?.mult || 1;
+    const m = brand === "Copper" ? 1 : (catalogFindPaint(activeCatalog, paintId) || activeCatalog.paints[0]).mult;
     return Math.round(per * (m / pvdfM) * 100) / 100;
   };
   useEffect(() => {
@@ -4573,6 +4843,15 @@ export default function ShopOrderApp() {
     setCatalogTick((t) => t + 1);
     try { await shopStorage.set(shopId, "catalog", JSON.stringify(next)); }
     catch (e) { console.error("storage error", e); }
+  };
+  // After platform staff change the catalog table (the Platform catalog section, which
+  // invalidated the cached load): the fresh platform catalog, re-resolved with this shop's
+  // selection, into every picker and estimate on this page.
+  const refreshPlatformCatalog = async () => {
+    const platform = await loadPlatformCatalog();
+    setPlatformCatalog(platform);
+    setActiveCatalog(resolveCatalog(platform, catalogSelection));
+    setCatalogTick((t) => t + 1);
   };
   // A pick the new catalog does not offer moves to the first thing it does, so the form and
   // the estimate never show a brand, color or profile the shop will refuse.
@@ -5148,7 +5427,7 @@ export default function ShopOrderApp() {
 
   const colorObj = findColor(colorName, brand, paintId);
   const activeGauge = findGauge(gaugeId, brand);
-  const activePaint = brand === "Copper" ? { mult: 1 } : (activeCatalog.paints.find((p) => p.id === paintId) || activeCatalog.paints[0]);
+  const activePaint = brand === "Copper" ? { mult: 1 } : (catalogFindPaint(activeCatalog, paintId) || activeCatalog.paints[0]);
   const activePremiumMult = colorObj?.premium ? 1.12 : 1;
   const activeRates = getSellRates(gaugeId, brand, priceList, profile, sellTier);
   const ratePerSqft = activeRates.coilSqft * activePaint.mult * activePremiumMult;
@@ -5158,7 +5437,7 @@ export default function ShopOrderApp() {
   const activeFlatProcessingFee = activeFlatProcessingItem ? sellRate(activeFlatProcessingItem, sellTier) : 0;
   const flatSheetPrice = (((+flatWidth || 0) * (+flatLength || 0)) / 144) * activeFlatMaterialRate * activePaint.mult * activePremiumMult + activeFlatProcessingFee;
   const interpolatedCoilPerFt = coilPriceForWidth(+metalCoilWidth || 0, coilWidthScale);
-  const pvdfMultRef = activeCatalog.paints.find((p) => p.id === "pvdf")?.mult || 1;
+  const pvdfMultRef = catalogFindPaint(activeCatalog, "pvdf")?.mult || 1;
   const metalCoilPricePerFt = interpolatedCoilPerFt !== null
     ? interpolatedCoilPerFt * (activePaint.mult / pvdfMultRef)
     : ((+metalCoilWidth || 0) / 12) * ratePerSqft;
@@ -5215,7 +5494,7 @@ export default function ShopOrderApp() {
     setOrderStep("type");
     setShapeType("panel"); setWidth(16.88); setHeight(853.08); setCoilWidth(21); setProfile(PROFILES()[0]); setRunLocation("Shop"); setJobSiteAddress(""); setJobSiteMiles(""); setMilesLookupNote(""); setSupplierCo("Fortified Metal"); setRibStyle(null); setClipRelief(null);
     setFlatWidth(48); setFlatLength(120); setMetalCoilWidth(21); setMetalCoilLength(12000);
-    setAccessories([]); setAccType("Screws"); setAccSpec(activeCatalog.accessories.specs.Screws[0]); setAccProfile(PROFILES()[0]); setAccQty(1);
+    setAccessories([]); setAccType("Screws"); setAccSpec(activeCatalog.accessories.specs.Screws?.[0] || ""); setAccProfile(PROFILES()[0]); setAccQty(1);
     setPartType("collector"); setPartW(12); setPartD(8); setPartH(10); setPartCapH(6); setPartView("3d"); setCapStyle("pyramid");
     setOutletShape("box"); setFlangeW(4); setFlangeD(4); setOutletDiameter(4); setOutletLength(6); setFlangeTapered(true);
     setFlangeLength(4); setOutletRoundTapered(false);
@@ -5225,7 +5504,7 @@ export default function ShopOrderApp() {
     setScupDsSize("4×5"); setScupDsLen(10);
     setPoints(TRIM_PRESETS["Eave / Drip Edge"]); setPreset("Eave / Drip Edge");
     setHemStart("none"); setHemEnd("none"); setPaintSide("right");
-    setMaterialCategory("painted"); setGaugeId(activeCatalog.gauges.painted[0].id); setPaintId(activeCatalog.paints[0].id); setBrand(activeCatalog.brands[0]); setColorName(activeCatalog.colors[activeCatalog.brands[0]][0].name);
+    setMaterialCategory("painted"); setGaugeId(activeCatalog.gauges.painted[0].id); setPaintId(activeCatalog.paints[0].id); setBrand(activeCatalog.brands[0]); setColorName(activeCatalog.colors[activeCatalog.brands[0]]?.[0]?.name || "");
     setQuantity(4); setLengthPerPiece(10); setSheetWidth(48); setPartName("");
     setEditingId(null); setBoxReturn(null); editSnapshot.current = null; setRoofBoxOpen(false); setBox3dReturn(false);
     setCustomerName(""); setPhone(""); setNotes("");
@@ -8312,6 +8591,8 @@ export default function ShopOrderApp() {
               </div>
               </>)}
 
+              {isStaff && <PlatformCatalogSection theme={theme} userId={user?.id} onChanged={refreshPlatformCatalog} />}
+
               <CatalogSection platform={platformCatalog} selection={catalogSelection} onChange={saveCatalogSelection} theme={theme} shopName={selectedShop ? selectedShop.name : "this shop"} />
 
               <div style={{ marginBottom: 18 }}>
@@ -8985,7 +9266,7 @@ export default function ShopOrderApp() {
 
                       {isOpen && group.items.map((o, idx) => {
                         const gauge = findGauge(o.gaugeId, o.brand);
-                        const paint = activeCatalog.paints.find((p) => p.id === o.paintId);
+                        const paint = catalogFindPaint(activeCatalog, o.paintId);
                         const StatusIcon = STATUS_ICON[o.status];
                         return (
                           <div key={o.id} style={{ display: "flex", gap: 10, marginTop: 10, paddingTop: 10, borderTop: "1px solid #F0EDE3" }}>

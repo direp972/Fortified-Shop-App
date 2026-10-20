@@ -19,6 +19,8 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { DEFAULT_CATALOG, catalogToRows } from "../supabase/functions/_shared/catalog.mjs";
+import "../public/catalog-colors.js"; // the pages' own color index: globalThis.rcCatalogColors / rcCatalogColorsFromRows
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = path.resolve(process.env.OUT_DIR || path.join(ROOT, "dist"));
@@ -33,7 +35,23 @@ if (!process.env.LISTINGS_FIXTURE && (!SUPA || !KEY)) {
   process.exit(1);
 }
 
-/* ── taxonomy (kept in lock-step with get-listed / suppliers / directory-admin) ── */
+// The color dots on supplier cards and pages take their hex from the platform catalog
+// (public.catalog_items, the rows the shop app sells from) through the same
+// catalog-colors.js the pages load at runtime, so the two never drift. When the table
+// cannot be read (or with a fixture) the build uses the code default instead of failing:
+// a wrong dot is cosmetic, a missing directory is not.
+async function loadColorIndex() {
+  if (!process.env.LISTINGS_FIXTURE) {
+    const idx = await globalThis.rcCatalogColors({ url: SUPA, key: KEY });
+    if (idx) return idx;
+    console.warn("prerender: catalog_items unreachable, color swatches from the code default");
+  }
+  return globalThis.rcCatalogColorsFromRows(catalogToRows(DEFAULT_CATALOG));
+}
+const COLOR_INDEX = await loadColorIndex();
+const colorHex = (name) => COLOR_INDEX.hexOf(name);
+
+/* ── taxonomy (kept in lock-step with get-listed / suppliers / directory-admin; the colors are not: they come from the catalog above) ── */
 const COIL = ["Coil & flat sheet", "Painted coil — PVDF / Kynar", "Painted coil — SMP", "Bare — Galvalume · G90 · bonderized", "Copper"];
 const STANDING_SEAM = ["1″ mechanical lock", "1.5″ snap-lock", "1.75″ snap-lock", "1.5″ mechanical lock (single)", "1.5″ mechanical lock (double)", "2″ mechanical lock", "1″ nail strip", "1.5″ nail strip", "T-panel (138T)", "T-panel (238T)", "Batten seam", "2.5″ trapezoidal", "3″ trapezoidal structural", "Flush wall & soffit", "Board & batten"];
 const EF_PANELS = ["R-panel / PBR", "7.2 panel (structural rib)", "7/8″ corrugated", "1/2″ corrugated (low-profile)", "5V-crimp", "Ag panel / tuff rib", "U-panel / PBU", "M-panel / box-rib (wall)"];
@@ -55,7 +73,6 @@ const GROUPS = [
   ["Gutter materials", GUTTER_MATERIALS],
   ["Services", SERVICES],
 ];
-const COLOR_HEX = { "Regal White": "#E3E1DC", "Almond": "#D9C9AE", "Ash Gray": "#9C9088", "Slate Gray": "#706A66", "Burnished Slate": "#565B5E", "Charcoal": "#55504C", "Medium Bronze": "#4A3E36", "Dark Bronze": "#3A322C", "Matte Black": "#26262A", "Evergreen": "#1F3D2E", "Copper Metallic": "#A0602E", "Galvalume": "#D8D6D0", "Texas Silver": "#B0B4B7", "Bare Copper": "#B87333", "Bonderized": "#7E837F", "Acrylic Coated Galvalume": "#D8D6D0", "Aged Bronze": "#5A4E42", "Brandy Wine": "#722F37", "Brownstone": "#6B5A4E", "Buckskin": "#B49877", "Champagne": "#CBB58C", "Charcoal Gray": "#55504C", "Colonial Red": "#7A2422", "Forest Green": "#21402B", "Hartford Green": "#1E3A2A", "Hemlock Green": "#4E5B4A", "Mansard Brown": "#3E2A24", "Patina Green": "#4E8C74", "Preweather Galvalume": "#8E9494", "Regal Blue": "#1C5C7A", "Regal Red": "#8C2B2B", "Roman Blue": "#33586E", "Sandstone": "#C7BEB0", "Silver": "#B9BCBE", "Snow White": "#F2F2EF", "Surrey Beige": "#A9906F", "Terracotta": "#B5623E", "Tundra": "#7A7E6F", "Acrylic Galvalume": "#D8D6D0", "Artic White": "#EDEEEA", "Berry": "#7E3B47", "Black Crinkle": "#2A2A2C", "Bone White": "#E8E4D8", "Burnished Slate Crinkle": "#52575A", "Charcoal Blue Gray": "#4C555E", "Charcoal Gray Crinkle": "#514D49", "Charcoal Gray II": "#5A5652", "Colony Green": "#2E4A3A", "Crimson Red": "#7E2A33", "Dark Red": "#6E1F1F", "Desert Sand": "#C9B597", "Evergreen Crinkle": "#23422F", "Fern Green": "#4A6B45", "Gallery Blue": "#2E4A68", "Hawaiian Blue": "#4A7B96", "Ivory": "#E9E2CE", "Ivy Green": "#3A5A40", "Koko Crinkle": "#4A3B31", "Light Stone": "#D4CBB4", "Old Town Gray": "#8C8A84", "Polar White": "#EFEFEA", "Rural Red": "#7C3030", "Rustic Red": "#6E3226", "Rustic Red Crinkle": "#6A3024", "Saddle Tan": "#A87F52", "Taupe": "#8A7A6A" };
 
 /* ── helpers ─────────────────────────────────────────────────────────────── */
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -245,7 +262,7 @@ function cardHtml(l) {
   if (contact.length) paras.push(`<p>${contact.join(" · ")}</p>`);
   const photos = l.photos.length ? `<div class="ph-row">${l.photos.map((u) => `<a href="${attr(u)}" target="_blank" rel="noopener"><img src="${attr(u)}" loading="lazy" alt="Job photo from ${attr(l.name)}"></a>`).join("")}</div>` : "";
   const chips = `<div class="ab-row">${l.abilities.map((a) => `<span class="abchip">${esc(a)}</span>`).join("")}</div>`;
-  const colors = l.colors.length ? `<div class="sw-row"><span class="lbl">${l.colors.length} colors</span>${l.colors.map((c) => `<span class="dot" title="${attr(c)}" style="background:${COLOR_HEX[c] || "#8A94A6"}"></span>`).join("")}</div>` : "";
+  const colors = l.colors.length ? `<div class="sw-row"><span class="lbl">${l.colors.length} colors</span>${l.colors.map((c) => `<span class="dot" title="${attr(c)}" style="background:${colorHex(c)}"></span>`).join("")}</div>` : "";
   return `<div class="co" ${attrs}>
 <div class="co-head">${logoHtml(l)}<h2><a href="${l.path}">${esc(l.name)}</a></h2>${badgeHtml(l.badges)}<span class="loc">${esc([l.address, l.city].filter(Boolean).join(" · "))}<span class="dist"></span></span></div>
 ${paras.join("\n")}
@@ -372,7 +389,7 @@ ${NAV("Directory")}
       <p style="margin-bottom:12px">Every ability below is a live search facet — tap one to see every listed shop that runs it.</p>
       ${grouped.map(([label, xs]) => `<div class="grp"><p class="lbl">${esc(label)}</p><div class="ab-row">${xs.map((a) => `<a class="abchip" href="${abilityLink(a)}">${esc(a)}</a>`).join("")}</div></div>`).join("")}
     </div>
-    ${l.colors.length ? `<div class="step"><h3>Colors carried (${l.colors.length})</h3><p class="sw-list">${l.colors.map((c) => `<span><i class="dot" style="background:${COLOR_HEX[c] || "#8A94A6"}"></i>${esc(c)}</span>`).join("")}</p></div>` : ""}
+    ${l.colors.length ? `<div class="step"><h3>Colors carried (${l.colors.length})</h3><p class="sw-list">${l.colors.map((c) => `<span><i class="dot" style="background:${colorHex(c)}"></i>${esc(c)}</span>`).join("")}</p></div>` : ""}
     ${l.photos.length ? `<div class="step"><h3>Job photos</h3><div class="ph-grid">${l.photos.map((u) => `<a href="${attr(u)}" target="_blank" rel="noopener"><img src="${attr(u)}" loading="lazy" alt="Job photo from ${attr(l.name)}"></a>`).join("")}</div></div>` : ""}
   </div>
   <div>

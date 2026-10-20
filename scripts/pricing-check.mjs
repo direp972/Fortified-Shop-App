@@ -2,7 +2,8 @@
 // Run: node scripts/pricing-check.mjs   (exits non-zero on the first failing check)
 import assert from "node:assert/strict";
 import { computePrice, getSellRates, sellTierFor, sellRate, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE } from "../supabase/functions/_shared/pricing.mjs";
-import { DEFAULT_CATALOG, findGauge, findColor, listedProfiles, clipSpecForProfile, catalogToRows, catalogFromRows, isUsableCatalog, resolveCatalog, isOffered, getColorsForBrand } from "../supabase/functions/_shared/catalog.mjs";
+import { DEFAULT_CATALOG, findGauge, findColor, findPaint, listedProfiles, clipSpecForProfile, catalogToRows, catalogFromRows, isUsableCatalog, resolveCatalog, isOffered, getColorsForBrand } from "../supabase/functions/_shared/catalog.mjs";
+import "../public/catalog-colors.js"; // the public pages' color index (globalThis.rcCatalogColorsFromRows)
 
 const close = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-9, `${msg}: got ${a}, wanted ${b}`);
 const price = (order, tier) => computePrice(order, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE, tier);
@@ -74,11 +75,16 @@ assert.equal(clipSpecForProfile(DEFAULT_CATALOG, 'SS450 – 1.5" Snap-Lock').cod
 assert.equal(clipSpecForProfile(DEFAULT_CATALOG, 'FWQ100 – 1" Flush Wall / Soffit'), null, "profiles without clips");
 
 // The platform table holds the catalog as rows: writing the default out and reading it back
-// gives the default again, in every order the rows might come back in, including the order
-// of the color groups that findColor searches across.
+// gives the default again (plus the all* maps, which equal the offer when nothing is
+// delisted), in every order the rows might come back in, including the order of the color
+// groups that findColor searches across.
 const rows = catalogToRows(DEFAULT_CATALOG);
-assert.deepEqual(catalogFromRows(rows), DEFAULT_CATALOG, "rows round-trip to the default catalog");
-assert.deepEqual(catalogFromRows([...rows].reverse()), DEFAULT_CATALOG, "row order does not matter");
+const listedOnly = ({ allColors, allGauges, allPaints, ...c }) => c;
+assert.deepEqual(listedOnly(catalogFromRows(rows)), DEFAULT_CATALOG, "rows round-trip to the default catalog");
+assert.deepEqual(listedOnly(catalogFromRows([...rows].reverse())), DEFAULT_CATALOG, "row order does not matter");
+assert.deepEqual(catalogFromRows(rows).allColors, DEFAULT_CATALOG.colors, "nothing delisted: every color is offered");
+assert.deepEqual(catalogFromRows(rows).allGauges, DEFAULT_CATALOG.gauges, "nothing delisted: every gauge is offered");
+assert.deepEqual(catalogFromRows(rows).allPaints, DEFAULT_CATALOG.paints, "nothing delisted: every paint is offered");
 assert.deepEqual(Object.keys(catalogFromRows([...rows].reverse()).colors), Object.keys(DEFAULT_CATALOG.colors), "color groups keep their order");
 assert.deepEqual(Object.keys(catalogFromRows([...rows].reverse()).profiles), Object.keys(DEFAULT_CATALOG.profiles), "profiles keep their order");
 assert.ok(rows.every((r) => typeof r.key === "string" && r.key.length > 0 && typeof r.parent_key === "string"), "every row has a key and a parent (empty when none)");
@@ -132,5 +138,42 @@ assert.ok(!isOffered(shop, { ...trim, brand: "Bonderized", colorName: "Bonderize
 const collide = resolveCatalog(DEFAULT_CATALOG, { custom: { brands: [{ name: "Berridge", colors: [{ name: "X", hex: "#000000" }] }], profiles: [{ name: 'SS450 – 1.5" Snap-Lock', code: "SS450", family: "snap", takeup: 1 }] } });
 assert.deepEqual(collide.colors.Berridge, DEFAULT_CATALOG.colors.Berridge, "a custom item cannot shadow a platform item");
 assert.equal(collide.profiles['SS450 – 1.5" Snap-Lock'].takeup, 4.125, "nor a platform profile");
+
+// Platform delisting (step 4): a delisted paint line, color, bare metal, gauge, paint, clip
+// or accessory row leaves the offer — the pickers, the public pages, isOffered — but still
+// resolves, so an order placed before the delisting prices as it did.
+const delist = (r) => (r.kind === "brand" && r.key === "Berridge") || (r.kind === "color" && r.parent_key === "Una-Clad" && r.key === "Brandywine") || (r.kind === "material" && r.key === "Bonderized")
+  || (r.kind === "gauge" && r.parent_key === "G90 Galvanized" && r.key === "16ga") || (r.kind === "paint" && r.key === "smp") || (r.kind === "clip" && r.key === "SSQ675") || (r.kind === "accessory" && r.key === "DP3 Screws");
+const delistedRows = rows.map((r) => (delist(r) ? { ...r, delisted: true } : r));
+const platform = catalogFromRows(delistedRows);
+assert.ok(isUsableCatalog(platform), "still usable");
+assert.ok(!platform.brands.includes("Berridge") && !("Berridge" in platform.colors) && platform.allColors.Berridge.length === DEFAULT_CATALOG.colors.Berridge.length, "a delisted paint line leaves the offer; its colors stay resolvable");
+assert.equal(findColor(platform, "Buckskin", "Berridge", "pvdf")?.hex, "#8A7B65", "a delisted paint line's color resolves");
+assert.ok(!getColorsForBrand(platform, "Una-Clad", "pvdf").some((c) => c.name === "Brandywine") && findColor(platform, "Brandywine", "Una-Clad", "pvdf")?.hex === "#6E2F28", "a delisted color leaves the picker and still resolves");
+assert.ok(!platform.unpainted.includes("Bonderized") && platform.gauges.Bonderized.length === 2 && !("Bonderized" in platform.colors), "a delisted bare metal leaves the offer and keeps its gauge table");
+assert.ok(!platform.gauges["G90 Galvanized"].some((g) => g.id === "16ga") && findGauge(platform, "16ga", "G90 Galvanized").trimFt === 4.60, "a delisted gauge leaves the picker and still prices");
+assert.ok(!platform.paints.some((p) => p.id === "smp") && findPaint(platform, "smp").mult === 1.0 && findPaint(platform, "nope") === null, "a delisted paint leaves the picker and still prices");
+close(computePrice(trim, DEFAULT_PRICE_LIST, DEFAULT_COIL_WIDTH_SCALE, "tier1", platform), price(trim, "tier1"), "an SMP order prices the same after SMP is delisted");
+assert.equal(clipSpecForProfile(platform, 'SSQ675 – 1.75" Snap-Lock'), null, "a delisted clip is out of the offer");
+assert.ok(!platform.accessories.specs.Screws.includes("DP3 Screws") && platform.accessories.specs.Screws.length === 2, "a delisted accessory spec leaves its type");
+assert.ok(!isOffered(platform, { ...trim, brand: "Berridge", colorName: "Buckskin" }).ok && !isOffered(platform, { ...trim, brand: "Una-Clad", colorName: "Brandywine" }).ok && !isOffered(platform, { ...trim, brand: "Bonderized", colorName: "Bonderized (Mill Finish)" }).ok, "the server refuses delisted platform items");
+assert.ok(isOffered(platform, trim).ok, "and still offers the rest");
+assert.deepEqual(listedOnly(resolveCatalog(platform, null)), listedOnly(platform), "no selection over a platform with delistings is that platform");
+const shopOverDelisted = resolveCatalog(platform, { custom: { brands: [{ name: "Berridge", colors: [{ name: "X", hex: "#000000" }] }] } });
+assert.ok(!shopOverDelisted.brands.includes("Berridge") && findColor(shopOverDelisted, "Buckskin", "Berridge", "pvdf")?.hex === "#8A7B65", "a shop cannot reuse a delisted paint line's name, and its colors still resolve for the shop");
+
+// The public pages' color index (public/catalog-colors.js, which the build imports too)
+// reads the same rows: delisted colors and lines are not shown, every row still answers
+// for a hex, and the directory's own spellings find the catalog's keys.
+const idx = globalThis.rcCatalogColorsFromRows(delistedRows);
+assert.deepEqual(idx.brands, ["Fortified Metal", "Una-Clad", "Adax Metals"], "a delisted paint line is not shown");
+assert.ok(!("Berridge" in idx.groups) && !idx.groups["Una-Clad"].some((c) => c.name === "Brandywine") && !idx.names.includes("Brandywine"), "delisted colors are not shown");
+assert.ok(!idx.unpainted.includes("Bonderized") && !("Bonderized" in idx.groups), "nor a delisted bare metal");
+assert.equal(idx.hexOf("Brandy Wine"), "#6E2F28", "a listing's spelling still finds the hex of a delisted color");
+assert.equal(idx.hexOf("Charcoal"), "#55504C", "the directory's short names map to the catalog's keys");
+assert.equal(idx.hexOf("Bare Copper"), "#B87333", "and the bare metals to their mill-finish swatches");
+assert.equal(idx.hexOf("Not A Color"), "#8A94A6", "an unknown name is gray");
+assert.equal(idx.hexOf("Koko Crinkle"), "#4A3B31", "a directory palette name the catalog lacks keeps its legacy hex");
+assert.equal(globalThis.rcCatalogColorsFromRows(rows).names.length, new Set(DEFAULT_CATALOG.brands.flatMap((b) => DEFAULT_CATALOG.colors[b].map((c) => c.name))).size, "the names count is every listed painted color once");
 
 console.log("pricing-check: all checks passed");
