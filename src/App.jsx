@@ -3567,7 +3567,9 @@ function PlatformCatalogSection({ theme, userId, onChanged }) {
   const [nb, setNb] = useState({ name: "", rule: "any" });
   const [nc, setNc] = useState({ name: "", hex: "", premium: false });
   const [np, setNp] = useState({ name: "", code: "", family: "snap", takeup: "", vendor: "", desc: "" });
-  const say = (m) => { setNote(m); setTimeout(() => setNote(""), 6000); };
+  // a second write within six seconds would otherwise lose its note to the first one's timer
+  const noteTimer = useRef(null);
+  const say = (m) => { setNote(m); clearTimeout(noteTimer.current); noteTimer.current = setTimeout(() => setNote(""), 6000); };
   const load = useCallback(async () => {
     const r = await loadPlatformCatalogRows();
     setFailed(!r); setRows(r || []);
