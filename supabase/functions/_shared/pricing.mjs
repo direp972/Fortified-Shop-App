@@ -5,7 +5,7 @@
 // is passed in, defaulting to DEFAULT_CATALOG. Plain ESM whose only import is that sibling:
 // Vite bundles both into the app and Deno loads them as-is. Keep it that way — anything
 // React- or DOM-specific belongs in App.jsx.
-import { DEFAULT_CATALOG, findColor, findGauge } from "./catalog.mjs";
+import { DEFAULT_CATALOG, findColor, findGauge, findPaint } from "./catalog.mjs";
 
 // One resolved set of scupper numbers, shared by the model, the blank, the price and the
 // ticket. They used to be defaulted and clamped separately in each, so a plate typed
@@ -199,7 +199,7 @@ export function getSellRates(gaugeId, brand, priceList, profile, tier, catalog =
 
 export function computePrice(order, priceList, coilWidthScale, tier, catalog = DEFAULT_CATALOG) {
   const rates = getSellRates(order.gaugeId, order.brand, priceList, order.profile, tier, catalog);
-  const paint = order.brand === "Copper" ? { mult: 1 } : (catalog.paints.find((p) => p.id === order.paintId) || catalog.paints[0]);
+  const paint = order.brand === "Copper" ? { mult: 1 } : (findPaint(catalog, order.paintId) || catalog.paints[0]);
   const colorObj = findColor(catalog, order.colorName, order.brand, order.paintId);
   const premiumMult = colorObj?.premium ? 1.12 : 1;
   if (order.type === "metal") {
@@ -221,7 +221,7 @@ export function computePrice(order, priceList, coilWidthScale, tier, catalog = D
     // PVDF/SMP ratio for SMP orders, rather than getting the PVDF multiplier stacked
     // on top of an already-PVDF price.
     const interpolatedPerFt = coilPriceForWidth(order.coilWidth, coilWidthScale);
-    const pvdfMult = catalog.paints.find((p) => p.id === "pvdf")?.mult || 1;
+    const pvdfMult = findPaint(catalog, "pvdf")?.mult || 1;
     const coilFeet = (order.coilLength || 0) / 12;
     const coilCost = interpolatedPerFt !== null
       ? interpolatedPerFt * (paint.mult / pvdfMult) * coilFeet

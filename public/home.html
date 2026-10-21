@@ -317,6 +317,7 @@
     <span class="mono" style="letter-spacing:.12em;text-transform:uppercase">Search by ability · color · location</span>
   </div>
 </div></footer>
+<script src="/catalog-colors.js"></script>
 <script>
 // Listed-shop count is live: every published directory listing counts, so it
 // climbs on its own as shops are approved. Falls back to the static text if the
@@ -324,15 +325,24 @@
 fetch("https://znueitseoqijhkkvdomc.supabase.co/rest/v1/directory_public?select=id",{headers:{apikey:"sb_publishable_R7JBgFijjjXcYJaggpx-og_Qn4iGdAB",Prefer:"count=exact","Range-Unit":"items",Range:"0-0"}})
   .then(r=>{const n=parseInt((r.headers.get("content-range")||"").split("/")[1],10);if(n>0)document.getElementById("st-shops").textContent=n+" & growing"})
   .catch(()=>{});
-const COLORS=[["Regal White","#E3E1DC"],["Almond","#D9C9AE"],["Ash Gray","#9C9088"],["Slate Gray","#706A66"],["Burnished Slate","#565B5E"],["Charcoal","#55504C"],["Medium Bronze","#4A3E36"],["Dark Bronze","#3A322C"],["Matte Black","#26262A"],["Evergreen","#1F3D2E"],["Copper Metallic","#A0602E"],["Galvalume","#D8D6D0"],["Texas Silver","#B0B4B7"],["Bare Copper","#B87333"],["Bonderized","#7E837F"]];
 const $=s=>document.querySelector(s);
-document.getElementById("lab-chips").innerHTML=COLORS.map(c=>`<button style="background:${c[1]}" data-c="${c[0]}" title="${c[0]}" aria-label="${c[0]}"></button>`).join("");
-document.querySelectorAll("#lab-chips button").forEach(b=>b.onclick=()=>{
-  document.querySelectorAll("#lab-chips button").forEach(x=>x.classList.toggle("sel",x===b));
-  const hex=COLORS.find(c=>c[0]===b.dataset.c)[1];
-  $("#lab-vis").style.setProperty("--c",hex);
-  $("#lab-name").textContent=b.dataset.c});
-document.querySelectorAll("#lab-chips button")[8].classList.add("sel");
+// The color lab's chips are the platform catalog's house line (its first paint line) and
+// the bare metals, read from catalog_items by catalog-colors.js — the rows the shop app
+// sells from, so the lab never drifts from it. If the table can't be reached the lab
+// keeps its default swatch and shows no chips.
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+rcCatalogColors().then(cat=>{
+  if(!cat)return;
+  const chips=(cat.groups[cat.brands[0]]||[]).concat(cat.unpainted.flatMap(m=>cat.groups[m]||[]));
+  if(!chips.length)return;
+  document.getElementById("lab-chips").innerHTML=chips.map(c=>`<button style="background:${c.hex}" data-c="${esc(c.name)}" data-hex="${c.hex}" title="${esc(c.name)}" aria-label="${esc(c.name)}"></button>`).join("");
+  const all=[...document.querySelectorAll("#lab-chips button")];
+  all.forEach(b=>b.onclick=()=>{
+    all.forEach(x=>x.classList.toggle("sel",x===b));
+    $("#lab-vis").style.setProperty("--c",b.dataset.hex);
+    $("#lab-name").textContent=b.dataset.c});
+  (all.find(b=>b.dataset.c===$("#lab-name").textContent.trim())||all[0]).classList.add("sel");
+});
 </script>
 </body>
 </html>
