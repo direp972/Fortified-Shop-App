@@ -48,17 +48,18 @@ export default function AuthGate({ children }) {
   useEffect(() => { if (user) setAuthOpen(false); }, [user]);
 
   // A link that ends in #signup or #signin (a shop's invite email, confirm.html's "Go to
-  // sign in") opens the card on that side straight away, then clears the hash so a reload
-  // does not reopen it.
+  // sign in") opens the card on that side once the session is known, then clears the hash
+  // so a reload does not reopen it. Already signed in, the hash is only cleared.
   useEffect(() => {
-    if (user) return;
+    if (loading) return;
     const h = (window.location.hash || "").toLowerCase();
     if (h !== "#signup" && h !== "#signin") return;
+    try { window.history.replaceState(null, "", window.location.pathname + window.location.search); } catch (e) { /* ignore */ }
+    if (user) return;
     setMode(h === "#signup" ? "signup" : "signin");
     setAuthOpen(true);
-    try { window.history.replaceState(null, "", window.location.pathname + window.location.search); } catch (e) { /* ignore */ }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loading]);
 
   // If Google (or Supabase) bounced us back with an error, it arrives in the URL hash
   // (#error=...&error_description=...). Surface it once and clean the address bar.
