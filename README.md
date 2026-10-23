@@ -204,8 +204,9 @@ staff (`public.staff`) keep every power across every shop. Design and the reason
   account can never be removed, `?shop=<slug>` works next to `?shop=<id>`, tier names live
   per shop under `shop_settings` key `tier-labels`, and PO numbers come from each shop's
   own counter, assigned by `submit-order`. Deploy order: the migration (additive), then
-  `submit-order`, `listing-alert` and `order-alert`, then the build; a later cleanup drops
-  `next_po_number()`, `po_number_seq` and `ordering_shop(uuid)`.
+  `submit-order`, `listing-alert` and `order-alert`, then the build; the cleanup migration
+  `20261020211937_phase2_cleanup.sql` (applied 2026-10-20) then dropped `next_po_number()`,
+  `po_number_seq` and `ordering_shop(uuid)`.
 
 ## How the New Order tab moves
 
