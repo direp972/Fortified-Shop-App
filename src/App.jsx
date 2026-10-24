@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase, Package, Pencil, Building2, Folder, FolderOpen, Copy, UserPlus } from "lucide-react";
+import { Ruler, Trash2, Undo2, Plus, Check, Clock, Hammer, Truck, PackageCheck, ClipboardList, PenTool, Square, Phone, User, StickyNote, ChevronDown, ChevronUp, Layers, Box, DollarSign, GripVertical, Printer, Briefcase, Package, Pencil, Building2, PackageOpen, Copy, UserPlus } from "lucide-react";
 import * as THREE from "three";
 import { storage, shopStorage } from "./lib/storage";
 import { supabase } from "./lib/supabaseClient";
@@ -537,16 +537,19 @@ const TRIM_PRESETS = {
 // A preset from a kit brings its standard end folds and painted side along with the shape;
 // the shop staples set only the shape and leave the folds as they are.
 const presetFolds = (name) => { const it = KIT_BY_ID[KIT_PRESETS[name]]; return it ? { hemStart: it.hemStart, hemEnd: it.hemEnd, paintSide: it.paintSide } : null; };
-// The drawing tool shows its presets in three folders: the coping caps and their cleats
-// together, the box gutter and downspout together, and everything else a roof edge or a
-// wall takes under Trim. "Custom" (a blank leg to draw from) stands on its own.
-const PRESET_FOLDER_IDS = { coping: ["coping0", "coping1", "coping2", "copingcleat", "copingcleat2"], gutter: ["boxgutter", "downspout"] };
-const presetFolderOf = (name) => {
-  const id = KIT_PRESETS[name];
-  return PRESET_FOLDER_IDS.coping.includes(id) ? "coping" : PRESET_FOLDER_IDS.gutter.includes(id) ? "gutter" : KIT_BY_ID[id] ? "trim" : null;
-};
-const PRESET_FOLDERS = [{ id: "trim", label: "Trim" }, { id: "coping", label: "Coping Cap" }, { id: "gutter", label: "Gutter Systems" }]
-  .map((f) => ({ ...f, names: KIT_PRESET_ITEMS.map((it) => it.name).filter((n) => presetFolderOf(n) === f.id) }));
+// The Trim Box on the drawing tool: every stock profile from both kits in one searchable
+// list, grouped by where the piece lands on the roof. A piece neither list names falls
+// under "More", so a new kit piece shows up without touching the groups.
+const TRIM_BOX_GROUPS = [
+  { head: "Eaves & rakes", ids: ["dstyle", "eave", "apron", "rake", "higheave"] },
+  { head: "Ridge, hip & valley", ids: ["ridge", "hip", "valley", "valleyc"] },
+  { head: "Walls & flashing", ids: ["sidewall", "endwall", "counter", "counter2"] },
+  { head: "Closures, cleats & pitch breaks", ids: ["zclosure", "cleat", "transition"] },
+  { head: "Coping — parapets", ids: ["coping1", "coping0", "coping2", "copingcleat", "copingcleat2"] },
+  { head: "Edge metal — low slope", ids: ["gravelstop", "dripedge", "snapfascia", "hookstrip"] },
+  { head: "Gutters & downspouts", ids: ["boxgutter", "downspout"] },
+];
+const TRIM_BOX_PLACED = new Set(TRIM_BOX_GROUPS.flatMap((g) => g.ids));
 // The two boxes: what each is called, which ?view= opens it from the site, and its colours.
 const BOX_KINDS = {
   res: { label: "Residential Standing Seam", view: "box", accent: "#A0602E", accentLight: "#B8703A", icon: Package,
@@ -4238,7 +4241,8 @@ export default function ShopOrderApp() {
   const [productionCostsLoaded, setProductionCostsLoaded] = useState(false);
   const [coilWidthScale, setCoilWidthScale] = useState([]);
   const [customPresets, setCustomPresets] = useState([]);
-  const [presetFolder, setPresetFolder] = useState(null); // the open presets folder on the drawing tool; all closed to start with
+  const [trimBoxOpen, setTrimBoxOpen] = useState(false); // the Trim Box on the drawing tool — every stock profile in one list
+  const [trimBoxQuery, setTrimBoxQuery] = useState("");
   const [showIdeaBox, setShowIdeaBox] = useState(false);
   const [ideaType, setIdeaType] = useState("idea"); // "idea" | "bug"
   const [ideaText, setIdeaText] = useState("");
@@ -4435,9 +4439,10 @@ export default function ShopOrderApp() {
   // with a same-origin postMessage ({type:"rc:view"}) so a half-drawn profile isn't
   // lost to a reload when the member flips tabs.
   const openTool = useCallback((view) => {
-    // members.html switches tools mid-session with the same calls; a sheet left open
-    // over the old tool would hide the new one
+    // members.html switches tools mid-session with the same calls; a sheet or Trim Box
+    // left open over the old tool would hide the new one
     if (view !== "color") setColorSheet(false);
+    setTrimBoxOpen(false);
     if (view === "color") { setTab("order"); setColorSheet(true); }
     else if (view === "trim" || view === "panel" || view === "metal") { setTab("order"); setShapeType(view); setOrderStep("details"); }
     // same reset the 3D Parts tile does, so a deep link starts as clean as a tap does
@@ -4550,13 +4555,21 @@ export default function ShopOrderApp() {
   const closeKit = () => navBackTo("kit", () => setRoofBoxOpen(false));
   const backToKitFrom3d = () => navBackTo("part3d", () => { setBox3dReturn(false); openRoofBox("com"); });
   const goTab = (to) => { const from = navRefs.current.tab; if (to === from) return; setTab(to); pushNav("tab", { from, to, step: from === "order" ? navRefs.current.orderStep : undefined }); };
-  // The sheet is modal: Escape closes it and the page behind it stops scrolling.
+  // The sheet is modal: Escape closes it and the page behind it stops scrolling. The
+  // listener runs in the capture phase and stops the event, so a kit box or Trim Box
+  // open underneath doesn't close on the same press; the scroll position comes back on
+  // the next frame, once the body can scroll again.
   useEffect(() => {
     if (!colorSheet) return;
-    const onKey = (e) => { if (e.key === "Escape") closeColorSheet(); };
-    window.addEventListener("keydown", onKey);
+    const y = window.scrollY;
+    const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); closeColorSheet(); } };
+    window.addEventListener("keydown", onKey, true);
     const prev = document.body.style.overflow; document.body.style.overflow = "hidden";
-    return () => { window.removeEventListener("keydown", onKey); document.body.style.overflow = prev; };
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      document.body.style.overflow = prev;
+      requestAnimationFrame(() => window.scrollTo(window.scrollX, y));
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [colorSheet]);
   useEffect(() => {
@@ -4570,6 +4583,18 @@ export default function ShopOrderApp() {
     window.parent.postMessage({ type: "rc:app-ready" }, window.location.origin);
     return () => window.removeEventListener("message", onMessage);
   }, [openTool]);
+  // Tell the host page which tool is actually up — the app moves on its own (a kit's
+  // "Open on the canvas", Done on the color sheet, the browser's Back), and members.html's
+  // tabs follow the app instead of pointing at whatever was asked for last.
+  const effectiveView = colorSheet ? "color"
+    : orderStep === "type" ? "type"
+    : roofBoxOpen ? (roofBoxKind === "com" ? "commercial" : "box")
+    : shapeType === "panel" ? "panel" : shapeType === "metal" ? "metal"
+    : shapeType === "part3d" ? "part3d" : "trim";
+  useEffect(() => {
+    if (window.parent === window) return;
+    window.parent.postMessage({ type: "rc:view-is", view: effectiveView }, window.location.origin);
+  }, [effectiveView]);
 
   // Remember which section you were last on (personal, not shared — everyone gets their own).
   useEffect(() => {
@@ -5689,6 +5714,14 @@ export default function ShopOrderApp() {
     return () => { window.removeEventListener("keydown", onKey); clearTimeout(focusTimer); };
   }, [roofBoxOpen, roofBoxKind]);
   const openRoofBox = (kind = roofBoxKind) => { setShapeType("trim"); setOrderStep("details"); setRoofBoxKind(kind); setRoofBoxOpen(true); };
+  // The Trim Box is modal the same way: Escape closes it, unless the color sheet is open
+  // above it (the sheet's capture listener stops the event before it gets here).
+  useEffect(() => {
+    if (!trimBoxOpen) return;
+    const onKey = (e) => { if (e.key === "Escape") setTrimBoxOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [trimBoxOpen]);
   // The kit is drawn for 24 gauge, so its parts are priced and sent as 24 ga (copper keeps
   // its weight) without changing the gauge of whatever is on the canvas.
   const kitGaugeId = brand === "Copper" ? gaugeId : "24ga";
@@ -7636,24 +7669,27 @@ export default function ShopOrderApp() {
                       </button>
                     );
                   })}
-                  {PRESET_FOLDERS.map((f) => {
-                    const open = presetFolder === f.id, holds = f.names.includes(preset);
-                    const edge = open || holds ? INK : "#C9C3B3", fill = open ? INK : holds ? "#EFE9D6" : "#FBF7EA";
-                    const FolderIcon = open ? FolderOpen : Folder;
+                  <button type="button" onClick={() => { setTrimBoxQuery(""); setTrimBoxOpen(true); }} data-testid="trim-box-open"
+                    title="Every stock profile from the kits in one list — pick a piece and it opens on the canvas"
+                    style={{
+                      padding: "5px 11px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                      border: "1px solid #4F9A63", background: "linear-gradient(180deg, #5FAA73, #4F9A63)", color: "#fff", display: "flex", alignItems: "center", gap: 5,
+                    }}>
+                    <PackageOpen size={12} /> Trim Box
+                  </button>
+                  {preset !== "Custom" && (() => {
+                    const saved = customPresets.some((cp) => cp.name === preset);
                     return (
-                      <button key={f.id} type="button" onClick={() => setPresetFolder(open ? null : f.id)} aria-expanded={open} data-testid={`folder-${f.id}`}
-                        title={open ? `Close ${f.label}` : `Open ${f.label} — ${f.names.length} shapes`}
+                      <button type="button" onClick={() => { setTrimBoxQuery(""); setTrimBoxOpen(true); }} data-testid="preset-current"
+                        title="On the canvas now — tap to open the Trim Box and pick another piece"
                         style={{
-                          position: "relative", marginTop: 7, padding: "6px 10px 6px 9px", borderRadius: "3px 9px 9px 9px", fontSize: 11, fontWeight: 700, cursor: "pointer",
-                          display: "flex", alignItems: "center", gap: 5, border: `1px solid ${edge}`, background: fill, color: open ? "#fff" : INK_DEEP,
-                          boxShadow: open ? "none" : "inset 0 -2px 0 rgba(10,43,65,0.08)",
+                          padding: "5px 10px", borderRadius: 999, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                          border: `1px solid ${saved ? SAFETY : INK}`, background: saved ? SAFETY : INK, color: "#fff",
                         }}>
-                        <span aria-hidden="true" style={{ position: "absolute", top: -7, left: -1, width: 30, height: 8, borderRadius: "5px 5px 0 0", border: `1px solid ${edge}`, borderBottom: "none", background: fill }} />
-                        <FolderIcon size={13} /> {f.label}
-                        <span className="mono" style={{ fontSize: 9.5, fontWeight: 600, opacity: 0.75 }}>{f.names.length}</span>
+                        {saved ? "★ " : ""}{preset}
                       </button>
                     );
-                  })}
+                  })()}
                   <button type="button" onClick={() => pickPreset("Custom")} data-testid="preset-custom"
                     style={{
                       padding: "5px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
@@ -7661,24 +7697,6 @@ export default function ShopOrderApp() {
                     }}>
                     Custom
                   </button>
-                  {customPresetsLoaded && customPresets.map((cp) => (
-                    <span key={cp.id} style={{ display: "inline-flex", alignItems: "center", gap: 2 }}>
-                      <button onClick={() => { setPreset(cp.name); setPoints(cp.points.map((pt) => [...pt])); if (boxReturn && boxReturn !== "edit") { setPartName(""); setBoxReturn(null); } setViewResetKey((k) => k + 1); }}
-                        style={{
-                          padding: "5px 8px 5px 10px", borderRadius: "999px 0 0 999px", fontSize: 11, cursor: "pointer",
-                          border: `1px solid ${SAFETY}`, borderRight: "none", background: preset === cp.name ? SAFETY : "#fff", color: preset === cp.name ? "#fff" : SAFETY,
-                        }}>
-                        ★ {cp.name}
-                      </button>
-                      <button onClick={() => deleteCustomPreset(cp.id)} title="Delete this saved preset"
-                        style={{
-                          padding: "5px 8px", borderRadius: "0 999px 999px 0", fontSize: 11, cursor: "pointer",
-                          border: `1px solid ${SAFETY}`, background: "#fff", color: SAFETY,
-                        }}>
-                        ×
-                      </button>
-                    </span>
-                  ))}
                   <button onClick={saveCurrentAsPreset} title="Save the current drawing as a reusable preset"
                     style={{
                       padding: "5px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
@@ -7696,27 +7714,93 @@ export default function ShopOrderApp() {
                       onChange={(e) => { scanSketchToPoints(e.target.files?.[0]); e.target.value = ""; }} />
                   </label>
                 </div>
-                {(() => {
-                  const f = PRESET_FOLDERS.find((x) => x.id === presetFolder);
-                  if (!f) return null;
-                  return (
-                    <div data-testid="folder-shapes" style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 8, padding: "8px 10px", background: "#FBF7EA", border: `1px solid ${INK}`, borderRadius: 10 }}>
-                      <span className="disp" style={{ fontSize: 9.5, letterSpacing: "0.08em", color: INK, marginRight: 4, display: "flex", alignItems: "center", gap: 4 }}><FolderOpen size={12} /> {f.label}</span>
-                      {f.names.map((p) => (
-                        <button key={p} type="button" onClick={() => pickPreset(p)} data-testid={`preset-${KIT_PRESETS[p]}`}
-                          style={{
-                            padding: "5px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
-                            border: `1px solid ${preset === p ? INK : "#D9D5C7"}`, background: preset === p ? INK : "#fff", color: preset === p ? "#fff" : INK_DEEP,
-                          }}>
-                          {p}
-                        </button>
-                      ))}
-                    </div>
-                  );
-                })()}
                 <div style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: -4, marginBottom: 6 }}>
                   AI reads a best-effort shape from the photo — always check and adjust points/lengths before using it.
                 </div>
+                {trimBoxOpen && (() => {
+                  const q = trimBoxQuery.trim().toLowerCase();
+                  const hit = (it) => !q || it.name.toLowerCase().includes(q) || (it.dims || "").toLowerCase().includes(q);
+                  const groups = TRIM_BOX_GROUPS.map((g) => ({ ...g, items: g.ids.map((id) => KIT_BY_ID[id]).filter((it) => it && hit(it)) }));
+                  const more = KIT_PRESET_ITEMS.filter((it) => !TRIM_BOX_PLACED.has(it.id) && hit(it));
+                  const savedHits = customPresetsLoaded ? customPresets.filter((cp) => !q || cp.name.toLowerCase().includes(q)) : [];
+                  const closeBox = () => setTrimBoxOpen(false);
+                  const take = (name) => { pickPreset(name); closeBox(); };
+                  const headStyle = { fontSize: 10, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", color: theme.textSecondary, padding: "14px 0 3px" };
+                  const rowStyle = { display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "7px 0", border: "none", borderTop: `1px solid ${theme.border}`, background: "none", color: theme.text, textAlign: "left", cursor: "pointer" };
+                  const onCanvasTag = <span className="mono" style={{ marginLeft: 8, fontSize: 9, fontWeight: 700, letterSpacing: "0.07em", color: SAFETY, border: `1px solid ${SAFETY}`, borderRadius: 999, padding: "1px 7px", whiteSpace: "nowrap" }}>ON THE CANVAS</span>;
+                  const pieceRow = (it) => (
+                    <button key={it.id} type="button" onClick={() => take(it.name)} data-testid={`trim-box-row-${it.id}`} style={rowStyle}>
+                      <span style={{ background: INK, borderRadius: 6, padding: 2, display: "flex", flexShrink: 0 }}>
+                        <ShapeThumb order={{ type: "trim", points: it.points, hemStart: it.hemStart, hemEnd: it.hemEnd, colorHex: colorObj?.hex }} size={38} />
+                      </span>
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ fontSize: 12.5, fontWeight: 700 }}>{it.name}{preset === it.name && onCanvasTag}</span>
+                        <span className="mono" style={{ display: "block", fontSize: 10, color: theme.textSecondary, marginTop: 1 }}>{it.dims}</span>
+                      </span>
+                    </button>
+                  );
+                  return (
+                    <div onClick={closeBox} data-testid="trim-box"
+                      style={{ position: "fixed", inset: 0, zIndex: 400, background: "rgba(5,20,32,0.62)", display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+                      <div onClick={(e) => e.stopPropagation()} className="pop-in" role="dialog" aria-modal="true" aria-labelledby="trim-box-title"
+                        style={{ width: "100%", maxWidth: 620, maxHeight: "94vh", overflowY: "auto", background: theme.card, color: theme.text, borderRadius: 14, boxShadow: "0 30px 80px rgba(0,0,0,0.55)", padding: "16px 18px 14px" }}>
+                        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+                          <div>
+                            <div id="trim-box-title" className="disp" style={{ fontSize: 18, color: theme.text, display: "flex", alignItems: "center", gap: 8 }}><PackageOpen size={18} color="#4F9A63" /> Trim Box</div>
+                            <div style={{ fontSize: 12, color: theme.textSecondary, marginTop: 3, lineHeight: 1.45 }}>Every stock profile from both kits — tap a piece and it opens on the canvas with its standard folds.</div>
+                          </div>
+                          <button type="button" onClick={closeBox} aria-label="Close" style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 20, cursor: "pointer", lineHeight: 1 }}>✕</button>
+                        </div>
+                        <input value={trimBoxQuery} onChange={(e) => setTrimBoxQuery(e.target.value)} placeholder="Search the pieces…" data-testid="trim-box-search"
+                          style={{ width: "100%", boxSizing: "border-box", marginTop: 12, padding: "9px 12px", borderRadius: 8, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, fontSize: 13 }} />
+                        <div style={{ marginTop: 6 }}>
+                          {(!q || "custom — blank canvas".includes(q)) && (
+                            <button type="button" onClick={() => take("Custom")} data-testid="trim-box-row-custom" style={{ ...rowStyle, borderTop: "none" }}>
+                              <span style={{ background: INK, borderRadius: 6, padding: 2, display: "flex", flexShrink: 0 }}>
+                                <ShapeThumb order={{ type: "trim", points: TRIM_PRESETS["Custom"], hemStart: "none", hemEnd: "none", colorHex: colorObj?.hex }} size={38} />
+                              </span>
+                              <span style={{ minWidth: 0 }}>
+                                <span style={{ fontSize: 12.5, fontWeight: 700 }}>Custom — blank canvas{preset === "Custom" && onCanvasTag}</span>
+                                <span className="mono" style={{ display: "block", fontSize: 10, color: theme.textSecondary, marginTop: 1 }}>one leg to start from — draw the rest</span>
+                              </span>
+                            </button>
+                          )}
+                          {groups.filter((g) => g.items.length > 0).map((g) => (
+                            <div key={g.head}>
+                              <div className="mono" style={headStyle}>{g.head}</div>
+                              {g.items.map(pieceRow)}
+                            </div>
+                          ))}
+                          {more.length > 0 && (
+                            <div>
+                              <div className="mono" style={headStyle}>More</div>
+                              {more.map(pieceRow)}
+                            </div>
+                          )}
+                          {savedHits.length > 0 && (
+                            <div>
+                              <div className="mono" style={headStyle}>Your saved presets</div>
+                              {savedHits.map((cp) => (
+                                <div key={cp.id} style={{ display: "flex", alignItems: "center", gap: 6, borderTop: `1px solid ${theme.border}` }}>
+                                  <button type="button" data-testid={`trim-box-saved-${cp.id}`}
+                                    onClick={() => { setPreset(cp.name); setPoints(cp.points.map((pt) => [...pt])); if (boxReturn && boxReturn !== "edit") { setPartName(""); setBoxReturn(null); } setViewResetKey((k) => k + 1); closeBox(); }}
+                                    style={{ ...rowStyle, borderTop: "none", flex: 1, minWidth: 0 }}>
+                                    <span style={{ background: INK, borderRadius: 6, padding: 2, display: "flex", flexShrink: 0 }}>
+                                      <ShapeThumb order={{ type: "trim", points: cp.points, hemStart: "none", hemEnd: "none", colorHex: colorObj?.hex }} size={38} />
+                                    </span>
+                                    <span style={{ fontSize: 12.5, fontWeight: 700 }}>★ {cp.name}{preset === cp.name && onCanvasTag}</span>
+                                  </button>
+                                  <button type="button" onClick={() => deleteCustomPreset(cp.id)} title="Delete this saved preset" aria-label={`Delete ${cp.name}`}
+                                    style={{ border: "none", background: "none", color: theme.textSecondary, fontSize: 16, cursor: "pointer", padding: "4px 6px" }}>×</button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
                 {roofBoxOpen && (() => {
                   const selStyle = { padding: "6px 8px", borderRadius: 7, border: `1px solid ${theme.border}`, background: theme.inputBg, color: theme.text, fontSize: 12, fontWeight: 600 };
                   const totalPcs = roofBoxPicked.reduce((sum, it) => sum + it.quantity, 0);
@@ -7787,7 +7871,13 @@ export default function ShopOrderApp() {
                           </label>
                           </>)}
                           <div className="mono" style={{ fontSize: 10.5, color: theme.textSecondary, marginLeft: "auto", textAlign: "right", lineHeight: 1.5 }}>
-                            {gaugeLabel} · {brand} · {colorName}<br />{lengthPerPiece} ft pieces · {sheetWidthNum}" sheets
+                            {gaugeLabel} · {brand}<br />
+                            <button type="button" onClick={openColorSheet} data-testid="box-color" title="Change finish and color — the kit stays open under the sheet"
+                              style={{ border: "none", background: "none", padding: 0, cursor: "pointer", font: "inherit", color: theme.text, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                              <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, background: colorObj?.hex || "#ccc", border: "1px solid rgba(0,0,0,0.2)" }} />
+                              {colorName} · <span style={{ color: SAFETY, fontWeight: 700 }}>change</span>
+                            </button><br />
+                            {lengthPerPiece} ft pieces · {sheetWidthNum}" sheets
                           </div>
                         </div>
                         {roofBoxKind === "com" && comEs1 && (
