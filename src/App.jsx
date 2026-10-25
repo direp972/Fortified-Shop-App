@@ -4130,6 +4130,14 @@ export default function ShopOrderApp() {
   // Money the demo visitor may not see. Kept as one helper so a price can never
   // reach the screen by being formatted somewhere new.
   const priceText = (n) => (isDemo ? "—" : money(n));
+  // Where a demo visitor would see a rate or a total, a nudge instead — and a tap opens
+  // sign-up. A function, not an element, because the theme is declared further down.
+  const signUpBox = () => (
+    <button type="button" onClick={() => openAuth("signup")} className="mono tap-bounce"
+      style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${SAFETY}`, borderRadius: 6, fontSize: 11.5, fontWeight: 700, background: theme.highlight, color: SAFETY, boxSizing: "border-box", cursor: "pointer", whiteSpace: "nowrap", textAlign: "center" }}>
+      Sign up today
+    </button>
+  );
   const [customers, setCustomers] = useState([]); // the selected shop's customers (shop_customers), for its people to assign tiers
   const [customersLoaded, setCustomersLoaded] = useState(false);
   const [staffIds, setStaffIds] = useState([]); // platform admins (public.staff), platform staff only
@@ -7626,9 +7634,7 @@ export default function ShopOrderApp() {
                     Coil $/LF
                     {coilOverMax ? (
                       <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${coilGateColor}`, borderRadius: 6, fontSize: 13, background: theme.highlight, boxSizing: "border-box", color: coilGateColor, fontWeight: 700 }}>{coilGateText}</div>
-                    ) : isDemo ? (
-                      <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.highlight, boxSizing: "border-box", color: theme.textSecondary }}>—</div>
-                    ) : (
+                    ) : isDemo ? signUpBox() : (
                       <input type="number" min={0} step="0.01" value={coilPricePerFt}
                         onChange={(e) => setCoilPricePerFt(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
                         onBlur={(e) => { if (e.target.value === "") setCoilPricePerFt(panelCoilPerFt() ?? 2.5); }}
@@ -7637,9 +7643,7 @@ export default function ShopOrderApp() {
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Fabrication $/LF
-                    {isDemo ? (
-                      <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.highlight, boxSizing: "border-box", color: theme.textSecondary }}>—</div>
-                    ) : (
+                    {isDemo ? signUpBox() : (
                       <input type="number" min={0} step="0.01" value={fabPricePerFt}
                         onChange={(e) => setFabPricePerFt(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
                         onBlur={(e) => { if (e.target.value === "") setFabPricePerFt(panelFabPerFt() ?? 0); }}
@@ -7648,9 +7652,11 @@ export default function ShopOrderApp() {
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Total Price
-                    <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${coilOverMax ? coilGateColor : theme.border}`, borderRadius: 6, fontSize: coilOverMax ? 13 : 14, background: theme.highlight, boxSizing: "border-box", color: coilOverMax ? coilGateColor : theme.text, fontWeight: coilOverMax ? 700 : 600 }}>
-                      {coilOverMax ? coilGateText : priceText(((+coilPricePerFt || 0) + (+fabPricePerFt || 0)) * ((+height || 0) / 12))}
-                    </div>
+                    {isDemo && !coilOverMax ? signUpBox() : (
+                      <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${coilOverMax ? coilGateColor : theme.border}`, borderRadius: 6, fontSize: coilOverMax ? 13 : 14, background: theme.highlight, boxSizing: "border-box", color: coilOverMax ? coilGateColor : theme.text, fontWeight: coilOverMax ? 700 : 600 }}>
+                        {coilOverMax ? coilGateText : priceText(((+coilPricePerFt || 0) + (+fabPricePerFt || 0)) * ((+height || 0) / 12))}
+                      </div>
+                    )}
                   </label>
                 </div>
                 {coilOverMax && (
