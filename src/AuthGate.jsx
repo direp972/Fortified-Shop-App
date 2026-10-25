@@ -29,6 +29,7 @@ export default function AuthGate({ children }) {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [zip, setZip] = useState("");
   const [error, setError] = useState("");
   // A sign-in that hit "not confirmed": the exact email and password it used, so the
   // "Send a new link" button asks for that account even if the fields change afterwards.
@@ -99,7 +100,8 @@ export default function AuthGate({ children }) {
     try {
       if (mode === "signup") {
         if (phone.replace(/\D/g, "").length < 10) { setError("A phone number is required so the shop can reach you about orders."); return; }
-        const { data, error } = await signUp(email, password, name, phone);
+        if (!/^\d{5}$/.test(zip.trim())) { setError("A 5-digit ZIP code is required so we can show pricing from the shop nearest you."); return; }
+        const { data, error } = await signUp(email, password, name, phone, zip.trim());
         if (error) { setError(error.message); return; }
         // The confirmation link in the email finishes the sign-in, so the gate shows
         // "check your email" unless a session came back (the gate then opens on its own).
@@ -195,6 +197,11 @@ export default function AuthGate({ children }) {
             <label style={{ display: "block", fontSize: 12, color: "#555", marginBottom: 12 }}>
               Phone
               <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required autoComplete="tel" inputMode="tel" placeholder="(555) 555-5555"
+                style={{ width: "100%", padding: 10, marginTop: 4, border: "1px solid #ddd", borderRadius: 7, fontSize: 14, boxSizing: "border-box" }} />
+            </label>
+            <label style={{ display: "block", fontSize: 12, color: "#555", marginBottom: 12 }}>
+              ZIP code <span style={{ color: "#8A94A6" }}>— for pricing from the shop nearest you</span>
+              <input value={zip} onChange={(e) => setZip(e.target.value.replace(/\D/g, "").slice(0, 5))} required autoComplete="postal-code" inputMode="numeric" placeholder="75001"
                 style={{ width: "100%", padding: 10, marginTop: 4, border: "1px solid #ddd", borderRadius: 7, fontSize: 14, boxSizing: "border-box" }} />
             </label>
           </>

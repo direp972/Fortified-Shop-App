@@ -4693,6 +4693,40 @@ export default function ShopOrderApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [memberShops]);
 
+  // "Pricing in your area": an account that gave a ZIP at sign-up, and neither arrived by a
+  // shop's own link nor belongs to a shop, starts on the shop taking orders nearest that ZIP
+  // instead of the platform default. Once per ZIP, never over a pick made by hand, and if
+  // the ZIP can't be placed the default shop simply stays.
+  const zipRouted = useRef("");
+  useEffect(() => {
+    const zip = String(customer?.zip || "").trim();
+    if (!/^\d{5}$/.test(zip) || zipRouted.current === zip || shops.length === 0) return;
+    if (new URLSearchParams(window.location.search).get("shop")) return;
+    if (shops.some((s) => memberShopIds.includes(s.id)) || shopPicked.current) return;
+    zipRouted.current = zip;
+    (async () => {
+      try {
+        const g = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&postalcode=${zip}`);
+        const gj = await g.json();
+        if (!gj?.[0]) return;
+        const lat = +gj[0].lat, lon = +gj[0].lon;
+        let best = null;
+        for (const s of shops) {
+          for (const b of shopBases(s) || []) {
+            const miles = havMiles(b.lat, b.lng, lat, lon);
+            if (!best || miles < best.miles) best = { shop: s, miles };
+          }
+        }
+        if (!best || shopPicked.current) return;
+        shopPicked.current = true;
+        setShopId(best.shop.id);
+        setToast(`Pricing from ${best.shop.name}, the shop nearest ${zip} (about ${Math.round(best.miles)} mi). Change it under "Send this order to".`);
+        setTimeout(() => setToast(""), 7000);
+      } catch (e) { /* lookup down — the default shop stays */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customer?.zip, shops, memberShopIds]);
+
   // Orders go through the submit-order Edge Function, which prices each part again at this
   // account's tier against the shop's live Price List and writes the rows itself — the price
   // computed here is only the estimate on screen. Resolves to the saved orders, carrying the
@@ -7587,10 +7621,13 @@ export default function ShopOrderApp() {
                 </div>
 
                 <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+                  {/* the shop's $/LF rates are pricing too — a demo visitor sees the same dash as the total */}
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Coil $/LF
                     {coilOverMax ? (
                       <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${coilGateColor}`, borderRadius: 6, fontSize: 13, background: theme.highlight, boxSizing: "border-box", color: coilGateColor, fontWeight: 700 }}>{coilGateText}</div>
+                    ) : isDemo ? (
+                      <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.highlight, boxSizing: "border-box", color: theme.textSecondary }}>—</div>
                     ) : (
                       <input type="number" min={0} step="0.01" value={coilPricePerFt}
                         onChange={(e) => setCoilPricePerFt(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
@@ -7600,10 +7637,14 @@ export default function ShopOrderApp() {
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Fabrication $/LF
-                    <input type="number" min={0} step="0.01" value={fabPricePerFt}
-                      onChange={(e) => setFabPricePerFt(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
-                      onBlur={(e) => { if (e.target.value === "") setFabPricePerFt(panelFabPerFt() ?? 0); }}
-                      className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
+                    {isDemo ? (
+                      <div className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, background: theme.highlight, boxSizing: "border-box", color: theme.textSecondary }}>—</div>
+                    ) : (
+                      <input type="number" min={0} step="0.01" value={fabPricePerFt}
+                        onChange={(e) => setFabPricePerFt(e.target.value === "" ? "" : Math.max(0, +e.target.value))}
+                        onBlur={(e) => { if (e.target.value === "") setFabPricePerFt(panelFabPerFt() ?? 0); }}
+                        className="mono" style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
+                    )}
                   </label>
                   <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
                     Total Price
@@ -7659,8 +7700,10 @@ export default function ShopOrderApp() {
                       </button>
                     </div>
                     <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 4 }}>
-                      First {MILEAGE_FREE} miles free, then ${MILEAGE_RATE}/mile one way from the nearest {fabricatorCo} shop ({fabBases.map((b) => b.name).join(" or ")})
-                      {(+jobSiteMiles || 0) > MILEAGE_FREE ? <b style={{ color: AMBER }}> — mileage charge {priceText(mileageCharge(jobSiteMiles))}</b> : null}
+                      {isDemo
+                        ? `Mileage to the job site is added at the shop's rate from its nearest location (${fabBases.map((b) => b.name).join(" or ")}) — sign up free to see it`
+                        : <>First {MILEAGE_FREE} miles free, then ${MILEAGE_RATE}/mile one way from the nearest {fabricatorCo} shop ({fabBases.map((b) => b.name).join(" or ")})</>}
+                      {!isDemo && (+jobSiteMiles || 0) > MILEAGE_FREE ? <b style={{ color: AMBER }}> — mileage charge {priceText(mileageCharge(jobSiteMiles))}</b> : null}
                       {milesLookupNote ? ` · ${milesLookupNote}` : ""}
                     </div>
                   </>
@@ -8375,7 +8418,7 @@ export default function ShopOrderApp() {
           <div style={{ background: INK, borderRadius: 10, padding: 14, marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <div>
               <div style={{ color: "#CFE3EF", fontSize: 11 }}>
-                {isDemo ? "Pricing needs a free account" : shapeType === "trim" ? `Estimated total${basket.length > 0 ? ` · ${orderParts().length} part(s)` : ""}` : "Estimated total"}
+                {isDemo ? "Pricing for your area needs a free account" : shapeType === "trim" ? `Estimated total${basket.length > 0 ? ` · ${orderParts().length} part(s)` : ""}` : "Estimated total"}
               </div>
               <div className="mono" style={{ color: "#fff", fontSize: isDemo ? 14 : 22, fontWeight: 600 }}>
                 {isDemo ? "Your drawing is ready to send" : shapeType === "panel" && coilOverMax ? coilGateText : money(combinedEstimate)}
@@ -8388,7 +8431,7 @@ export default function ShopOrderApp() {
                 fontSize: 13.5, fontWeight: 700, cursor: !isDemo && submitting ? "default" : "pointer", opacity: !isDemo && submitting ? 0.7 : 1,
                 boxShadow: `0 4px 14px ${SAFETY}55`,
               }}>
-              {isDemo ? "Sign up free to see pricing & send" : submitting ? "Sending…" : "🚀 Send Order"}
+              {isDemo ? "Sign up free for pricing in your area" : submitting ? "Sending…" : "🚀 Send Order"}
             </button>
           </div>
           {user && (
@@ -8550,7 +8593,7 @@ export default function ShopOrderApp() {
                     <div key={c.id} style={{ background: theme.card, borderRadius: 8, padding: 10, marginBottom: 6, boxShadow: "0 1px 3px rgba(0,0,0,0.08)", display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{c.name || (c.email ? c.email.split("@")[0] : "(no name)")}</div>
-                        <div style={{ fontSize: 10.5, color: theme.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.email}</div>
+                        <div style={{ fontSize: 10.5, color: theme.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.email}{c.zip ? ` · ${c.zip}` : ""}</div>
                       </div>
                       <select value={c.tier} onChange={(e) => updateCustomerTier(c.id, e.target.value)}
                         style={{ padding: 6, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 11.5, fontWeight: 600, background: theme.inputBg, color: theme.text }}>

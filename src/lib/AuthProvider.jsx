@@ -51,9 +51,10 @@ export function AuthProvider({ children }) {
     } else {
       const name = sessionUser.user_metadata?.name || "";
       const phone = sessionUser.user_metadata?.phone || "";
+      const zip = sessionUser.user_metadata?.zip || null;
       let { data: created, error } = await supabase
         .from("customers")
-        .insert({ id: userId, email: sessionUser.email, name, phone }) // tiers are per shop (shop_customers), not on this row
+        .insert({ id: userId, email: sessionUser.email, name, phone, zip }) // tiers are per shop (shop_customers), not on this row
         .select()
         .maybeSingle();
       if (error && error.code === "23505") {
@@ -109,7 +110,7 @@ export function AuthProvider({ children }) {
     return r && fromFn ? { ok: r.ok, j } : null;
   };
 
-  const signUp = async (email, password, name, phone) => {
+  const signUp = async (email, password, name, phone, zip) => {
     // Sign-up goes through the signup-email Edge Function: it creates the account
     // unconfirmed and emails Supabase's own confirmation link through the shop's Resend
     // sender, so the two-an-hour limit of Supabase's built-in mailer never applies. The
@@ -117,13 +118,13 @@ export function AuthProvider({ children }) {
     // picks up on load; loadCustomer then reads the name and phone from the user metadata.
     // No session comes back here, so AuthGate shows "check your email". If the function
     // can't be reached, supabase.auth.signUp (Supabase's own mailer) is the fallback.
-    const fn = await callSignupEmail({ email, password, name, company: "", phone });
+    const fn = await callSignupEmail({ email, password, name, company: "", phone, zip });
     if (fn) {
       if (!fn.ok) return { data: null, error: { message: friendly(fn.j.error) || "Sign up failed — please try again." } };
       return { data: { user: null, session: null }, error: null };
     }
     try {
-      const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name, phone } } });
+      const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name, phone, zip } } });
       if (error) return { data, error: { message: friendly(error) || "Sign up failed — please try again." } };
       return { data, error };
     } catch (e) {
