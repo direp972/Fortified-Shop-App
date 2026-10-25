@@ -228,6 +228,7 @@ let appReady=false,appView=null,bootView=null;
 window.addEventListener("message",e=>{
   if(e.origin!==location.origin||!e.data)return;
   if(e.data.type==="rc:signed-out"){location.reload();return} // auth.js then shows the sign-in gate
+  if(e.data.type==="rc:view-is"){viewIs(e.data.view);return}
   if(e.data.type!=="rc:app-ready")return;
   appReady=true;
   // The app always comes up on the view in its URL (also after it remounts, e.g. a
@@ -236,6 +237,20 @@ window.addEventListener("message",e=>{
 });
 function sendView(v){const f=$("#app-frame");appView=v;
   if(appReady&&f.contentWindow)f.contentWindow.postMessage({type:"rc:view",view:v},location.origin)}
+// The app reports which tool is actually up (rc:view-is) when it moves on its own — a
+// kit's "Open on the canvas", Done on the color sheet, its own Back. Follow it: select
+// the tab, point the full-screen link at it, remember it. Nothing is posted back — the
+// app is already there, and a reply would bounce the view between the two.
+function viewIs(v){
+  appView=v; // so an app remount (sign-out and back) resends where it really was
+  const k=Object.keys(APP_VIEW).find(x=>APP_VIEW[x]===v);
+  if(!k)return; // "type" (the chooser) has no tab of its own — the tabs stay put
+  const f=$("#app-frame");
+  if(f.dataset.k===k)return;
+  f.dataset.k=k;$("#app-full").href=APPS[k];
+  $$("#tool-tabs .seg").forEach(b=>b.classList.toggle("sel",b.dataset.tool===k));
+  if(window.rcState)rcState.merge({lastTool:k});
+}
 function loadApp(k){const f=$("#app-frame");const v=APP_VIEW[k];
   if(!v)return;
   if(!f.dataset.k){appReady=false;appView=bootView=v;f.src=APPS[k]}
