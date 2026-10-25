@@ -236,6 +236,7 @@ Deno.serve(async (req: Request) => {
   const name = String(body.name || "").trim().slice(0, 120);
   const company = String(body.company || "").trim().slice(0, 160);
   const phone = String(body.phone || "").trim().slice(0, 40);
+  const zip = String(body.zip || "").trim().slice(0, 10);
   const resend = body.resend === true;
   const reset = body.reset === true;
   const redirectTo = safeRedirect(body.redirectTo);
@@ -246,6 +247,7 @@ Deno.serve(async (req: Request) => {
   if (!resend && !reset) {
     if (!name) return json({ error: "Name is required." }, 400);
     if (digits(phone) < 10) return json({ error: "A phone number is required so the shop can reach you about orders." }, 400);
+    if (!/^\d{5}$/.test(zip)) return json({ error: "A 5-digit ZIP code is required so we can show pricing from the shop nearest you." }, 400);
   }
 
   const slot = await reserve(inboxKey(email), clientIp(req));
@@ -277,7 +279,7 @@ Deno.serve(async (req: Request) => {
         // the sign-up branch below), so a throwaway one is passed only because the API
         // requires the field.
         const { data: gen, error: genErr } = pending
-          ? await admin.auth.admin.generateLink({ type: "signup", email, password: crypto.randomUUID() + "Aa1!", options: { data: { name: m.name || "", company: m.company || "", phone: m.phone || "" }, redirectTo } })
+          ? await admin.auth.admin.generateLink({ type: "signup", email, password: crypto.randomUUID() + "Aa1!", options: { data: { name: m.name || "", company: m.company || "", phone: m.phone || "", zip: m.zip || "" }, redirectTo } })
           : await admin.auth.admin.generateLink({ type: "recovery", email, options: { redirectTo } });
         if (genErr) throw genErr;
         const tokenHash = gen?.properties?.hashed_token;
@@ -296,12 +298,12 @@ Deno.serve(async (req: Request) => {
       // For a pending account Supabase Auth issues a fresh code and leaves the password as it
       // was; its own name and phone win over anything sent now, so a stranger asking for a
       // link can neither take the account over nor rewrite its details.
-      let data = { name, company, phone };
+      let data = { name, company, phone, zip };
       let note = "";
       if (state?.state === "unconfirmed") {
         const { data: old } = await admin.auth.admin.getUserById(state.id);
         const m = (old?.user?.user_metadata ?? {}) as Record<string, string>;
-        data = { name: m.name || name, company: m.company || company, phone: m.phone || phone };
+        data = { name: m.name || name, company: m.company || company, phone: m.phone || phone, zip: m.zip || zip };
         note = "This confirms the account you created earlier. Your password is the one you chose then.";
       }
       const { data: gen, error: genErr } = await admin.auth.admin.generateLink({

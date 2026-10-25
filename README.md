@@ -254,6 +254,12 @@ sheet over the chooser.
   nobody can grant either to themselves or remove their own.
 - Every confirmed account gets its `customers` row from a database trigger the moment it
   is confirmed, so it shows up in the tiers panel whether or not it has opened the app.
+- **No pricing of any kind shows before sign-in.** Signed out, the app is a demo: estimates,
+  the shop's $/LF rates, mileage terms, the Price List, Job Vault and Past Orders are all
+  withheld, and the Send button reads "Sign up free for pricing in your area". Sign-up asks
+  for a ZIP code (both forms, and the one-last-thing card after a Google sign-in); it lands
+  on `customers.zip`, shows next to the email in Customer Pricing Tiers, and a new account
+  that didn't arrive by a shop's link starts on the ordering shop nearest that ZIP.
 - Anonymous readers (the directory page, the home-page counter, the prerender step and
   the app's shop picker) read the `directory_public` view, which lists live rows without
   `owner_id`, `application_id` or `order_email`. The anon role's grant on the table itself

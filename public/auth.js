@@ -109,21 +109,21 @@
     if (!fn.ok) return { error: friendly(fn.j.error) || "Couldn't send a new link — please try again." };
     return { confirm: true };
   }
-  function lead(name, company, phone, email) {
+  function lead(name, company, phone, email, zip) {
     // Keep the shop's lead list flowing (fire-and-forget).
     try {
       fetch(SUPA + "/rest/v1/leads", {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: KEY, Prefer: "return=minimal" },
-        body: JSON.stringify({ name, company, phone, email, source: "signup" }),
+        body: JSON.stringify({ name, company, phone, email, zip: zip || null, source: "signup" }),
       }).catch(function () {});
     } catch (e) {}
   }
-  async function signUp(name, company, phone, email, password) {
-    const fn = await callSignupEmail({ email, password, name, company, phone });
+  async function signUp(name, company, phone, zip, email, password) {
+    const fn = await callSignupEmail({ email, password, name, company, phone, zip });
     if (fn) {
       if (!fn.ok) return { error: friendly(fn.j.error) || "Sign up failed — please try again." };
-      lead(name, company, phone, email);
+      lead(name, company, phone, email, zip);
       return { confirm: true }; // the link in the email finishes the sign-in
     }
     let r, j;
@@ -131,12 +131,12 @@
       r = await fetch(SUPA + "/auth/v1/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json", apikey: KEY },
-        body: JSON.stringify({ email, password, data: { name, company, phone } }),
+        body: JSON.stringify({ email, password, data: { name, company, phone, zip } }),
       });
       j = await r.json();
     } catch (e) { return { error: "Couldn't reach the server — check your connection and try again." }; }
     if (!r.ok) return { error: friendly(j.error_description || j.msg) || "Sign up failed — please try again." };
-    lead(name, company, phone, email);
+    lead(name, company, phone, email, zip);
     if (j.access_token && j.refresh_token && j.user) { writeSession(sessionFromTokenResponse(j)); return { session: readSession() }; }
     return { confirm: true }; // email confirmation required before first sign-in
   }
@@ -235,6 +235,7 @@
       <label>Name</label><input id="rc-name" autocomplete="name" placeholder="Your name">
       <label>Company</label><input id="rc-co" autocomplete="organization" placeholder="Company">
       <label>Phone</label><input id="rc-ph" type="tel" autocomplete="tel" inputmode="tel" placeholder="(555) 555-5555">
+      <label>ZIP code <span style="color:#8A94A6;font-weight:400">— for pricing from the shop nearest you</span></label><input id="rc-zip" autocomplete="postal-code" inputmode="numeric" maxlength="5" placeholder="75001">
     </div>
     <label>Email</label><input id="rc-em" type="email" autocomplete="email" placeholder="you@company.com">
     <div id="rc-pw-wrap"><label>Password</label><input id="rc-pw" type="password" autocomplete="current-password" placeholder="••••••••"></div>
@@ -302,7 +303,9 @@
       const ph = modal.querySelector("#rc-ph").value.trim();
       if (!name) { btn.disabled = false; setMode("up"); showErr("Name is required."); return; }
       if (ph.replace(/\D/g, "").length < 10) { btn.disabled = false; setMode("up"); showErr("A phone number is required so the shop can reach you about orders."); return; }
-      res = await signUp(name, modal.querySelector("#rc-co").value.trim(), ph, em, pw);
+      const zip = modal.querySelector("#rc-zip").value.trim();
+      if (!/^\d{5}$/.test(zip)) { btn.disabled = false; setMode("up"); showErr("A 5-digit ZIP code is required so we can show pricing from the shop nearest you."); return; }
+      res = await signUp(name, modal.querySelector("#rc-co").value.trim(), ph, zip, em, pw);
     }
     btn.disabled = false; setMode(mode);
     if (res.error) {
@@ -410,31 +413,36 @@
     } catch (e) { cleanHash(); return null; }
   }
 
-  // Google doesn't give us a phone number, and the shop needs one to reach people
-  // about orders — ask once after the first Google sign-in (skippable).
+  // Google doesn't give us a phone number or a ZIP code; the shop needs the phone to reach
+  // people about orders and the ZIP picks the shop nearest them — ask once after the first
+  // Google sign-in (skippable). Whatever is already known is filled in.
   function askForPhone(session) {
     const card = modal.querySelector(".card");
+    const m = (session.user && session.user.user_metadata) || {};
     modal.classList.add("on");
     modal.classList.remove("dismissable");
     card.innerHTML =
       '<p style="font-family:var(--mono,monospace);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#8A94A6;margin:0 0 10px">RoofCoil · One last thing</p>' +
-      '<h2>Welcome' + (session.user.user_metadata && session.user.user_metadata.name ? ", " + esc(session.user.user_metadata.name.split(" ")[0]) : "") + '</h2>' +
-      '<p class="sub">Add a phone number so the shop can reach you about orders.</p>' +
-      '<label>Phone</label><input id="rc-ph2" type="tel" autocomplete="tel" inputmode="tel" placeholder="(555) 555-5555">' +
+      '<h2>Welcome' + (m.name ? ", " + esc(m.name.split(" ")[0]) : "") + '</h2>' +
+      '<p class="sub">A phone number so the shop can reach you about orders, and your ZIP code for pricing from the shop nearest you.</p>' +
+      '<label>Phone</label><input id="rc-ph2" type="tel" autocomplete="tel" inputmode="tel" placeholder="(555) 555-5555" value="' + esc(m.phone || "") + '">' +
+      '<label>ZIP code</label><input id="rc-zip2" autocomplete="postal-code" inputmode="numeric" maxlength="5" placeholder="75001" value="' + esc(m.zip || "") + '">' +
       '<div class="err" id="rc-err2"></div>' +
       '<button class="btn" style="width:100%" id="rc-ph-save">Save</button>' +
       '<button type="button" class="rc-skip" id="rc-ph-skip">Skip for now</button>';
     card.querySelector("#rc-ph-skip").onclick = function () { location.reload(); };
     card.querySelector("#rc-ph-save").onclick = async function () {
       const ph = card.querySelector("#rc-ph2").value.trim();
+      const zip = card.querySelector("#rc-zip2").value.trim();
       const err = card.querySelector("#rc-err2");
       if (ph.replace(/\D/g, "").length < 10) { err.textContent = "Enter a 10-digit phone number."; err.style.display = "block"; return; }
+      if (!/^\d{5}$/.test(zip)) { err.textContent = "Enter your 5-digit ZIP code."; err.style.display = "block"; return; }
       this.disabled = true; this.textContent = "Saving…";
       try {
         const r = await fetch(SUPA + "/auth/v1/user", {
           method: "PUT",
           headers: { "Content-Type": "application/json", apikey: KEY, Authorization: "Bearer " + session.access_token },
-          body: JSON.stringify({ data: { phone: ph } }),
+          body: JSON.stringify({ data: { phone: ph, zip: zip } }),
         });
         if (r.ok) { const u = await r.json(); session.user = u; writeSession(session); }
       } catch (e) {}
@@ -452,7 +460,7 @@
     if (marker) cleanHash();
     const session = await refreshIfNeeded();
     const slot = document.querySelector("[data-auth-slot]");
-    if (fromHash && fromHash.fresh && session && !(session.user.user_metadata && session.user.user_metadata.phone)) {
+    if (fromHash && fromHash.fresh && session && !(session.user.user_metadata && session.user.user_metadata.phone && /^\d{5}$/.test(session.user.user_metadata.zip || ""))) {
       askForPhone(session);
     }
     if (session) {
