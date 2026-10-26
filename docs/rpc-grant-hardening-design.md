@@ -87,13 +87,24 @@ the signed-out surface of the product; each returns public data only, runs with 
 `search_path`, and is `STABLE`. The 20-odd `authenticated`-callable warnings are the app's
 RPC API and are expected.
 
-## Out of scope, noted for later
+## Follow-up, done 2026-10-26
 
-`anon` and `authenticated` hold Supabase's default `ALL` table privileges (including `TRUNCATE`,
-`REFERENCES`, `TRIGGER`) on every table in `public`. RLS does not apply to `TRUNCATE`.
-PostgREST never issues it, so there is no path from the API today, but revoking the three
-unused privileges from both roles (and fixing the default privileges so new tables don't get
-them) is a cheap belt-and-braces change worth its own small migration.
+`anon` and `authenticated` held Supabase's default `ALL` table privileges (including `TRUNCATE`,
+`REFERENCES`, `TRIGGER` and PG17's `MAINTAIN`) on every table in `public`. RLS does not apply to
+`TRUNCATE`. PostgREST never issues any of them, so there was no path from the API, but
+`20261026110000_table_privilege_cleanup.sql` revokes the four from both roles on every table
+and from the default privileges `postgres` hands out in `public`, so new tables are born
+without them. The same migration revokes the default `EXECUTE` on `sync_customer_details()`,
+a trigger function that the advisor had started listing as anonymously callable.
+
+The `supabase_admin` default privileges carry the same grants, but only for objects the platform
+itself creates; `postgres` cannot alter them, and no app table is created that way.
+
+A related choice left as is: `postgres`'s default privileges also grant `EXECUTE` on every new
+function to `anon` and `authenticated`, which is why each new RPC appears on the advisor's
+list until its migration says otherwise. Changing that default would make every future
+function private unless granted explicitly — safer, but a convention change for every
+migration author, so it is a decision rather than a cleanup.
 
 ## Verification
 
