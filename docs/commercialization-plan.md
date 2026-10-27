@@ -1,4 +1,4 @@
-# RoofCoil Shop App — Commercialization Plan and Status
+# RoofCoil Tools — Commercialization Plan and Status
 
 *Assessment written 2026-10-17 from direct inspection of this repository, the production
 Supabase project ("Fortified Project"), Vercel and the security advisors. Refreshed
@@ -158,14 +158,15 @@ whether to split `App.jsx` further.
 
 ---
 
-## Appendix — Asset map (2026-10-26)
+## Appendix — Asset map (2026-10-27)
 
 | Asset | Location |
 |---|---|
-| Source of truth | GitHub `direp972/Fortified-Shop-App`; CI in `.github/workflows/build.yml`; builds read `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` from repository variables |
-| App hosting | Vercel `fortified-shop-app` → shop.roofcoil.com; `roofcoil` project = domain proxy |
-| Database | Supabase "Fortified Project" (`znueitseoqijhkkvdomc`): 19 tables, 52 migrations, Vault secrets |
+| Source of truth | GitHub `direp972/roofcoil-tools` (named `Fortified-Shop-App` until 2026-10-27; GitHub forwards the old address); CI in `.github/workflows/build.yml`; builds read `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` from repository variables |
+| App hosting | Vercel `roofcoil-tools` (named `fortified-shop-app` until 2026-10-27) → shop.roofcoil.com; it keeps the `fortified-shop-app.vercel.app` address because fortifiedmetals.com/app proxies to it; the `roofcoil` project proxies www.roofcoil.com to shop.roofcoil.com |
+| Database | Supabase "RoofCoil" (named "Fortified Project" until 2026-10-27; `znueitseoqijhkkvdomc`): 19 tables, 52 migrations, Vault secrets |
 | Edge functions | `order-alert`, `listing-alert`, `signup-email`, `submit-order` (all in `supabase/functions/`, shared modules in `_shared/`) |
 | AI feature | `api/scan-sketch.js` (Vercel function, Anthropic API, key server-side) |
 | Takeoff product | separate repo `direp972/roofcoil-takeoff` (EagleView import engine + upload app) |
-| Unused/parked | Vercel `fortified-metals`, `roofcoil-proxy-check`; Supabase "Fortified Metals Website" (inactive) |
+| Fortified Metals website (not this app) | Vercel `fortified-metals` → fortifiedmetals.com; its `/app`, `/api` and `/assets` paths proxy to this app, where sign-in carries Fortified's name |
+| Unused/parked | Vercel `roofcoil-proxy-check`; Supabase "Fortified Metals Website" (inactive) |
