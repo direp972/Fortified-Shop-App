@@ -5,7 +5,7 @@
 // roofcoil.com, shop.roofcoil.com, fortifiedmetals.com — it failed with no API key, so
 // every scan ended in "Couldn't read that sketch". The key now lives here, server-side.
 //
-// Environment (Vercel project settings for fortified-shop-app):
+// Environment (Vercel project settings for roofcoil-tools):
 //   ANTHROPIC_API_KEY       required — until it is set the endpoint answers 503 with a
 //                           plain-English message the app shows as a toast
 //   ANTHROPIC_MODEL         optional — defaults to claude-opus-5

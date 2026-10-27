@@ -1,4 +1,23 @@
-# Fortified Sheet Metal — Shop Order Portal
+# RoofCoil Tools
+
+The roofcoil.com site and its tools: the Panel & Trim ordering app, Shop Floor, the
+supplier directory and the content pages. Fortified Sheet Metal is shop #1 on the
+platform and its default shop (see *Shops as tenants* below).
+
+**Where it runs.** Code: GitHub `direp972/roofcoil-tools`. Hosting: Vercel project
+`roofcoil-tools`, serving shop.roofcoil.com; the `roofcoil` Vercel project proxies
+www.roofcoil.com to it. Database, auth and Edge Functions: Supabase project "RoofCoil"
+(`znueitseoqijhkkvdomc`). Until 2026-10-27 these were named `Fortified-Shop-App`,
+`fortified-shop-app` and "Fortified Project". GitHub forwards the old repository
+address, and the Vercel project keeps `fortified-shop-app.vercel.app` attached because
+fortifiedmetals.com/app proxies to that address — don't remove it.
+
+**Not this repository:** the Fortified Metals website (fortifiedmetals.com, Vercel
+project `fortified-metals`). It is a separate project; only its `/app`, `/api` and
+`/assets` paths proxy into this app, where the sign-in card reads "Fortified Metals"
+with "Powered by RoofCoil.com" underneath.
+
+## History
 
 Standalone version of the app with real login accounts and staff-assigned customer
 pricing tiers — independent of Claude.ai's artifact environment.
