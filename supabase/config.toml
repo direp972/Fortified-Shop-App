@@ -1,0 +1,18 @@
+# Deployed functions authenticate themselves (user tokens, x-alert-secret from pg_net, or the
+# Stripe signature), so the gateway's JWT check stays off for all six — matching the deployed
+# metadata, so a CLI deploy cannot 401 the pg_net callers or Stripe. scrape-site and
+# signup-direct are not in this repo and are left alone.
+project_id = "roofcoil-tools"
+
+[functions.submit-order]
+verify_jwt = false
+[functions.order-alert]
+verify_jwt = false
+[functions.listing-alert]
+verify_jwt = false
+[functions.signup-email]
+verify_jwt = false
+[functions.billing-session]
+verify_jwt = false
+[functions.stripe-webhook]
+verify_jwt = false
