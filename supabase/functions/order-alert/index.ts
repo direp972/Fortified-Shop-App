@@ -5,9 +5,13 @@
 //
 // Routing: an order carries shop_id, the directory listing it was sent to. A listing
 // that takes orders through RoofCoil has an order_email; the alert goes there and its
-// owner sees the job on their own Shop Floor at shop.roofcoil.com. An order with no
-// shop, or a shop with no order email, goes to the Fortified Metals desk (ALERT_EMAIL_TO)
-// and the shop text, exactly as before.
+// owner sees the job on their own Shop Floor at shop.roofcoil.com. It also texts the
+// shop's own "order-sms" setting (a mobile number through Twilio, or a carrier's
+// email-to-text address through Resend), whatever its plan. An order with no shop, or a
+// shop with no order email, goes to the desk (ALERT_EMAIL_TO) and the desk text, as before.
+//
+// Customer copy is neutral on both paths: it names the shop the order went to and that
+// shop's own phone, or "the shop" when none is known, never another shop in its place.
 //
 // Status changes: orders_status_alert calls this with {kind:"status"} when a row's status
 // moves to In Production, Ready for Pickup or Completed. The first row of a job to reach a
@@ -26,13 +30,12 @@
 //   ALERT_EMAIL_TO    — default sales@fortifiedmetals.com
 //   ALERT_EMAIL_FROM  — default onboarding@resend.dev (use orders@fortifiedmetals.com after domain verify)
 //   SMS_GATEWAY_TO    — e.g. 19725551234@vtext.com (free carrier email-to-SMS route)
-//   TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM / ALERT_SMS_TO — Twilio route (wins over gateway)
+//   TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM / ALERT_SMS_TO — Twilio route (wins over gateway);
+//                       the first three also text a shop's order-sms when it is a number
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 
 const BATCH_SETTLE_MS = 8000;
-const PHONE = "972-944-7963";
-const DEFAULT_SHOP = "Fortified Metals";
 
 const sb = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -108,24 +111,60 @@ async function sendSms(shortText: string) {
   return { skipped: "no TWILIO_* or SMS_GATEWAY_TO set" };
 }
 
+// A routed order's text to the shop itself: its "order-sms" setting, a jsonb string saved in
+// Shop Settings ("+1XXXXXXXXXX" or a carrier's email-to-text address; {to} is read too).
+async function sendShopSms(shopId: string, shortText: string) {
+  const { data, error } = await sb.from("shop_settings").select("value").eq("shop_id", shopId).eq("key", "order-sms").maybeSingle();
+  if (error) return { skipped: `order-sms lookup: ${error.message}` };
+  const v = data?.value;
+  const to = String((typeof v === "string" ? v : v && typeof v === "object" ? v.to : "") ?? "").trim();
+  if (!to) return { skipped: "no order-sms" };
+  return await sendSmsTo(to, shortText);
+}
+
+async function sendSmsTo(to: string, shortText: string) {
+  if (to.includes("@")) {
+    const r = await sendEmail("", shortText, to);
+    return { via: "carrier-gateway", ...r };
+  }
+  const digits = to.replace(/\D/g, "");
+  if (!(digits.length === 10 || (digits.length === 11 && digits[0] === "1"))) {
+    return { skipped: "order-sms is not a mobile number or an email-to-text address" };
+  }
+  const sid = await setting("TWILIO_ACCOUNT_SID");
+  const token = await setting("TWILIO_AUTH_TOKEN");
+  const twFrom = await setting("TWILIO_FROM");
+  if (!(sid && token && twFrom)) return { skipped: "order-sms is a number but TWILIO_* is not set" };
+  const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+    method: "POST",
+    headers: {
+      Authorization: "Basic " + btoa(`${sid}:${token}`),
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({ From: twFrom, To: "+1" + digits.slice(-10), Body: shortText }),
+  });
+  return { via: "twilio", status: res.status, body: res.ok ? "sent" : await res.text() };
+}
+
 type Shop = { id: string; name: string; phone: string | null; order_email: string | null; accepts_orders: boolean } | null;
 
-// The sign-off under every customer email: the shop that is making the order when the order
-// is routed to a shop, the Fortified desk otherwise (orders with no shop email go there).
-function signOff(routed: boolean, shopName: string, shopPhone: string) {
-  return routed ? `RoofCoil.com · ${shopName}${shopPhone ? ` · ${shopPhone}` : ""}` : `RoofCoil.com · ${DEFAULT_SHOP} · ${PHONE}`;
+// The sign-off under every customer email: the shop the order went to and its phone, each
+// only when known. The same on both paths, so no other shop's name or number stands in.
+function signOff(shopName: string, shopPhone: string) {
+  return `RoofCoil.com${shopName ? ` · ${shopName}` : ""}${shopPhone ? ` · ${shopPhone}` : ""}`;
 }
 
 // The customer's copy: what they ordered, who is making it, and how to reach that shop.
-function customerMail(name: string, shopName: string, shopPhone: string, po: string, items: Record<string, unknown>[], total: number, routed = false) {
+// shopName is "" when no shop is known; the sentences then say "the shop".
+function customerMail(name: string, shopName: string, shopPhone: string, po: string, items: Record<string, unknown>[], total: number) {
   const first = (name || "").trim().split(/\s+/)[0];
   const hi = first ? `Hi ${first},` : "Hi there,";
-  const sign = signOff(routed, shopName, shopPhone);
+  const sign = signOff(shopName, shopPhone);
   const lines = items.map(describeItem);
   const text = [
     hi, "",
-    `We received your order${po ? ` (${po})` : ""} and sent it to ${shopName}.`,
-    `${shopName} will confirm the final price and reach out${shopPhone ? ` — or call them at ${shopPhone}` : ""}.`,
+    `We received your order${po ? ` (${po})` : ""} and sent it to ${shopName || "the shop"}.`,
+    `${shopName || "The shop"} will confirm the final price and reach out${shopPhone ? ` — or call them at ${shopPhone}` : ""}.`,
     "", ...lines, "",
     `Estimated total: ${money(total)} (final pricing confirmed by the shop)`,
     "",
@@ -137,13 +176,13 @@ function customerMail(name: string, shopName: string, shopPhone: string, po: str
   <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;padding:28px 26px;border:1px solid #E7E2D6">
     <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#8A94A6;margin-bottom:14px">RoofCoil.com</div>
     <h1 style="font-size:22px;margin:0 0 10px;color:#0A2B41">${esc(hi)}</h1>
-    <p style="font-size:15px;line-height:1.55;margin:0 0 14px">We received your order${po ? ` <b>${esc(po)}</b>` : ""} and sent it to <b>${esc(shopName)}</b>. They will confirm the final price and reach out${shopPhone ? `, or call them at <a href="tel:${esc(shopPhone.replace(/[^\d+]/g, ""))}" style="color:#0F3D5C">${esc(shopPhone)}</a>` : ""}.</p>
+    <p style="font-size:15px;line-height:1.55;margin:0 0 14px">We received your order${po ? ` <b>${esc(po)}</b>` : ""} and sent it to ${shopName ? `<b>${esc(shopName)}</b>` : "the shop"}. They will confirm the final price and reach out${shopPhone ? `, or call them at <a href="tel:${esc(shopPhone.replace(/[^\d+]/g, ""))}" style="color:#0F3D5C">${esc(shopPhone)}</a>` : ""}.</p>
     <ul style="font-size:13.5px;line-height:1.6;padding-left:18px;margin:0 0 14px">${lines.map((l) => `<li>${esc(l.replace(/^- /, ""))}</li>`).join("")}</ul>
     <p style="font-size:14px;margin:0 0 18px"><b>Estimated total: ${esc(money(total))}</b> <span style="color:#4E6273">(final pricing confirmed by the shop)</span></p>
     <p style="margin:0 0 20px"><a href="https://shop.roofcoil.com/" style="display:inline-block;background:#0F3D5C;color:#fff;font-weight:700;font-size:14px;text-decoration:none;padding:11px 18px;border-radius:9px">See your orders</a></p>
     <div style="margin-top:22px;padding-top:14px;border-top:1px solid #E7E2D6;font-size:12px;color:#8A94A6;line-height:1.5">${esc(sign)}</div>
   </div></div>`;
-  return { subject: `Order received${po ? ` — ${po}` : ""} · ${shopName}`, text, html };
+  return { subject: `Order received${po ? ` — ${po}` : ""}${shopName ? ` · ${shopName}` : ""}`, text, html };
 }
 
 const STATUS_LINE: Record<string, { subject: string; lead: string }> = {
@@ -153,16 +192,16 @@ const STATUS_LINE: Record<string, { subject: string; lead: string }> = {
 };
 
 // The customer's status note: which pieces reached the status, and who to call.
-function statusMail(name: string, status: string, shopName: string, shopPhone: string, po: string, items: Record<string, unknown>[], routed = false) {
+function statusMail(name: string, status: string, shopName: string, shopPhone: string, po: string, items: Record<string, unknown>[]) {
   const first = (name || "").trim().split(/\s+/)[0];
   const hi = first ? `Hi ${first},` : "Hi there,";
-  const sign = signOff(routed, shopName, shopPhone);
+  const sign = signOff(shopName, shopPhone);
   const words = STATUS_LINE[status] || { subject: `is now ${status}`, lead: `is now ${status}` };
   const lines = items.map(describeItem);
   const text = [
     hi, "",
-    `Your order${po ? ` ${po}` : ""} at ${shopName} ${words.lead}.`,
-    ...(shopPhone ? [`Questions? Call ${shopName} at ${shopPhone}.`] : []),
+    `Your order${po ? ` ${po}` : ""} at ${shopName || "the shop"} ${words.lead}.`,
+    ...(shopPhone ? [`Questions? Call ${shopName || "the shop"} at ${shopPhone}.`] : []),
     "", ...lines, "",
     `See your orders any time under Past Orders: https://shop.roofcoil.com/`,
     "",
@@ -172,12 +211,12 @@ function statusMail(name: string, status: string, shopName: string, shopPhone: s
   <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:14px;padding:28px 26px;border:1px solid #E7E2D6">
     <div style="font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#8A94A6;margin-bottom:14px">RoofCoil.com</div>
     <h1 style="font-size:22px;margin:0 0 10px;color:#0A2B41">${esc(hi)}</h1>
-    <p style="font-size:15px;line-height:1.55;margin:0 0 14px">Your order${po ? ` <b>${esc(po)}</b>` : ""} at <b>${esc(shopName)}</b> ${esc(words.lead)}.${shopPhone ? ` Questions? Call <a href="tel:${esc(shopPhone.replace(/[^\d+]/g, ""))}" style="color:#0F3D5C">${esc(shopPhone)}</a>.` : ""}</p>
+    <p style="font-size:15px;line-height:1.55;margin:0 0 14px">Your order${po ? ` <b>${esc(po)}</b>` : ""} at ${shopName ? `<b>${esc(shopName)}</b>` : "the shop"} ${esc(words.lead)}.${shopPhone ? ` Questions? Call <a href="tel:${esc(shopPhone.replace(/[^\d+]/g, ""))}" style="color:#0F3D5C">${esc(shopPhone)}</a>.` : ""}</p>
     <ul style="font-size:13.5px;line-height:1.6;padding-left:18px;margin:0 0 18px">${lines.map((l) => `<li>${esc(l.replace(/^- /, ""))}</li>`).join("")}</ul>
     <p style="margin:0 0 20px"><a href="https://shop.roofcoil.com/" style="display:inline-block;background:#0F3D5C;color:#fff;font-weight:700;font-size:14px;text-decoration:none;padding:11px 18px;border-radius:9px">See your orders</a></p>
     <div style="margin-top:22px;padding-top:14px;border-top:1px solid #E7E2D6;font-size:12px;color:#8A94A6;line-height:1.5">${esc(sign)}</div>
   </div></div>`;
-  return { subject: `Your order${po ? ` ${po}` : ""} ${words.subject} · ${shopName}`, text, html };
+  return { subject: `Your order${po ? ` ${po}` : ""} ${words.subject}${shopName ? ` · ${shopName}` : ""}`, text, html };
 }
 
 async function statusChange(record: Record<string, any>) {
@@ -215,9 +254,8 @@ async function statusChange(record: Record<string, any>) {
       const { data: s } = await sb.from("directory_listings").select("id,name,phone,order_email,accepts_orders").eq("id", shopId).maybeSingle();
       shop = (s as Shop) ?? null;
     }
-    const routed = !!(shop && shop.order_email && shop.order_email.includes("@"));
-    const shopName = shop?.name || first.shopName || DEFAULT_SHOP;
-    const shopPhone = routed ? (shop?.phone || "") : PHONE;
+    const shopName: string = shop?.name || first.shopName || "";
+    const shopPhone = shop?.phone || "";
 
     let confirmation: Record<string, unknown> = { skipped: "no account on the order" };
     const userId: string | null = rows.find((r) => r.user_id)?.user_id || record?.user_id || null;
@@ -227,7 +265,7 @@ async function statusChange(record: Record<string, any>) {
       if (error) confirmation = { skipped: `user lookup: ${error.message}` };
       else if (!to) confirmation = { skipped: "account has no email" };
       else {
-        const m = statusMail(first.customerName || "", status, shopName, shopPhone, po, items, routed);
+        const m = statusMail(first.customerName || "", status, shopName, shopPhone, po, items);
         confirmation = await sendEmail(m.subject, m.text, to, m.html);
       }
     }
@@ -277,13 +315,12 @@ async function process(record: Record<string, any>) {
       shop = (s as Shop) ?? null;
     }
     const routed = !!(shop && shop.order_email && shop.order_email.includes("@"));
-    const shopName = shop?.name || first.shopName || DEFAULT_SHOP;
-    const shopPhone = routed ? (shop?.phone || "") : PHONE;
-    const floorUrl = routed ? "https://shop.roofcoil.com/ (Shop Floor tab)" : "https://fortifiedmetals.com/app";
+    const shopName: string = shop?.name || first.shopName || "";
+    const shopPhone = shop?.phone || "";
 
     const subject = `New order — ${customer}${po ? ` · PO ${po}` : ""} · ${money(total)}${shop ? ` → ${shop.name}` : ""}`;
     const body = [
-      `New order on RoofCoil.com for ${shopName}`,
+      `New order on RoofCoil.com${shopName ? ` for ${shopName}` : ""}`,
       ``,
       `Customer: ${customer}`,
       `Phone: ${phone}`,
@@ -294,12 +331,13 @@ async function process(record: Record<string, any>) {
       ``,
       ...items.map(describeItem),
       ``,
-      `Open Shop Floor: ${floorUrl}`,
+      `Open Shop Floor: https://shop.roofcoil.com/ (Shop Floor tab)`,
     ].filter((l) => l !== null).join("\n");
-    const short = `${shopName}: new order from ${customer}${po ? ` (PO ${po})` : ""} — ${items.length} item(s), ${money(total)}`;
+    const short = `${shopName ? `${shopName}: new` : "New"} order from ${customer}${po ? ` (PO ${po})` : ""} — ${items.length} item(s), ${money(total)}`;
 
+    // Routed: the shop's order email, then its own text alert. Unrouted: the desk's email and text.
     const email = await sendEmail(subject, body, routed ? shop!.order_email! : undefined);
-    const sms = routed ? { skipped: `routed to ${shop!.name}` } : await sendSms(short);
+    const sms = routed ? await sendShopSms(shop!.id, short) : await sendSms(short);
 
     // The customer's confirmation goes to the account that placed the order.
     let confirmation: Record<string, unknown> = { skipped: "no account on the order" };
@@ -310,7 +348,7 @@ async function process(record: Record<string, any>) {
       if (error) confirmation = { skipped: `user lookup: ${error.message}` };
       else if (!to) confirmation = { skipped: "account has no email" };
       else {
-        const m = customerMail(customer, shopName, shopPhone, po, items, total, routed);
+        const m = customerMail(customer, shopName, shopPhone, po, items, total);
         confirmation = await sendEmail(m.subject, m.text, to, m.html);
       }
     }

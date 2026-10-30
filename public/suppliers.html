@@ -66,6 +66,7 @@
 .cobadge.coil{background:linear-gradient(180deg,var(--gold-soft),var(--gold));color:var(--ink-deep)}
 .cobadge.fab{background:var(--patina);color:#fff}
 .cobadge.turnkey{background:#A0602E;color:#fff}
+.cobadge.featured{background:var(--ink-deep);color:var(--gold-soft)}
 .co-head .loc{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;color:var(--steel);margin-left:auto}
 .co-head .loc .dist{color:var(--copper);font-weight:600}
 .co p{margin:4px 0 0;font-size:13.5px;line-height:1.6;color:#4E6273}
@@ -396,7 +397,15 @@ function apply(){
     const mi=here()?cardMiles(c,wants):null;
     c.querySelector('.dist').textContent=(mi!==null&&isFinite(mi))?' · ~'+Math.round(mi)+' mi':'';
   });
-  if(here())[...cards].sort((a,b)=>cardMiles(a,wants)-cardMiles(b,wants)).forEach(c=>dir.appendChild(c));
+  // featured shops within 100 miles of the searched place lead, then everything by distance
+  if(here()){
+    const rank=c=>(c.dataset.featured==='1'&&cardMiles(c,wants)<=100)?0:1;
+    [...cards].sort((a,b)=>rank(a)-rank(b)||cardMiles(a,wants)-cardMiles(b,wants)).forEach(c=>dir.appendChild(c));
+  }else{
+    // no place to measure from (never set, or just cleared): featured pinned first again,
+    // each group keeping its current order
+    cards.filter(c=>c.dataset.featured==='1').concat(cards.filter(c=>c.dataset.featured!=='1')).forEach(c=>dir.appendChild(c));
+  }
   const any=wants.length||color||locq||radius;
   $('#rcount').textContent=cards.length?shown+' of '+cards.length+' listed shops'+(any?' match':''):'Loading listed shops…';
   $('#noresults').style.display=(shown||!cards.length)?'none':'block';
@@ -470,6 +479,9 @@ function buildCard(l){
   if(badges.includes('coil')){const s=document.createElement('span');s.className='cobadge coil';s.textContent='Supply Materials';head.appendChild(s)}
   if(badges.includes('fab')){const s=document.createElement('span');s.className='cobadge fab';s.textContent='Fabrication';head.appendChild(s)}
   if(badges.includes('turnkey')){const s=document.createElement('span');s.className='cobadge turnkey';s.textContent='Turnkey — supply · fab · labor';head.appendChild(s)}
+  // paid placement is always marked as such
+  if(l.featured){const s=document.createElement('span');s.className='cobadge featured';s.textContent='Featured';head.appendChild(s)}
+  c.dataset.featured=l.featured?'1':'';
   const loc=document.createElement('span');loc.className='loc';
   loc.textContent=[l.address,l.city].filter(Boolean).join(' · ');
   const dist=document.createElement('span');dist.className='dist';loc.appendChild(dist);
@@ -554,6 +566,14 @@ function buildCard(l){
   decorate(c);
   return c;
 }
+// a card's Featured state: data-featured (placement and geo order) and its label, kept together
+function setFeatured(c,on){
+  c.dataset.featured=on?'1':'';
+  const head=c.querySelector('.co-head');if(!head)return;
+  const s=head.querySelector('.cobadge.featured');
+  if(on&&!s){const n=document.createElement('span');n.className='cobadge featured';n.textContent='Featured';head.insertBefore(n,head.querySelector('.loc'))}
+  if(!on&&s)s.remove();
+}
 function shuffle(a){
   for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}
   return a;
@@ -577,6 +597,13 @@ if(cards.length){
     // Listings come up in a fresh random order on every visit so no shop is
     // stuck at the bottom for its name — featured shops still lead the list.
     const rows=shuffle(all.filter(l=>l&&l.featured)).concat(shuffle(all.filter(l=>!(l&&l.featured))));
+    // Featured comes from the live rows, not the build: a baked card takes its row's value
+    // and label, so a Featured purchase or comp shows on the next load without a deploy
+    const byName=new Map();
+    for(const l of rows)if(l&&l.name&&!byName.has(l.name.toLowerCase()))byName.set(l.name.toLowerCase(),l);
+    // the Featured state each baked card was first painted with, before the live rows have their say
+    const painted=new Map(cards.map(c=>[c,c.dataset.featured==='1']));
+    cards.forEach(c=>{const l=byName.get(c.dataset.name.toLowerCase());if(l)setFeatured(c,!!l.featured)});
     const have=new Set(cards.map(c=>c.dataset.name.toLowerCase()));
     let added=false;
     for(const l of rows){
@@ -585,8 +612,21 @@ if(cards.length){
       dir.appendChild(buildCard(l));
       added=true;
     }
+    // featured first again. A card keeps the place it has (the shuffles above) unless the
+    // live rows put it in a new group — a baked card whose Featured flipped, or a Featured
+    // shop listed since the build — and then it takes a random place in that group, not a
+    // fixed one at its edge (a lapsed comp would otherwise lead the unfeatured shops until
+    // the next deploy)
+    cards=[...$$('#dir .co[data-name]')];
+    const isFeat=c=>c.dataset.featured==='1';
+    const place=g=>{
+      const keep=g.filter(c=>painted.has(c)?painted.get(c)===isFeat(c):!isFeat(c));
+      for(const c of g)if(!keep.includes(c))keep.splice(Math.floor(Math.random()*(keep.length+1)),0,c);
+      return keep;
+    };
+    place(cards.filter(isFeat)).concat(place(cards.filter(c=>!isFeat(c)))).forEach(c=>dir.appendChild(c));
+    cards=[...$$('#dir .co[data-name]')];
     if(added){
-      cards=[...$$('#dir .co[data-name]')];
       rebuildColorOptions();
       // a ?color deep link may name a color only a just-loaded listing carries
       const wantColor=qp.get('color');
@@ -594,9 +634,9 @@ if(cards.length){
         const o=[...$('#s-color').options].find(o=>o.value.toLowerCase()===wantColor.toLowerCase());
         if(o)$('#s-color').value=o.value;
       }
-      apply();
     }
-  }catch(e){/* offline or table unreachable — the built-in listings still work */}
+    apply();
+  }catch(e){/* offline or table unreachable — the built-in listings and their baked Featured values still work */}
 })();
 </script>
 </body>

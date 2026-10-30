@@ -38,6 +38,11 @@
 .elocrow{border:1px solid rgba(15,61,92,.15);border-radius:var(--r-sm);padding:11px 13px 9px;margin-bottom:8px;background:var(--paper)}
 .elocrow .frow{margin-bottom:0}
 .elocrow .lbtns{display:flex;flex-wrap:wrap;gap:7px;align-items:center;margin-top:6px}
+.billbox{border:1px solid rgba(15,61,92,.15);border-radius:var(--r-sm);padding:11px 13px 9px;background:var(--paper)}
+.billbox .meta{font-family:var(--mono);font-size:10.5px;color:var(--steel);letter-spacing:.03em;line-height:1.7;word-break:break-word;white-space:pre-line}
+.billbox .grant{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:4px 0;border-bottom:1px dashed rgba(15,61,92,.14)}
+.billbox .bsec{margin-top:12px}
+.billbox .hint{font-size:12px;color:var(--steel);margin:6px 0 0;line-height:1.5}
 </style>
 </head>
 <body data-auth-required>
@@ -80,8 +85,9 @@
       <div class="fld"><label>Badges</label>
         <div class="chipgrid"><button type="button" class="seg" id="e-bcoil" data-v="coil">Supply Materials</button><button type="button" class="seg" id="e-bfab" data-v="fab">Fabrication</button><button type="button" class="seg" id="e-bturnkey" data-v="turnkey">Turnkey — supply · fab · labor</button></div>
       </div>
-      <div class="fld"><label>Placement</label>
-        <div class="chipgrid"><button type="button" class="seg" id="e-featured" data-v="featured">★ Featured — pin to the top of the directory</button></div>
+      <div class="fld"><label>Plan &amp; Featured — comps are dated, noted and visible on the shop's card</label>
+        <div class="billbox" id="e-billing"></div>
+        <div class="okline" id="bill-note"></div>
       </div>
       <div class="fld"><label>Licensed states — shown on the card for turnkey shops (comma separated)</label><input id="e-lic" placeholder="TX, OK, LA"></div>
       <div class="fld"><label>Locations — the first one is the primary address shown on the card; each can be geocoded and can run its own ability subset</label>
@@ -141,7 +147,7 @@ const GUTTER_MATERIALS=["Gutter — .027 aluminum","Gutter — .032 aluminum","G
 const ALL_CANON=[...ABILITIES,...EF_PANELS,...GUTTER_PROFILES,...GUTTER_MATERIALS];
 const STOCK_COLORS=["Regal White","Almond","Ash Gray","Slate Gray","Burnished Slate","Charcoal","Medium Bronze","Dark Bronze","Matte Black","Evergreen","Copper Metallic","Galvalume","Texas Silver","Bare Copper","Bonderized"];
 const $=s=>document.querySelector(s);const $$=s=>document.querySelectorAll(s);
-let token=null, editingId=null, apps=[], listings=[], me=null, ownerEmails={};
+let token=null, editingId=null, apps=[], listings=[], me=null, ownerEmails={}, billingById={};
 
 // Applications are UNREVIEWED, attacker-reachable input (open anon insert).
 // Any URL from an application must pass this gate before it can become an
@@ -191,7 +197,6 @@ GUTTER_MATERIALS.forEach(a=>$('#e-gutmats').appendChild(segChip(a,gutLabel(a))))
 STOCK_COLORS.forEach(c=>$('#e-colors').appendChild(segChip(c)));
 $('#e-bcoil').onclick=()=>$('#e-bcoil').classList.toggle('sel');
 $('#e-bturnkey').onclick=()=>$('#e-bturnkey').classList.toggle('sel');
-$('#e-featured').onclick=()=>$('#e-featured').classList.toggle('sel');
 $('#e-bfab').onclick=()=>$('#e-bfab').classList.toggle('sel');
 $('#e-orders').onclick=()=>$('#e-orders').classList.toggle('sel');
 
@@ -341,8 +346,9 @@ function prefillFromApp(a){
   $('#e-name').value=a.company||'';
   $('#e-status').value='draft';
   $('#e-lic').value=(a.details&&a.details.licensed_states)||'';
-  $('#e-featured').classList.remove('sel');$('#e-logobg').value='';
+  $('#e-logobg').value='';
   $('#e-orders').classList.remove('sel');$('#e-orderemail').value='';
+  $('#bill-note').textContent='';renderBilling();
   const abil=canonAbilities(d.abilities||a.panel_types);
   setChips('#e-abilities',abil);
   setChips('#e-efpanels',abil);
@@ -681,7 +687,9 @@ $('#e-save').onclick=async()=>{
     logo_url:logoClean||'',
     logo_bg:logoBg||null,
     gmaps_url:gmClean||'',
-    featured:$('#e-featured').classList.contains('sel'),
+    // Featured is a dated comp now (Plan & Featured above), not a chip; the raw column
+    // is still sent with the listing's existing value until S1 drops the key
+    featured:editingId?!!((listings.find(x=>x.id===editingId)||{}).featured):false,
     accepts_orders:$('#e-orders').classList.contains('sel'),
     order_email:orderEmail||null,
     updated_at:new Date().toISOString(),
@@ -708,21 +716,19 @@ async function retireApplication(id){
 /* ── existing listings ─────────────────────────────────────────────────── */
 async function loadListings(){
   const box=$('#listings');box.textContent='';
+  // every caller of loadListings (boot, saves, Make live, applied edits, claims) refreshes the badges too
+  try{await loadBilling()}catch(x){console.warn('plan facts unavailable — list badges show the raw columns',x)}
+  renderBilling();
   try{listings=await api('/rest/v1/directory_listings?select=*&order=featured.desc,name.asc')}
   catch(x){box.textContent='Could not load listings.';return}
   $('#l-count').textContent=listings.length;
   if(!listings.length){const p=document.createElement('p');p.className='empty';p.textContent='No published listings yet — build one from an application.';box.appendChild(p);return}
   listings.forEach(l=>{
-    const card=document.createElement('div');card.className='lcard';
+    const card=document.createElement('div');card.className='lcard';card.dataset.id=l.id;
     const b=document.createElement('b');b.textContent=l.name;card.appendChild(b);
     const st=document.createElement('span');st.className='stat '+l.status;st.textContent=l.status;st.style.marginLeft='8px';card.appendChild(st);
     const meta=document.createElement('div');meta.className='meta';
-    const lls=(Array.isArray(l.locations)&&l.locations.length)?l.locations:[{lat:l.lat,lng:l.lng}];
-    const nogeo=lls.filter(x=>!x||x.lat==null||x.lng==null).length;
-    meta.textContent=[l.featured?'★ featured':null,l.accepts_orders?'🛒 takes orders':null,l.city,lls.length>1?lls.length+' locations':null,
-      (l.abilities||[]).length+' abilities',(l.colors||[]).length+' colors',
-      nogeo?(lls.length>1?'no coords on '+nogeo+' of '+lls.length:'no coords'):'geo ✓',
-      ownerEmails[l.id]?'owner: '+ownerEmails[l.id]:null].filter(Boolean).join(' · ');
+    meta.textContent=listMeta(l);
     card.appendChild(meta);
     const row=document.createElement('div');row.className='row';
     const edit=document.createElement('button');edit.className='mini';edit.textContent='Edit';
@@ -743,6 +749,22 @@ async function loadListings(){
     box.appendChild(card);
   });
 }
+// A card's facts line. With staff_listings' row the badges say what the order gates and the
+// public directory see; without it (the read failed) they fall back to the raw columns.
+function listMeta(l){
+  const lls=(Array.isArray(l.locations)&&l.locations.length)?l.locations:[{lat:l.lat,lng:l.lng}];
+  const nogeo=lls.filter(x=>!x||x.lat==null||x.lng==null).length;
+  const bi=billingById[l.id];
+  const badges=bi?[
+    bi.featured_now?'★ featured':null,
+    bi.takes_orders?'🛒 takes orders':bi.accepts_orders?'⏸ ordering paused — '+(PAUSE_REASONS[bi.order_block]||bi.order_block||'unknown'):null,
+    bi.has_shop?'plan: '+planLine(bi):null,
+  ]:[l.featured?'★ featured':null,l.accepts_orders?'🛒 takes orders':null];
+  return [...badges,l.city,lls.length>1?lls.length+' locations':null,
+    (l.abilities||[]).length+' abilities',(l.colors||[]).length+' colors',
+    nogeo?(lls.length>1?'no coords on '+nogeo+' of '+lls.length:'no coords'):'geo ✓',
+    ownerEmails[l.id]?'owner: '+ownerEmails[l.id]:null].filter(Boolean).join(' · ');
+}
 
 function openListing(l){
   editingId=l.id;
@@ -752,7 +774,7 @@ function openListing(l){
   $('#e-bfab').classList.toggle('sel',(l.badges||[]).includes('fab'));
   $('#e-bturnkey').classList.toggle('sel',(l.badges||[]).includes('turnkey'));
   $('#e-lic').value=l.licensed_states||'';
-  $('#e-featured').classList.toggle('sel',!!l.featured);
+  $('#bill-note').textContent='';renderBilling();
   $('#e-logobg').value=l.logo_bg||'';
   $('#e-orders').classList.toggle('sel',!!l.accepts_orders);$('#e-orderemail').value=l.order_email||'';
   $('#e-area').value=l.area_keywords||'';
@@ -777,6 +799,139 @@ function openListing(l){
   delete $('#e-save').dataset.appId;
   $('#save-note').textContent='';
   $('#editor').scrollIntoView({behavior:'smooth',block:'start'});
+}
+
+/* ── plan & featured (Phase 3 comps) ────────────────────────────────────────
+   Comp and pilot grants are rows in shop_subscriptions keyed by the listing
+   id, so an unclaimed listing can be comped Featured too. They are dated
+   (Featured always), noted, append-only, record the admin and show on the
+   shop's own plan card. Stripe rows are read-only here: invoices and cards
+   stay in the Stripe Dashboard.                                           */
+const PLAN_NAMES={listing:'Listing',shop:'Shop',pro:'Pro'};
+const PAUSE_REASONS={'suspended':'suspended','no-email':'no order email','no-prices':'no saved prices','no-plan':'no plan','no-shop':'no shop'};
+const fmtDay=v=>v?new Date(v).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}):'';
+const planLine=bi=>(PLAN_NAMES[bi.plan]||bi.plan)+' · '+bi.plan_source+(bi.plan_source==='none'?'':bi.plan_until?' · until '+fmtDay(bi.plan_until):' · no end');
+const grantLabel=g=>g.kind==='featured'?'Featured':(PLAN_NAMES[g.plan]||g.plan);
+// a raised exception comes back from PostgREST as JSON: show its message, not the envelope
+const rpcMessage=x=>{try{const j=JSON.parse(x.message);if(j&&j.message)return j.message}catch(e){}return x.message};
+const isDay=d=>/^\d{4}-\d{2}-\d{2}$/.test(d);
+// the picked day, ended at 23:59:59 in this browser's time zone
+const endOfDay=d=>new Date(d+'T23:59:59').toISOString();
+const todayDay=()=>{const n=new Date();return n.getFullYear()+'-'+String(n.getMonth()+1).padStart(2,'0')+'-'+String(n.getDate()).padStart(2,'0')};
+
+async function loadBilling(){
+  billingById={};
+  const rows=await api('/rest/v1/rpc/staff_listings',{method:'POST',body:'{}'});
+  (Array.isArray(rows)?rows:[]).forEach(r=>{if(r&&r.id)billingById[r.id]=r});
+}
+// re-read one listing after a comp action, then redraw its list badge and this block;
+// false when the re-read failed (the action itself went through)
+async function refreshBilling(id){
+  let ok=true;
+  try{
+    const rows=await api('/rest/v1/rpc/staff_listing',{method:'POST',body:JSON.stringify({p_id:id})});
+    if(Array.isArray(rows)&&rows.length)billingById[id]=rows[0];else delete billingById[id];
+  }catch(x){ok=false;console.warn('could not re-read plan facts',x)}
+  const l=listings.find(x=>x.id===id),card=[...$$('#listings .lcard')].find(c=>c.dataset.id===id);
+  if(l&&card)card.querySelector('.meta').textContent=listMeta(l);
+  if(editingId===id)renderBilling();
+  return ok;
+}
+async function billAction(id,run){
+  const note=$('#bill-note');note.classList.remove('errline');note.textContent='Saving…';
+  try{
+    const msg=await run();
+    const ok=await refreshBilling(id);
+    if(editingId===id)note.textContent=msg+(ok?'':' Reload the page to see it.');
+  }catch(x){if(editingId===id){note.textContent=rpcMessage(x);note.classList.add('errline')}}
+}
+
+function renderBilling(){
+  const box=$('#e-billing');box.textContent='';
+  const line=(t,cls)=>{const d=document.createElement('div');d.className=cls||'meta';d.textContent=t;box.appendChild(d)};
+  if(!editingId){line('Save the listing first.');return}
+  const bi=billingById[editingId];
+  if(!bi){line('Plan facts could not be loaded — reload the page to manage comps.');return}
+  const grants=Array.isArray(bi.grants)?bi.grants:[];
+  if(!grants.length)line('No current plan or Featured grant.');
+  grants.forEach(g=>{
+    const row=document.createElement('div');row.className='grant';
+    const t=document.createElement('span');t.className='meta';row.appendChild(t);
+    if(g.source==='stripe'){
+      const ends=g.cancel_at_period_end||g.cancel_at,when=g.cancel_at||g.current_period_end;
+      t.textContent=grantLabel(g)+' · Stripe '+g.status+(when?' · '+(ends?'ends ':'renews ')+fmtDay(when):'');
+    }else{
+      t.textContent=grantLabel(g)+' · '+g.source+' · '+(g.ends_at?'until '+fmtDay(g.ends_at):'no end')+' · by '+(g.granted_by_email||'migration')+(g.note?'\nnote: '+g.note:'');
+      const end=document.createElement('button');end.type='button';end.className='mini red';end.textContent='End';
+      end.onclick=()=>endGrant(bi,g);row.appendChild(end);
+    }
+    box.appendChild(row);
+  });
+  const feat=document.createElement('div');feat.className='bsec';
+  feat.innerHTML='<div class="frow">'
+    +'<div class="fld"><label>Comp Featured until *</label><input type="date" class="bf-until"></div>'
+    +'<div class="fld"><label>Note *</label><input class="bf-note" placeholder="Why, and who asked"></div>'
+    +'</div><button type="button" class="mini gold bf-go">Comp Featured</button>'
+    +'<p class="hint">Shown on the public directory and in the app\'s picker once enforcement (M2) is live.</p>';
+  feat.querySelector('.bf-until').min=todayDay();
+  feat.querySelector('.bf-go').onclick=()=>compFeatured(bi,feat);
+  box.appendChild(feat);
+  if(!bi.has_shop){line('No shop yet — plan grants and the founding offer open once an owner account is linked.','meta bsec');return}
+  const plan=document.createElement('div');plan.className='bsec';
+  plan.innerHTML='<div class="frow">'
+    +'<div class="fld"><label>Plan</label><select class="bp-plan"><option value="shop">Shop</option><option value="pro">Pro</option></select></div>'
+    +'<div class="fld"><label>Source</label><select class="bp-source"><option value="comp">Comp</option><option value="pilot">Pilot</option></select></div>'
+    +'</div><div class="frow">'
+    +'<div class="fld"><label>Until — blank for no end date</label><input type="date" class="bp-until"></div>'
+    +'<div class="fld"><label>Note *</label><input class="bp-note" placeholder="Why, and who asked"></div>'
+    +'</div><button type="button" class="mini gold bp-go">Grant plan</button>';
+  plan.querySelector('.bp-until').min=todayDay();
+  plan.querySelector('.bp-go').onclick=()=>grantPlan(bi,plan);
+  box.appendChild(plan);
+  const flagged=bi.offer==='founding';
+  const offer=document.createElement('div');offer.className='grant bsec';
+  const ot=document.createElement('span');ot.className='meta';ot.textContent='Founding offer: '+(flagged?'flagged':'not flagged');offer.appendChild(ot);
+  const ob=document.createElement('button');ob.type='button';ob.className=flagged?'mini':'mini gold';ob.textContent=flagged?'Clear':'Flag founding offer';
+  ob.onclick=()=>setOffer(bi,flagged?null:'founding');offer.appendChild(ob);
+  box.appendChild(offer);
+}
+
+// comp_shop re-checks every rule (dated Featured, a note, a future date) and its refusal is shown as sent
+function compFeatured(bi,sec){
+  const until=sec.querySelector('.bf-until').value,note=sec.querySelector('.bf-note').value.trim();
+  billAction(bi.id,async()=>{
+    if(!isDay(until))throw new Error('A Featured comp needs an end date.');
+    if(!note)throw new Error('A note is required.');
+    const iso=endOfDay(until);
+    await api('/rest/v1/rpc/comp_shop',{method:'POST',body:JSON.stringify({p_listing:bi.id,p_kind:'featured',p_plan:null,p_source:'comp',p_until:iso,p_note:note})});
+    return '✓ Featured comped until '+fmtDay(iso)+'.';
+  });
+}
+function grantPlan(bi,sec){
+  const plan=sec.querySelector('.bp-plan').value,source=sec.querySelector('.bp-source').value;
+  const until=sec.querySelector('.bp-until').value.trim(),note=sec.querySelector('.bp-note').value.trim();
+  if(!until&&note&&!confirm('Grant '+PLAN_NAMES[plan]+' ('+source+') to '+bi.name+' with no end date? It counts until a platform admin ends it.'))return;
+  billAction(bi.id,async()=>{
+    if(until&&!isDay(until))throw new Error('Pick the end date from the calendar, or leave it blank.');
+    if(!note)throw new Error('A note is required.');
+    const iso=until?endOfDay(until):null;
+    await api('/rest/v1/rpc/comp_shop',{method:'POST',body:JSON.stringify({p_listing:bi.id,p_kind:'plan',p_plan:plan,p_source:source,p_until:iso,p_note:note})});
+    return '✓ '+PLAN_NAMES[plan]+' '+source+' granted'+(iso?' until '+fmtDay(iso):' with no end date')+'.';
+  });
+}
+function endGrant(bi,g){
+  if(!confirm('End '+grantLabel(g)+' ('+g.source+') for '+bi.name+' now? It stops counting at once.'))return;
+  billAction(bi.id,async()=>{
+    const r=await api('/rest/v1/rpc/end_comp',{method:'POST',body:JSON.stringify({p_grant:g.id})});
+    return r==='ended'?'✓ '+grantLabel(g)+' '+g.source+' ended.':'That grant had already ended.';
+  });
+}
+function setOffer(bi,offer){
+  billAction(bi.id,async()=>{
+    const r=await api('/rest/v1/rpc/set_shop_offer',{method:'POST',body:JSON.stringify({p_shop:bi.id,p_offer:offer})});
+    if(r==='full')throw new Error('Five shops already have the founding offer.');
+    return r==='cleared'?'✓ Founding offer cleared.':'✓ Founding offer flagged — their next plan Checkout carries it.';
+  });
 }
 
 /* ── supplier-proposed edits (from /manage-listing.html) ───────────────── */

@@ -264,7 +264,7 @@ function cardHtml(l) {
   const chips = `<div class="ab-row">${l.abilities.map((a) => `<span class="abchip">${esc(a)}</span>`).join("")}</div>`;
   const colors = l.colors.length ? `<div class="sw-row"><span class="lbl">${l.colors.length} colors</span>${l.colors.map((c) => `<span class="dot" title="${attr(c)}" style="background:${colorHex(c)}"></span>`).join("")}</div>` : "";
   return `<div class="co" ${attrs}>
-<div class="co-head">${logoHtml(l)}<h2><a href="${l.path}">${esc(l.name)}</a></h2>${badgeHtml(l.badges)}<span class="loc">${esc([l.address, l.city].filter(Boolean).join(" · "))}<span class="dist"></span></span></div>
+<div class="co-head">${logoHtml(l)}<h2><a href="${l.path}">${esc(l.name)}</a></h2>${badgeHtml(l.badges)}${l.featured ? `<span class="cobadge featured">Featured</span>` : ""}<span class="loc">${esc([l.address, l.city].filter(Boolean).join(" · "))}<span class="dist"></span></span></div>
 ${paras.join("\n")}
 ${photos}${chips}${colors}
 </div>`;
@@ -442,7 +442,8 @@ function patchDirectory(html, all) {
 
 /* ── sitemap + llms.txt ───────────────────────────────────────────────────── */
 async function staticPages() {
-  const skip = new Set(["confirm.html", "directory-admin.html", "manage-listing.html"]);
+  // terms.html stays out while it is a draft (it is noindex too); drop it from here once reviewed
+  const skip = new Set(["confirm.html", "directory-admin.html", "manage-listing.html", "terms.html"]);
   const out = [];
   const add = async (rel, loc, priority) => {
     const html = await fs.readFile(path.join(ROOT, "public", rel), "utf8");

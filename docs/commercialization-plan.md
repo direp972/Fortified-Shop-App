@@ -6,7 +6,7 @@ Supabase project ("Fortified Project"), Vercel and the security advisors. Refres
 assumption or a recommendation. The design docs beside this file
 ([phase1-tenant-design.md](phase1-tenant-design.md), [phase2-self-serve-shop-design.md](phase2-self-serve-shop-design.md),
 [catalog-as-data-design.md](catalog-as-data-design.md), [rpc-grant-hardening-design.md](rpc-grant-hardening-design.md),
-[phase1-two-shop-test-plan.md](phase1-two-shop-test-plan.md)) hold the detail for each piece.*
+[phase1-two-shop-test-plan.md](phase1-two-shop-test-plan.md), [phase3-billing-design.md](phase3-billing-design.md)) hold the detail for each piece.*
 
 ---
 
@@ -32,7 +32,9 @@ days: 0.** The platform is ready for other shops; nobody is ordering through it 
 is the strongest argument for starting pilots over building more.
 
 **Open as of today:** leaked-password protection (dashboard toggle, Pro plan); a real
-sign-up with a ZIP has not been exercised; the business-model decision; pilot shops.
+sign-up with a ZIP has not been exercised; pilot shops. The business model is decided
+(SaaS per shop, 26 October), the Phase 3 billing design is approved (27 October), and its
+first implementation PR is in review.
 
 ---
 
@@ -69,7 +71,7 @@ in through the prerendered directory; the email and abuse engineering is real.
 | 3 | Prices computed in the browser and trusted on submit | **Resolved** — `submit-order` reprices server-side and is the only write path into `orders` (#49). |
 | 4 | The single-file `App.jsx` as the velocity blocker | **Partly resolved** — catalog and pricing now live in `supabase/functions/_shared/` and are shared with the server; the component itself is still one large file. Further splitting is a judgement call, not a blocker. |
 | 5 | Binary identity model, no organization concept | **Resolved** — `shops`, `shop_members`, `shop_customers`, `shop_settings`, `shop_invites` with owner/staff roles (#53, #59). |
-| 6 | No commercial machinery: billing, plans, onboarding | **Half resolved** — self-serve onboarding shipped (#59); billing and entitlements are not started (Phase 3). |
+| 6 | No commercial machinery: billing, plans, onboarding | **Half resolved** — self-serve onboarding shipped (#59); billing and entitlements are being implemented (Phase 3, design approved). |
 | 7 | Duplication of taxonomy and colors across pages | **Mostly resolved** — colors come from `catalog_items` everywhere (#61); the capability taxonomy is still copied between the public pages. |
 | 8 | Hardcoded Supabase fallbacks; leaked-password protection off | **Half resolved** — fallbacks removed (#52); the password toggle is still off. |
 
@@ -88,9 +90,35 @@ in through the prerendered directory; the email and abuse engineering is real.
 billing); distributors (branch-level portals) and manufacturers (white-label design tools
 for dealer networks) after pilots prove the model.
 
-**Business model — still to decide:** SaaS subscription per shop (recommended: predictable,
-no channel conflict; the directory and order routing stay free as the funnel) versus a
-marketplace fee on routed orders. Phase 3 cannot be designed until this is chosen.
+**Business model — decided 2026-10-26: SaaS subscription per shop.** A shop pays a flat
+monthly plan for the storefront, the design tools and the Shop Floor. The directory listing
+stays free and is the funnel; featured placement in the directory is the one paid add-on.
+No money moves through RoofCoil on orders: contractors keep paying shops directly, as today.
+A transaction fee is only revisited later, as optional online payments, once routed orders
+are steady. Why not a marketplace fee: there is almost no routed volume to take a cut of
+(2 orders ever), collecting it would mean taking card payments on orders that shops sell on
+account and price after confirmation, and a fee paid by competitors to a platform whose
+owner also runs a shop is a channel conflict. Starting prices to confirm with pilots, not
+researched market rates: Listing free, Shop about $149/month, Pro about $299/month (multiple
+bases, more staff), Featured +$49/month. The prices live in Stripe, not in code. The billing
+design is [phase3-billing-design.md](phase3-billing-design.md).
+
+**Fortified's dual role — decided 2026-10-26.** Fortified Sheet Metal is both the platform's
+operator and a shop on it. Four rules:
+
+1. **Same plan, same checks.** Fortified runs on a plan and the same server-side entitlement
+   checks as every other shop, comped rather than special-cased.
+2. **Neutral routing.** Today an order with no shop chosen goes to Fortified as the default
+   shop. That rule is either published, or replaced by routing to the nearest ordering shop
+   by the customer's ZIP, which the app already works out at sign-up.
+3. **Written visibility rules.** What the Fortified team can and cannot see of another
+   shop's data (prices, costs, customers, tiers, orders, leads) is written down.
+4. **Platform admin apart from Fortified's shop staff.** The two platform staff accounts are
+   also Fortified's owner members today. Platform administration becomes its own role, so
+   running the platform and running Fortified's shop stop being the same login and the same
+   permissions.
+
+The billing design sets out how each rule is implemented.
 
 **Data rule:** the directory and reference data are shared; a shop's catalog choices,
 prices, costs, customers, tiers, orders and leads are private, enforced by RLS. Competing
@@ -109,7 +137,7 @@ shops will coexist in the same metro.
 | P1.5 Shops, members, per-shop rows, RLS; Fortified as shop #1 | ✓ #53, #54 |
 | P1.6 Catalog editor; app renders the shop's catalog | ✓ #58, #60, #61 |
 | P1.7 Onboarding: claim → workspace → price list → ordering on | ✓ #59, #62, #64 |
-| P2.8 Stripe plans and server-side entitlements | **not started** — blocked on the business-model decision |
+| P2.8 Stripe plans and server-side entitlements | **approved / implementing** — SaaS per shop decided 2026-10-26; design in [phase3-billing-design.md](phase3-billing-design.md), approved 2026-10-27; migration M1, the billing functions and the app release are in review, nothing applied yet |
 | P2.9 Pilot with 2–3 directory shops | **not started** — blocked on choosing the shops |
 
 Added since the plan was written, because they turned out to matter first: no pricing
@@ -142,7 +170,7 @@ whether to split `App.jsx` further.
 | 0. Correctness | Tier fix, server-side reprice, config and advisor fixes | **Done** (toggle aside) |
 | 1. Tenant foundation | Shops, members, per-shop pricing and catalog, isolation verified | **Done** — two-shop checklist passed |
 | 2. Self-serve shop | Catalog editor, onboarding from a listing claim, shop-slug entry | **Done** — a second shop onboarded itself |
-| 3. Pilots + billing | Stripe plans, 2–3 paying pilot shops, feedback loop | **Not started** — needs the business-model and pilot-shop decisions |
+| 3. Pilots + billing | Stripe plans, 2–3 paying pilot shops, feedback loop | **Approved / implementing** — SaaS per shop decided; billing design approved; first implementation PR in review; pilot shops still to choose |
 | 4. Expand segment | Distributor branches or manufacturer white-label, whichever pilots pull | Later, demand-driven |
 
 ---
@@ -150,9 +178,9 @@ whether to split `App.jsx` further.
 ## Part 6 — Questions still open
 
 1. ~~Tier pricing intent~~ — answered: a bug, fixed.
-2. **Business model**: SaaS per shop or marketplace fee. Recommendation stands: SaaS.
+2. ~~Business model~~ — answered 2026-10-26: SaaS per shop, directory free, featured placement as the paid add-on (Part 2).
 3. **Pilot shops**: which 2–3 of the 14 listings (2 already take orders) start as paying pilots.
-4. **Fortified's dual role** as platform operator and a shop on the network.
+4. ~~Fortified's dual role~~ — answered 2026-10-26: same plan and checks, neutral routing, written visibility rules, platform admin apart from Fortified's shop staff (Part 2; implementation in the billing design).
 5. Permit Intelligence — parked for now at Nick's request (2026-10-26); not part of this plan.
 6. **Order history**: the `orders` table still shows 2 rows and none in the last 30 days; pilots are how that changes.
 

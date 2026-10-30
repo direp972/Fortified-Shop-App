@@ -3824,11 +3824,70 @@ function PlatformCatalogSection({ theme, userId, onChanged }) {
 /* ------------------------------- shop settings -------------------------------- */
 // Shop Floor → Shop Settings: where a shop's people set it up and run it. The setup
 // checklist is derived from facts that already live somewhere (a saved price list, an order
-// email, the ordering switch) and never stored. Owner-only controls are hidden from staff.
-// The default shop (Fortified) gets no checklist: the seed numbers are its own and its
-// orders go to the desk on purpose. Design: docs/phase2-self-serve-shop-design.md.
+// email, the plan, the ordering switch) and never stored. Owner-only controls are hidden from
+// staff. Every shop gets the same checklist, plan card and switch, the operator's own shop
+// included: same plan, same checks, comped (Phase 3 rule a). Designs:
+// docs/phase2-self-serve-shop-design.md, docs/phase3-billing-design.md §8.
 const APP_ORIGIN = "https://shop.roofcoil.com";
-function ShopSettingsView({ shopId, info, reloadInfo, isOwner, userId, theme, flash, tierLabels, saveTierLabels, openBackend, refreshAuth }) {
+
+// The plan card's calls go to the billing-session Edge Function. A module-level helper, so
+// it reads the session token itself, the way insertOrders does. Always resolves: { ok,
+// status, ...the function's JSON }, or { ok: false, error } when the call never landed.
+async function callBilling(body) {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    const r = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/billing-session`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", apikey: import.meta.env.VITE_SUPABASE_ANON_KEY, Authorization: `Bearer ${session?.access_token || ""}` },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json().catch(() => null);
+    return { ok: r.ok, status: r.status, ...(j && typeof j === "object" ? j : {}) };
+  } catch (e) {
+    console.error("billing-session error", e);
+    return { ok: false, error: "Couldn't open checkout — try again." };
+  }
+}
+// Checkout and the billing portal refuse to run inside a frame (members.html embeds the app),
+// and a tab opened after an await is popup-blocked, so the whole window goes (design §5.4).
+function goTopLevel(url) {
+  try { (window.top !== window.self ? window.top : window).location.assign(url); } catch (e) { window.location.assign(url); }
+}
+// Switch on but not taking orders: the first missing clause of shop_order_block, in words
+// (design §8). The pre-Send toast uses the same lines, so a comped shop missing its email
+// is never told its plan ended.
+function orderBlockLine(info) {
+  const why = {
+    suspended: "RoofCoil has suspended this shop — contact support.",
+    "no-email": "add an order email below.",
+    "no-prices": "save your prices in Price List → Backend.",
+    "no-plan": info?.plan_lapse === "overdue" ? "payment overdue — update your card." : info?.plan_lapse === "ended" ? "your plan has ended." : "no plan — start one above.",
+  }[info?.order_block];
+  return why ? `Ordering is on but paused: ${why}` : "Ordering is on but paused.";
+}
+// A plan price as billing-session's prices action returns it (cents, from Stripe): the code
+// holds no amounts of its own.
+const billingPrice = (p) => (p && Number.isFinite(p.amount) ? `$${p.amount % 100 ? (p.amount / 100).toFixed(2) : p.amount / 100}/month` : "");
+const PLAN_NAMES = { listing: "Listing", shop: "Shop", pro: "Pro" };
+// Plan card dates: "Nov 25", with the year when it isn't this one.
+const billingDay = (iso) => {
+  const d = iso ? new Date(iso) : null;
+  if (!d || isNaN(d)) return "";
+  return d.toLocaleDateString("en-US", d.getFullYear() === new Date().getFullYear() ? { month: "short", day: "numeric" } : { month: "short", day: "numeric", year: "numeric" });
+};
+// The plan Checkout made is on the shop's row (the webhook or a sync applied it).
+const planLanded = (row) => !!row && ((row.source === "stripe" && ["trialing", "active", "past_due"].includes(row.status)) || row.featured_source === "stripe");
+// order-sms, read by order-alert: +1 and ten digits for a mobile number, the lower-cased
+// address for a carrier's email-to-text gateway, null for anything else.
+const orderSmsValue = (raw) => {
+  const s = String(raw || "").trim();
+  if (s.includes("@")) return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s) ? s.toLowerCase() : null;
+  if (!/^[\d\s().+-]+$/.test(s)) return null;
+  const d = s.replace(/\D/g, "");
+  return d.length === 10 ? `+1${d}` : d.length === 11 && d[0] === "1" ? `+${d}` : null;
+};
+
+function ShopSettingsView({ shopId, info, reloadInfo, isOwner, isOwnerStrict, userId, theme, flash, tierLabels, saveTierLabels, openBackend, refreshAuth, billing, reloadBilling, billingConfirm, onBillingRefresh }) {
   const [orderEmail, setOrderEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [slugDraft, setSlugDraft] = useState("");
@@ -3840,6 +3899,30 @@ function ShopSettingsView({ shopId, info, reloadInfo, isOwner, userId, theme, fl
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("staff");
   const [busy, setBusy] = useState("");
+  const [sms, setSms] = useState(""); // order-sms: the number or gateway every new order is texted to
+  const [support, setSupport] = useState(null); // support_access rows, newest first; null hides the card
+  const [supportReason, setSupportReason] = useState("");
+  const [prices, setPrices] = useState(null); // billing-session prices: { prices: { shop, pro, featured }, trialDays }
+  const planRef = useRef(null);
+
+  // The plan card's row (shop_billing_info, loaded by the app), only while it is this shop's:
+  // a failed call leaves it null and the card stays hidden rather than guessing.
+  const b = billing && billing.shop_id === shopId ? billing : null;
+  const confirming = billingConfirm && billingConfirm.shopId === shopId ? billingConfirm : null;
+  // Plan buttons are for the shop's own owners, once plans are open, and never on
+  // fortifiedmetals.com, whose session wouldn't carry over to Checkout's return (design §8).
+  const planButtons = !!(isOwnerStrict && b && b.plans_open && !ON_FORTIFIED);
+  // Prices come from Stripe through billing-session, fetched once and only for the people who
+  // see the buttons; staff see status lines without prices.
+  useEffect(() => {
+    if (!planButtons || prices) return;
+    let stale = false;
+    (async () => {
+      const r = await callBilling({ action: "prices" });
+      if (!stale && r.ok && r.prices && typeof r.prices === "object") setPrices({ prices: r.prices, trialDays: r.trial_days });
+    })();
+    return () => { stale = true; };
+  }, [planButtons, prices]);
 
   // The form follows the shop's facts whenever they reload.
   useEffect(() => {
@@ -3866,15 +3949,44 @@ function ShopSettingsView({ shopId, info, reloadInfo, isOwner, userId, theme, fl
   }, [shopId]);
   useEffect(() => { loadPeople(); }, [loadPeople]);
 
+  // The shop's text-alert destination (shop_settings 'order-sms'): a jsonb string, or an
+  // older { to } object.
+  useEffect(() => {
+    if (!shopId) return;
+    let stale = false;
+    setSms("");
+    (async () => {
+      try {
+        const res = await shopStorage.get(shopId, "order-sms");
+        const v = res?.value ? JSON.parse(res.value) : null;
+        if (!stale) setSms(typeof v === "string" ? v : v && typeof v.to === "string" ? v.to : "");
+      } catch (e) { if (!stale) setSms(""); }
+    })();
+    return () => { stale = true; };
+  }, [shopId]);
+
+  // Support grants (RLS: the shop's owners and platform admins read them); owners only here.
+  const loadSupport = useCallback(async () => {
+    if (!shopId || !isOwnerStrict) { setSupport(null); return null; }
+    const { data, error } = await supabase.from("support_access").select("id, reason, created_at, expires_at, revoked_at").eq("shop_id", shopId).order("created_at", { ascending: false }).limit(10);
+    if (error) { console.error("support_access", error); setSupport(null); return null; }
+    const rows = Array.isArray(data) ? data : [];
+    setSupport(rows);
+    return rows;
+  }, [shopId, isOwnerStrict]);
+  useEffect(() => { loadSupport(); }, [loadSupport]);
+
   if (!info) return <div style={{ color: theme.textSecondary, fontSize: 13, textAlign: "center", padding: 40 }}>Loading shop settings…</div>;
 
   const link = `${APP_ORIGIN}/?shop=${encodeURIComponent(info.slug || shopId)}`;
-  const steps = info.is_default ? [] : [
+  const toPlan = () => { if (planRef.current) planRef.current.scrollIntoView({ behavior: "smooth", block: "start" }); };
+  const steps = [
     { id: "prices", label: "Your prices", done: !!info.price_list_saved, required: true, hint: "Price List → Backend starts on RoofCoil's seed numbers. Keep them or edit them; either saves the list as yours.", action: openBackend, actionLabel: "Open" },
     { id: "contact", label: "Order email and phone", done: !!info.order_email, required: true, hint: "Every order is emailed to that address; the phone goes on your customers' confirmation." },
     { id: "people", label: "Your people", done: info.member_count > 1 || info.pending_invites > 0, required: false, hint: "Invite the people who run the shop with you." },
     { id: "tiers", label: "Tier names", done: !!info.tier_labels_saved, required: false, hint: "Name your three price tiers the way your customers know them." },
-    { id: "live", label: "Go live", done: !!info.accepts_orders, required: true, hint: "Switch ordering on once your prices and order email are set." },
+    { id: "plan", label: "Your plan", done: !!info.plan_takes_orders, required: true, hint: "A plan that takes orders: Shop or Pro, or a pilot or comp from RoofCoil.", action: toPlan, actionLabel: "See plans" },
+    { id: "live", label: "Go live", done: !!info.accepts_orders, required: true, hint: "Switch ordering on once your prices, order email and plan are set." },
   ];
   const required = steps.filter((s) => s.required);
   const requiredDone = required.filter((s) => s.done).length;
@@ -3893,8 +4005,50 @@ function ShopSettingsView({ shopId, info, reloadInfo, isOwner, userId, theme, fl
     if (error) return fail(error, "Couldn't change that — try again.");
     if (data === "needs-email") return flash("Add your order email first — every order is sent there.");
     if (data === "needs-prices") return flash("Save your price list first: Price List → Backend → Keep these prices, or edit any rate.");
+    if (data === "needs-plan") { flash("Start a plan to switch on."); toPlan(); return; }
     flash(data === "on" ? "Ordering is on — customers can send you orders now." : "Ordering is off.", 5000);
     await reloadInfo(); refreshAuth();
+  });
+  // Text alerts for new orders: saved as order-alert reads them; an empty field clears them.
+  const saveSms = () => run("sms", async () => {
+    if (!sms.trim()) {
+      const { error } = await supabase.from("shop_settings").delete().eq("shop_id", shopId).eq("key", "order-sms");
+      if (error) return fail(error, "Couldn't save that — try again.");
+      return flash("Saved.");
+    }
+    const value = orderSmsValue(sms);
+    if (!value) return flash("That isn't a mobile number or an email-to-text address.");
+    const res = await shopStorage.set(shopId, "order-sms", JSON.stringify(value));
+    if (!res) return flash("Couldn't save that — try again.");
+    setSms(value); flash("Saved.");
+  });
+  // Plan card buttons: billing-session answers with a Stripe URL, opened top-level. A notice
+  // (the founding rate didn't apply) is read first; a refusal is said and the card re-read.
+  const billingGo = (body) => run("billing", async () => {
+    const r = await callBilling({ ...body, shopId });
+    if (r.url) {
+      if (r.notice) { flash(r.notice, 4000); await new Promise((res) => setTimeout(res, 2500)); }
+      goTopLevel(r.url);
+      return;
+    }
+    flash(r.error || "Couldn't open checkout — try again.", 5000);
+    reloadBilling();
+  });
+  // Support grants: read-only access for RoofCoil support, 24 hours, ended early by Revoke.
+  const when = (iso) => new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  const grantSupport = () => run("support", async () => {
+    const { error } = await supabase.rpc("grant_support_access", { p_shop: shopId, p_hours: 24, p_reason: supportReason.trim() });
+    if (error) return fail(error, "Couldn't allow that — try again.");
+    setSupportReason("");
+    const rows = await loadSupport();
+    const active = (rows || []).find((g) => !g.revoked_at && new Date(g.expires_at) > new Date());
+    flash(`RoofCoil support can see this shop until ${when(active ? active.expires_at : Date.now() + 24 * 3600 * 1000)}.`, 5000);
+  });
+  const revokeSupport = () => run("support", async () => {
+    const { error } = await supabase.rpc("revoke_support_access", { p_shop: shopId });
+    if (error) return fail(error, "Couldn't revoke that — try again.");
+    flash("Support access revoked.");
+    await loadSupport();
   });
   const saveSlug = () => run("slug", async () => {
     const { data, error } = await supabase.rpc("set_shop_slug", { p_shop: shopId, p_slug: slugDraft.trim() });
@@ -3934,23 +4088,25 @@ function ShopSettingsView({ shopId, info, reloadInfo, isOwner, userId, theme, fl
       "too-many": "Twenty invites are already waiting — revoke some first.",
       "bad-email": "That isn't an email address.",
       "bad-role": "Pick a role.",
+      "seat-limit": "Your plan's seats are full — see Plan above.",
     }[data] || "Couldn't send that invite.", 5000);
-    if (data === "added" || data === "invited") { setInviteEmail(""); await loadPeople(); await reloadInfo(); }
+    if (data === "added" || data === "invited") { setInviteEmail(""); await loadPeople(); await reloadInfo(); reloadBilling(); }
   });
+  // People changes move the plan card's seat counts and inactive list, so it is re-read too.
   const revoke = (id) => run(`revoke-${id}`, async () => {
     const { error } = await supabase.rpc("revoke_shop_invite", { p_invite: id });
     if (error) return fail(error, "Couldn't revoke that — try again.");
-    await loadPeople(); await reloadInfo();
+    await loadPeople(); await reloadInfo(); reloadBilling();
   });
   const setRole = (uid, role) => run(`role-${uid}`, async () => {
     const { error } = await supabase.from("shop_members").update({ role }).eq("shop_id", shopId).eq("user_id", uid);
     if (error) return fail(error, "Couldn't change that role — try again.");
-    await loadPeople();
+    await loadPeople(); reloadBilling();
   });
   const remove = (uid) => run(`remove-${uid}`, async () => {
     const { error } = await supabase.from("shop_members").delete().eq("shop_id", shopId).eq("user_id", uid);
     if (error) return fail(error, "Couldn't remove them — try again.");
-    await loadPeople(); await reloadInfo();
+    await loadPeople(); await reloadInfo(); reloadBilling();
   });
   const copyLink = async () => {
     try { await navigator.clipboard.writeText(link); flash("Link copied."); } catch (e) { flash("Select the link and copy it."); }
@@ -3964,41 +4120,169 @@ function ShopSettingsView({ shopId, info, reloadInfo, isOwner, userId, theme, fl
   const btn = (primary) => ({ padding: "8px 12px", borderRadius: 6, border: primary ? "none" : `1px solid ${theme.border}`, background: primary ? INK : "transparent", color: primary ? "#fff" : theme.text, fontSize: 11.5, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" });
   const label = { display: "block", fontSize: 9.5, color: theme.textSecondary };
 
+  // The plan card (design §8): the first state that matches, its owner buttons, then the
+  // seats and Featured lines. Amber and red cards keep dark text in both themes.
+  let plan = null;
+  if (b) {
+    const P = (prices && prices.prices) || {};
+    const price = (k) => billingPrice(P[k]);
+    const name = PLAN_NAMES[b.plan] || "Listing";
+    const startPlans = (trial) => [
+      { key: "shop", label: trial ? "Start Shop trial" : "Start Shop plan", body: { action: "checkout", plan: "shop", interval: "month" }, primary: true },
+      { key: "pro", label: trial ? "Start Pro trial" : "Start Pro plan", body: { action: "checkout", plan: "pro", interval: "month" }, primary: true },
+    ];
+    const manage = { key: "portal", label: "Manage billing", body: { action: "portal" } };
+    const cardFlow = (lbl) => ({ key: "card", label: lbl, body: { action: "portal", flow: "payment_method_update" }, primary: true });
+    const byWho = b.granted_by_email ? [`Granted by ${b.granted_by_email}.`] : [];
+    let tone = "", title = "", after = "", lines = [], buttons = [];
+    if (b.source === "comp") {
+      title = `${name} — comped by RoofCoil.`;
+      if (b.grant_ends_at) after = ` Until ${billingDay(b.grant_ends_at)}.`;
+      lines = byWho;
+    } else if (b.source === "pilot" && b.grant_ends_at) {
+      const end = billingDay(b.grant_ends_at);
+      title = `Pilot — free until ${end}.`;
+      after = ` Start a plan before then to keep taking orders without a gap (founding rate); your first charge is on ${end}. After that date a plan starts without a trial.`;
+      // the "pilot ends" banner: the same lines, amber, from 30 days before the end (§3.2)
+      if (new Date(b.grant_ends_at) - Date.now() <= 30 * 86400000) tone = "amber";
+      lines = byWho;
+      buttons = startPlans(false);
+    } else if (b.source === "pilot") {
+      title = "Pilot — free.";
+      after = " Your end date is set when plans open: 90 days from then.";
+    } else if (b.source === "stripe" && (b.cancel_at_period_end || b.cancel_at)) {
+      title = `${name} — ends ${billingDay(b.cancel_at || b.current_period_end)}.`;
+      after = " Ordering stops then; your listing stays.";
+      buttons = [manage];
+    } else if (b.source === "stripe" && b.status === "trialing") {
+      const left = b.trial_end ? Math.max(0, Math.ceil((new Date(b.trial_end) - Date.now()) / 86400000)) : 0;
+      title = `${name} — trial`;
+      after = `, ${left} ${left === 1 ? "day" : "days"} left (ends ${billingDay(b.trial_end)}).`;
+      if (b.has_payment_method === false) lines = ["No card on file: ordering pauses when the trial ends."];
+      buttons = [cardFlow("Add card"), manage];
+    } else if (b.source === "stripe" && b.status === "active") {
+      title = b.founding ? `${name} — founding rate` : price(b.plan) ? `${name} — ${price(b.plan)}` : name;
+      after = `, renews ${billingDay(b.current_period_end)}.`;
+      buttons = [manage];
+    } else if (b.source === "stripe" && b.status === "past_due") {
+      tone = "amber";
+      title = `Payment failed on ${billingDay(b.past_due_since)}.`;
+      after = ` Ordering continues until ${billingDay(b.grace_until)} — update your card.`;
+      buttons = [cardFlow("Update card")];
+    } else if (b.plan_lapse === "overdue") {
+      tone = "red";
+      title = "Payment overdue — ordering paused.";
+      after = " Update your card and ordering resumes as soon as the payment goes through.";
+      buttons = [cardFlow("Update card")];
+    } else if (b.plan_lapse === "ended") {
+      tone = "red";
+      title = "Your plan has ended, so ordering is paused.";
+      after = " Your listing is still in the directory; your prices, customers and orders are kept.";
+      if (b.read_seats_until) lines = [`Everyone keeps access until ${billingDay(b.read_seats_until)}; then your free plan covers ${b.seats} people.`];
+      buttons = startPlans(false);
+    } else {
+      title = "Listing — free.";
+      after = " You're in the directory. Start a plan to take orders through RoofCoil.";
+      const offer = [price("shop") && `Shop ${price("shop")}`, price("pro") && `Pro ${price("pro")}`].filter(Boolean).join(" · ");
+      if (offer) lines.push(offer);
+      if (b.trial_available && prices && prices.trialDays) lines.push(`${prices.trialDays}-day free trial, no card needed.`);
+      buttons = startPlans(!!b.trial_available);
+    }
+    const extra = [];
+    const inactive = Array.isArray(b.inactive_members) ? b.inactive_members : [];
+    if (inactive.length) {
+      const names = inactive.map((m) => m?.name || m?.email || "").filter(Boolean).join(", ");
+      extra.push(`Your plan covers ${b.read_seats} people; ${inactive.length} ${inactive.length === 1 ? "is" : "are"} inactive until it covers them: ${names}.`);
+      if (b.has_customer) buttons.push(manage);
+    }
+    if (b.featured) {
+      const by = b.featured_source === "comp" && b.featured_granted_by_email ? ` (granted by ${b.featured_granted_by_email})` : "";
+      extra.push((b.featured_until ? `Featured until ${billingDay(b.featured_until)}` : b.featured_source === "comp" ? "Featured — comped by RoofCoil" : "Featured — pinned first in the directory with a Featured label") + by);
+      if (b.featured_source === "stripe") buttons.push(manage);
+    } else {
+      // the offer carries a price, so only the people with the buttons see it
+      if (planButtons) extra.push(`Featured — pinned first in the directory with a Featured label${price("featured") ? `, +${price("featured")}` : ""}`);
+      buttons.push({ key: "featured", label: "Add Featured", body: { action: "featured" } });
+    }
+    buttons = buttons.filter((x, i) => buttons.findIndex((y) => y.key === x.key) === i);
+    plan = { tone, title, after, lines, extra, buttons };
+  }
+  const planTone = plan && plan.tone ? { background: plan.tone === "red" ? "#FBE9E7" : "linear-gradient(90deg, #FBF3D9, #F5E6C3)", borderLeft: `4px solid ${plan.tone === "red" ? "#B3261E" : AMBER}` } : null;
+  const planText = planTone ? INK_DEEP : theme.text;
+  const planSub = planTone ? "#4A5562" : theme.textSecondary;
+  const activeGrant = (support || []).find((g) => !g.revoked_at && new Date(g.expires_at) > new Date());
+
   return (
     <div>
-      {steps.length > 0 && (
-        <div style={{ marginBottom: 18 }}>
-          <div className="disp" style={head}>Shop setup{requiredDone === required.length ? " — done" : ` — ${requiredDone} of ${required.length} required steps done`}</div>
-          <div style={sub}>{requiredDone === required.length ? `${info.name} is taking orders through RoofCoil.` : "Three steps before customers can order from you; the other two whenever you like."}</div>
-          {steps.map((s, i) => (
-            <div key={s.id} style={{ ...card, display: "flex", alignItems: "center", gap: 10 }}>
-              <div style={{ width: 22, height: 22, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, background: s.done ? SAFETY : "transparent", border: `1px solid ${s.done ? SAFETY : theme.border}`, color: s.done ? "#fff" : theme.textSecondary, fontSize: 11, fontWeight: 700 }}>
-                {s.done ? <Check size={13} /> : i + 1}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{s.label}{s.required ? null : <span style={{ fontWeight: 400, color: theme.textSecondary }}> · optional</span>}</div>
-                <div style={{ fontSize: 10.5, color: theme.textSecondary }}>{s.hint}</div>
-              </div>
-              {s.action && !s.done ? <button onClick={s.action} style={btn(false)}>{s.actionLabel}</button> : null}
+      <div style={{ marginBottom: 18 }}>
+        <div className="disp" style={head}>Shop setup{requiredDone === required.length ? " — done" : ` — ${requiredDone} of ${required.length} required steps done`}</div>
+        <div style={sub}>{requiredDone === required.length ? `${info.name} is taking orders through RoofCoil.` : "Four steps before customers can order from you; the other two whenever you like."}</div>
+        {steps.map((s, i) => (
+          <div key={s.id} style={{ ...card, display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 22, height: 22, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, background: s.done ? SAFETY : "transparent", border: `1px solid ${s.done ? SAFETY : theme.border}`, color: s.done ? "#fff" : theme.textSecondary, fontSize: 11, fontWeight: 700 }}>
+              {s.done ? <Check size={13} /> : i + 1}
             </div>
-          ))}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{s.label}{s.required ? null : <span style={{ fontWeight: 400, color: theme.textSecondary }}> · optional</span>}</div>
+              <div style={{ fontSize: 10.5, color: theme.textSecondary }}>{s.hint}</div>
+            </div>
+            {s.action && !s.done ? <button onClick={s.action} style={btn(false)}>{s.actionLabel}</button> : null}
+          </div>
+        ))}
+      </div>
+
+      {plan || confirming ? (
+        <div ref={planRef} style={{ marginBottom: 18, scrollMarginTop: 12 }}>
+          <div className="disp" style={head}>Plan{b && b.test_mode && b.plans_open ? <span className="mono" style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 999, border: `1px solid ${SAFETY}`, color: SAFETY, verticalAlign: "middle" }}>Test mode</span> : null}</div>
+          {confirming ? (
+            <div style={{ ...card, display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 600, color: theme.text }}>{confirming.slow ? "Your plan isn't showing yet." : "Confirming your plan…"}</div>
+              {confirming.slow ? <button onClick={onBillingRefresh} style={btn(false)}>Refresh</button> : null}
+            </div>
+          ) : null}
+          {plan && !(confirming && !confirming.slow) ? (
+            <div style={{ ...card, ...(planTone || {}) }}>
+              <div style={{ fontSize: 12, color: planText, lineHeight: 1.5 }}><b style={{ fontSize: 12.5 }}>{plan.title}</b>{plan.after}</div>
+              {plan.lines.map((t) => <div key={t} style={{ fontSize: 10.5, color: planSub, marginTop: 3 }}>{t}</div>)}
+              {plan.extra.map((t) => <div key={t} style={{ fontSize: 10.5, color: planText, marginTop: 8, paddingTop: 8, borderTop: `1px solid ${planTone ? "rgba(10,43,65,0.12)" : theme.border}` }}>{t}</div>)}
+              {isOwnerStrict && plan.buttons.length > 0 ? (
+                !b.plans_open ? (
+                  <div style={{ marginTop: 10, fontSize: 10.5, fontWeight: 700, color: planSub }}>Plans open soon</div>
+                ) : ON_FORTIFIED ? (
+                  <a href={link} target="_blank" rel="noopener noreferrer" style={{ display: "inline-block", marginTop: 10, fontSize: 11.5, fontWeight: 700, color: planTone ? INK : SAFETY }}>Manage your plan at shop.roofcoil.com ↗</a>
+                ) : (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+                    {plan.buttons.map((x) => <button key={x.key} onClick={() => billingGo(x.body)} disabled={busy === "billing"} style={btn(!!x.primary)}>{x.label}</button>)}
+                  </div>
+                )
+              ) : null}
+            </div>
+          ) : null}
         </div>
-      )}
+      ) : null}
 
       <div style={{ marginBottom: 18 }}>
         <div className="disp" style={head}>Ordering</div>
         <div style={card}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>{info.accepts_orders ? "Taking orders through RoofCoil" : "Not taking orders yet"}</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: info.accepts_orders && info.takes_orders === false ? AMBER : theme.text }}>
+                {!info.accepts_orders ? "Not taking orders yet" : info.takes_orders === false ? orderBlockLine(info) : "Taking orders through RoofCoil"}
+              </div>
               <div style={{ fontSize: 10.5, color: theme.textSecondary }}>
-                {info.accepts_orders
-                  ? (info.listing_status === "live" ? "Your shop is in every customer's \"Send this order to\" list, and at the link below." : "Your listing isn't public, so customers reach you through the link below.")
-                  : "Customers can't send you orders until this is on."}
+                {!info.accepts_orders ? "Customers can't send you orders until this is on."
+                  : info.takes_orders === false ? "Customers can't send you orders while it's paused."
+                  : info.listing_status === "live" ? "Your shop is in every customer's \"Send this order to\" list, and at the link below." : "Your listing isn't public, so customers reach you through the link below."}
               </div>
             </div>
-            {isOwner && !info.is_default ? (
-              <button onClick={toggleOrdering} disabled={busy === "live"} style={btn(!info.accepts_orders)}>{info.accepts_orders ? "Switch off" : "Switch on"}</button>
+            {/* Switching on needs a plan that takes orders, so without one the button points at
+                the plan card instead of asking the server; switching off is always there. */}
+            {isOwner ? (
+              !info.accepts_orders && info.plan_takes_orders === false ? (
+                <button onClick={toPlan} style={{ ...btn(true), whiteSpace: "normal", textAlign: "center", maxWidth: 150 }}>Start a plan to switch on</button>
+              ) : (
+                <button onClick={toggleOrdering} disabled={busy === "live"} style={btn(!info.accepts_orders)}>{info.accepts_orders ? "Switch off" : "Switch on"}</button>
+              )
             ) : null}
           </div>
           <div style={{ marginTop: 10, fontSize: 10.5, color: theme.textSecondary }}>Your link — put it on your website or send it to customers</div>
@@ -4013,13 +4297,13 @@ function ShopSettingsView({ shopId, info, reloadInfo, isOwner, userId, theme, fl
               <button onClick={saveSlug} disabled={busy === "slug" || slugDraft.trim() === info.slug} style={btn(false)}>Rename</button>
             </div>
           ) : null}
-          {isOwner && info.accepts_orders && !info.is_default ? <div style={{ marginTop: 6, fontSize: 10, color: theme.textSecondary }}>The link name is fixed while ordering is on — ask RoofCoil to change it.</div> : null}
+          {isOwner && info.accepts_orders ? <div style={{ marginTop: 6, fontSize: 10, color: theme.textSecondary }}>The link name is fixed while ordering is on — switch off to change it.</div> : null}
         </div>
       </div>
 
       <div style={{ marginBottom: 18 }}>
         <div className="disp" style={head}>Order email and phone</div>
-        <div style={sub}>Every order is emailed to this address{info.is_default ? " (empty: the desk gets them, with a text)" : ""}. The phone goes on your listing and on your customers' order confirmation.</div>
+        <div style={sub}>Every order is emailed to this address. The phone goes on your listing and on your customers' order confirmation.</div>
         <div style={card}>
           <label style={label}>Order email
             <input type="email" value={orderEmail} onChange={(e) => setOrderEmail(e.target.value)} disabled={!isOwner} placeholder="orders@yourshop.com" style={{ ...input, marginTop: 2 }} />
@@ -4028,6 +4312,18 @@ function ShopSettingsView({ shopId, info, reloadInfo, isOwner, userId, theme, fl
             <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={!isOwner} style={{ ...input, marginTop: 2 }} />
           </label>
           {isOwner ? <button onClick={saveContact} disabled={busy === "contact"} style={{ ...btn(true), marginTop: 10 }}>Save</button> : null}
+          {/* Where new orders are texted. Only the shop's own owners change it: platform staff
+              have no path to another shop's order routing (design §9.3), so they read it. */}
+          {info.plan_takes_orders ? (
+            <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${theme.border}` }}>
+              <label style={label}>Text alerts for new orders
+                <input type="text" value={sms} onChange={(e) => setSms(e.target.value)} disabled={!isOwnerStrict} placeholder={isOwnerStrict ? "972-555-0123 or 9725550123@vtext.com" : "Not set"}
+                  onKeyDown={(e) => { if (e.key === "Enter" && isOwnerStrict) { e.preventDefault(); saveSms(); } }} className="mono" style={{ ...input, marginTop: 2 }} />
+              </label>
+              <div style={{ fontSize: 9.5, color: theme.textSecondary, marginTop: 4 }}>We text this number (or your carrier's email-to-text address) for every new order, as well as emailing the order email.</div>
+              {isOwnerStrict ? <button onClick={saveSms} disabled={busy === "sms"} style={{ ...btn(true), marginTop: 8 }}>Save text alerts</button> : null}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -4114,6 +4410,34 @@ function ShopSettingsView({ shopId, info, reloadInfo, isOwner, userId, theme, fl
           </div>
         ) : null}
       </div>
+
+      {/* Support grants (design §9.3): the owner lets RoofCoil support read this shop for a
+          day; nothing is added or changed, so an expired or revoked grant leaves nothing behind. */}
+      {isOwnerStrict && support ? (
+        <div style={{ marginBottom: 18 }}>
+          <div className="disp" style={head}>RoofCoil support access</div>
+          <div style={sub}>Let RoofCoil support <b>see</b> (not change) this shop for 24 hours</div>
+          {activeGrant ? (
+            <div style={{ ...card, display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: theme.text }}>Active until {when(activeGrant.expires_at)}</div>
+                {activeGrant.reason ? <div style={{ fontSize: 10.5, color: theme.textSecondary, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{activeGrant.reason}</div> : null}
+              </div>
+              <button onClick={revokeSupport} disabled={busy === "support"} style={btn(false)}>Revoke</button>
+            </div>
+          ) : (
+            <div style={{ ...card, display: "flex", gap: 6 }}>
+              <input value={supportReason} onChange={(e) => setSupportReason(e.target.value)} maxLength={500} placeholder="What should support look at? (optional)" style={{ ...input, flex: 1, minWidth: 0 }} />
+              <button onClick={grantSupport} disabled={busy === "support"} style={btn(true)}>Allow for 24 hours</button>
+            </div>
+          )}
+          {support.filter((g) => g.revoked_at || new Date(g.expires_at) <= new Date()).map((g) => (
+            <div key={g.id} style={{ fontSize: 10.5, color: theme.textSecondary, padding: "2px 2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              Ended {new Date(g.revoked_at && new Date(g.revoked_at) < new Date(g.expires_at) ? g.revoked_at : g.expires_at).toLocaleDateString()}{g.reason ? ` · ${g.reason}` : ""}
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -4151,9 +4475,11 @@ export default function ShopOrderApp() {
   // The one picked rides on every order as shop_id; the order-alert function emails that
   // shop and its owner account sees the job on its own Shop Floor.
   const [shops, setShops] = useState([]);
+  const [shopsLoaded, setShopsLoaded] = useState(false); // the directory read has succeeded once
   const [shopId, setShopId] = useState(null);
-  // A shop picked by hand (the picker, or a job reopened from the Vault) stays picked when
-  // the list reloads; a shop the app chose on its own gives way to a better default.
+  // A shop picked by hand (the picker, or a job reopened from the Vault) stays picked while it
+  // is in the list; a shop the app chose on its own gives way to a higher-ranked pick. Only
+  // pickShop sets this.
   const shopPicked = useRef(false);
   const pickShop = (id) => { shopPicked.current = true; setShopId(id); };
   // The shops this account runs (shop_members). A member manages the selected shop's Price
@@ -4162,6 +4488,9 @@ export default function ShopOrderApp() {
   const memberShopIds = (memberShops || []).map((s) => s.id);
   const canManageShop = isStaff || (!!shopId && memberShopIds.includes(shopId));
   const isShopOwner = isStaff || (memberShops || []).some((s) => s.id === shopId && s.role === "owner");
+  // The shop's own owners, without platform staff: the plan card's buttons, text alerts and
+  // support grants are theirs alone (Phase 3 design §8, §9.3).
+  const isOwnerStrict = (memberShops || []).some((s) => s.id === shopId && s.role === "owner");
   const canRunShopFloor = isStaff || memberShopIds.length > 0;
   // Every estimate and every order is priced at the tier the selected shop assigned to this
   // account (retail until the shop changes it). submit-order prices the order again at the
@@ -4200,8 +4529,48 @@ export default function ShopOrderApp() {
   }, [shopId, canManageShop]);
   useEffect(() => { reloadShopInfo(); }, [reloadShopInfo]);
 
+  // The plan card's facts (shop_billing_info), read when Shop Settings opens and after its
+  // actions. A failed call leaves null, which hides the card instead of guessing.
+  const [billingInfo, setBillingInfo] = useState(null);
+  // Back from Checkout (?billing=success): one sync with the returned session, in case the
+  // webhook hasn't landed, then shop_billing_info every 2 s for up to 30 s until the plan
+  // shows. billingConfirm drives the card's "Confirming your plan…" and, after that, its
+  // Refresh; a newer run (Refresh) makes an older one stop where it is.
+  const [billingConfirm, setBillingConfirm] = useState(null); // { shopId, session, slow }
+  const reloadBillingInfo = useCallback(async () => {
+    if (!shopId || !canManageShop) { setBillingInfo(null); return null; }
+    const { data, error } = await supabase.rpc("shop_billing_info", { p_shop: shopId });
+    if (error) { console.error("shop_billing_info", error); setBillingInfo(null); return null; }
+    const row = Array.isArray(data) ? data[0] || null : data || null;
+    setBillingInfo(row);
+    // a plan that lands after "isn't showing yet" (a late webhook, the card reopened) retires
+    // that line; a confirm run still going is left alone
+    if (planLanded(row)) setBillingConfirm((c) => (c && c.slow && c.shopId === row.shop_id ? null : c));
+    return row;
+  }, [shopId, canManageShop]);
+  const confirmRun = useRef(0);
+  const billingLatest = useRef({});
+  billingLatest.current = { reloadShopInfo, reloadBillingInfo, refreshCustomer };
+  const confirmBilling = async (sid, session) => {
+    const runId = ++confirmRun.current;
+    setBillingConfirm({ shopId: sid, session, slow: false });
+    const r = await callBilling({ action: "sync", shopId: sid, ...(session ? { session } : {}) });
+    let landed = Array.isArray(r.results) && r.results.some((x) => x && x.result === "applied");
+    for (let waited = 0; !landed && waited < 30000; waited += 2000) {
+      await new Promise((res) => setTimeout(res, 2000));
+      if (runId !== confirmRun.current) return;
+      const { data } = await supabase.rpc("shop_billing_info", { p_shop: sid });
+      const row = Array.isArray(data) ? data[0] : data;
+      landed = planLanded(row);
+    }
+    if (runId !== confirmRun.current) return;
+    setBillingConfirm(landed ? null : { shopId: sid, session, slow: true });
+    const { reloadShopInfo: shop, reloadBillingInfo: bill, refreshCustomer: me } = billingLatest.current;
+    bill(); shop(); me();
+  };
+
   // A ?shop= that names no shop taking orders (a slug or id that is off, suspended or
-  // unknown): said once next to the picker instead of silently landing on the default.
+  // unknown): said next to the picker, so the contractor knows to choose a shop.
   const [shopNotice, setShopNotice] = useState(null);
 
   // The selected shop's names for the three tiers (shop_settings 'tier-labels'), readable
@@ -4232,10 +4601,10 @@ export default function ShopOrderApp() {
   };
 
   // First run: a shop with required setup steps left opens Shop Settings once per browser.
-  // Never the default shop — its setup is the platform's.
+  // Every shop, the operator's own included: the four required steps are the same for all.
   useEffect(() => {
-    if (!shopInfo || shopInfo.is_default || !canManageShop) return;
-    if (shopInfo.price_list_saved && shopInfo.order_email && shopInfo.accepts_orders) return;
+    if (!shopInfo || !canManageShop) return;
+    if (shopInfo.price_list_saved && shopInfo.order_email && shopInfo.plan_takes_orders && shopInfo.accepts_orders) return;
     const key = `personal:setup-seen:${shopInfo.id}`;
     try {
       if (window.localStorage.getItem(key)) return;
@@ -4398,8 +4767,8 @@ export default function ShopOrderApp() {
   // Opening Shop Settings re-reads the shop (an order since then moved its PO counter, a
   // colleague may have changed something), so the screen never shows a stale number.
   useEffect(() => {
-    if (tab === "dashboard" && shopFloorView === "settings") reloadShopInfo();
-  }, [tab, shopFloorView, reloadShopInfo]);
+    if (tab === "dashboard" && shopFloorView === "settings") { reloadShopInfo(); reloadBillingInfo(); }
+  }, [tab, shopFloorView, reloadShopInfo, reloadBillingInfo]);
   const [expandedJobs, setExpandedJobs] = useState({});
   const [matStatus, setMatStatus] = useState({}); // materials pull board: lineKey -> "instock" | "pulled"
   const matSaveChain = useRef(Promise.resolve()); // serializes board writes so rapid taps can't land out of order
@@ -4471,6 +4840,16 @@ export default function ShopOrderApp() {
     if (deepLinked) openTool(deepLinkView);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // ?billing= is where Stripe sends an owner back (billing-session's return URLs): success or
+  // cancel from Checkout, portal from the billing portal, with ?shop=<slug>. Read once at load
+  // and kept apart from deepLinked, which also opens a tool; the last-tab restore below must
+  // not win over it either.
+  const [billingReturn] = useState(() => {
+    const q = new URLSearchParams(window.location.search);
+    const kind = q.get("billing");
+    return ["success", "cancel", "portal"].includes(kind) ? { kind, session: q.get("session") || "", shop: (q.get("shop") || "").trim().toLowerCase() } : null;
+  });
+  const billingHandled = useRef(false);
 
   // Screens the person opens by hand — a tool from the chooser, a kit, the 3D tool from
   // the Commercial Kit, the Finish & color sheet, another tab — each leave a history entry
@@ -4616,12 +4995,37 @@ export default function ShopOrderApp() {
     (async () => {
       try {
         const res = await storage.get("last-tab", false);
-        if (res?.value && !deepLinked) setTab(res.value);
+        if (res?.value && !deepLinked && !billingReturn) setTab(res.value);
       } catch (e) { /* first time opening, no saved tab yet */ }
       setTabLoaded(true);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // The billing return's parameters leave the address bar at once (?shop= stays), so a reload
+  // or a shared link never replays them.
+  useEffect(() => {
+    const u = new URL(window.location.href);
+    if (!u.searchParams.has("billing") && !u.searchParams.has("session")) return;
+    u.searchParams.delete("billing"); u.searchParams.delete("session");
+    window.history.replaceState(window.history.state, "", u.pathname + u.search + u.hash);
+  }, []);
+  // Once the picker has landed on the returning shop, and it is one this account runs, open
+  // Shop Floor → Shop Settings (no history entry, like the other moves the app makes on its
+  // own). Anyone else just gets the clean URL.
+  useEffect(() => {
+    if (!billingReturn || billingHandled.current) return;
+    const ref = billingReturn.shop;
+    const mine = user && ref ? (memberShops || []).find((s) => s.id === ref || (s.slug && s.slug === ref)) : null;
+    if (!mine) { billingHandled.current = true; return; }
+    if (shopId !== mine.id || !canManageShop) return;
+    billingHandled.current = true;
+    setTab("dashboard"); setShopFloorView("settings");
+    if (billingReturn.kind === "cancel") flash("Checkout cancelled — nothing was charged.");
+    else if (billingReturn.kind === "success") confirmBilling(mine.id, billingReturn.session);
+    else reloadBillingInfo(); // back from the portal: the card shows what changed there
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, memberShops, shopId, canManageShop]);
 
   useEffect(() => {
     if (!tabLoaded) return; // don't overwrite the saved tab with the default before it's loaded
@@ -4649,6 +5053,8 @@ export default function ShopOrderApp() {
   // without a page reload.
   useEffect(() => {
     if (!user) { setOrders([]); setLoaded(true); return; }
+    // not loaded until this account's orders are in: the shop pick's history step waits on it
+    setLoaded(false);
     let stale = false;
     (async () => {
       try {
@@ -4661,19 +5067,21 @@ export default function ShopOrderApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
-  // Shops that take orders through RoofCoil: the public directory's, plus any shop this
-  // account runs (even one whose listing is hidden). ?shop=<slug or listing id> (a shop's
-  // own link to the app) preselects that shop, resolved through ordering_shop_by_ref() when
-  // it is not in the list — a shop that takes orders whatever its listing's status;
-  // otherwise a member's own shop; otherwise the platform's default shop (Fortified);
-  // otherwise the first one listed. A reference that names no shop taking orders is said
-  // next to the picker rather than silently landing on the default.
+  // Shops that take orders through RoofCoil: the public directory's (Featured first, with a
+  // label in the picker), plus any shop this account runs (even one whose listing is hidden).
+  // ?shop=<slug or listing id> (a shop's own link to the app) names a shop, resolved through
+  // ordering_shop_by_ref() when it is not in the list — a shop that takes orders whatever its
+  // listing's status. A reference that names no shop taking orders is said next to the
+  // picker. Which shop is selected is the effect further down; there is no platform default.
+  const [linkShopId, setLinkShopId] = useState(null); // the shop ?shop= resolved to, if any
   useEffect(() => {
+    let stale = false;
     (async () => {
       const { data, error } = await supabase.from("directory_public")
-        .select("id, name, phone, city, lat, lng, locations")
+        .select("id, name, phone, city, lat, lng, locations, featured")
         .eq("accepts_orders", true)
         .order("featured", { ascending: false }).order("name", { ascending: true });
+      if (stale) return;
       if (error || !data) { console.error("shops load error", error); return; }
       const list = [...data];
       const add = (s) => { if (s && s.id && !list.some((x) => x.id === s.id)) list.push(s); };
@@ -4685,55 +5093,129 @@ export default function ShopOrderApp() {
         if (bySlug) wantId = bySlug.id;
         else {
           const { data: wanted } = await supabase.rpc("ordering_shop_by_ref", { p_ref: want });
+          if (stale) return;
           if (Array.isArray(wanted) && wanted.length > 0) { wanted.forEach(add); wantId = wanted[0].id; }
-          else { wantId = null; setShopNotice(want); }
+          else wantId = null;
         }
       }
-      let fallback = null;
-      if (!list.some((s) => s.id === wantId) && !list.some((s) => memberShopIds.includes(s.id))) {
-        const { data: d } = await supabase.rpc("default_shop_id");
-        fallback = typeof d === "string" ? d : null;
-      }
+      // a link that resolves once the account's own shops are in no longer gets the notice
+      setShopNotice(want && !wantId ? want : null);
       setShops(list);
-      const pick = list.find((s) => s.id === wantId) || list.find((s) => memberShopIds.includes(s.id)) || list.find((s) => s.id === fallback) || list[0] || null;
-      setShopId((cur) => (cur && shopPicked.current && list.some((s) => s.id === cur) ? cur : (pick ? pick.id : null)));
+      setShopsLoaded(true);
+      setLinkShopId(wantId && list.some((s) => s.id === wantId) ? wantId : null);
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { stale = true; };
   }, [memberShops]);
 
-  // "Pricing in your area": an account that gave a ZIP at sign-up, and neither arrived by a
-  // shop's own link nor belongs to a shop, starts on the shop taking orders nearest that ZIP
-  // instead of the platform default. Once per ZIP, never over a pick made by hand, and if
-  // the ZIP can't be placed the default shop simply stays.
-  const zipRouted = useRef("");
+  // The shops taking orders nearest the account's ZIP, worked out on the server from the
+  // Census ZIP centroids (nearest_ordering_shops), so the ZIP no longer goes to a third-party
+  // geocoder. One call per ZIP, kept for the session; it feeds both the pick below and the
+  // picker's distances. Only an empty answer asks zip_known, which tells a ZIP the Census
+  // file lacks (treated as no ZIP: the prompt shows again) from a ZIP with no shop near.
+  const zipNow = user && /^\d{5}$/.test(String(customer?.zip || "").trim()) ? String(customer.zip).trim() : "";
+  const nearCache = useRef({}); // zip → promise of { zip, rows, known }
+  const [near, setNear] = useState(null); // that answer for zipNow, once it is in
   useEffect(() => {
-    const zip = String(customer?.zip || "").trim();
-    if (!/^\d{5}$/.test(zip) || zipRouted.current === zip || shops.length === 0) return;
-    if (new URLSearchParams(window.location.search).get("shop")) return;
-    if (shops.some((s) => memberShopIds.includes(s.id)) || shopPicked.current) return;
-    zipRouted.current = zip;
-    (async () => {
-      try {
-        const g = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&postalcode=${zip}`);
-        const gj = await g.json();
-        if (!gj?.[0]) return;
-        const lat = +gj[0].lat, lon = +gj[0].lon;
-        let best = null;
-        for (const s of shops) {
-          for (const b of shopBases(s) || []) {
-            const miles = havMiles(b.lat, b.lng, lat, lon);
-            if (!best || miles < best.miles) best = { shop: s, miles };
-          }
+    if (!zipNow) { setNear(null); return; }
+    let stale = false;
+    if (!nearCache.current[zipNow]) {
+      const zip = zipNow;
+      nearCache.current[zip] = (async () => {
+        try {
+          const { data, error } = await supabase.rpc("nearest_ordering_shops", { p_zip: zip, p_limit: 10, p_radius: 500 });
+          if (error) throw error;
+          const rows = Array.isArray(data) ? data : [];
+          if (rows.length > 0) return { zip, rows, known: true };
+          const { data: k, error: kErr } = await supabase.rpc("zip_known", { p_zip: zip });
+          if (kErr) throw kErr;
+          return { zip, rows, known: k === true };
+        } catch (e) {
+          // known null: nothing is suggested, no "no shop near" is claimed, and a later visit asks again
+          console.error("nearest shop lookup", e);
+          delete nearCache.current[zip];
+          return { zip, rows: [], known: null };
         }
-        if (!best || shopPicked.current) return;
-        shopPicked.current = true;
-        setShopId(best.shop.id);
-        setToast(`Pricing from ${best.shop.name}, the shop nearest ${zip} (about ${Math.round(best.miles)} mi). Change it under "Send this order to".`);
-        setTimeout(() => setToast(""), 7000);
-      } catch (e) { /* lookup down — the default shop stays */ }
-    })();
+      })();
+    }
+    nearCache.current[zipNow].then((res) => { if (!stale) setNear(res); });
+    return () => { stale = true; };
+  }, [zipNow]);
+
+  // The shops that gave this account a non-retail tier (step 3's second half); null until read.
+  const [tierShopIds, setTierShopIds] = useState(null);
+  useEffect(() => {
+    if (!user) { setTierShopIds([]); return; }
+    setTierShopIds(null);
+    let stale = false;
+    supabase.from("shop_customers").select("shop_id, tier").eq("user_id", user.id).neq("tier", "tier2")
+      .then(({ data, error }) => { if (!stale) setTierShopIds(!error && Array.isArray(data) ? data.map((r) => r.shop_id) : []); });
+    return () => { stale = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [customer?.zip, shops, memberShopIds]);
+  }, [user?.id]);
+
+  // Which shop is selected when nobody has picked one by hand (Phase 3 rule b, design §9.2):
+  // (1) the shop ?shop= names; (2) a shop this account runs; (3) the shop it last ordered
+  // from, else one that gave it a non-retail tier; (4) the shop taking orders nearest its ZIP,
+  // within 250 miles, with a toast once per ZIP; (5) none — the picker and Send ask for a
+  // choice. Featured plays no part. Step 3 waits for this account's orders and tier rows, so
+  // history always outranks distance; until an earlier step is settled nothing changes. A
+  // later pass may swap an automatic pick for a higher-ranked one (memberships arriving after
+  // the orders, say), but never a pick made by hand.
+  const zipToasted = useRef("");
+  useEffect(() => {
+    const inList = (id) => !!id && shops.some((s) => s.id === id);
+    if (shopPicked.current && inList(shopId)) return;
+    const me = user?.id;
+    // each step: an id, null (nothing there) or undefined (not known yet). The list always
+    // carries every member shop, so one missing from it means the list hasn't caught up.
+    const steps = [
+      () => (inList(linkShopId) ? linkShopId : null),
+      () => (!(memberShops || []).length ? null : (memberShops.find((m) => inList(m.id)) || {}).id),
+      () => (!me ? null : !loaded || !tierShopIds ? undefined
+        : (orders.find((o) => o.userId === me && inList(o.shopId)) || {}).shopId || tierShopIds.find(inList) || null),
+      () => (!zipNow ? null : !near || near.zip !== zipNow ? undefined
+        : (near.rows.find((r) => +r.miles <= 250 && inList(r.id)) || {}).id || null),
+    ];
+    let pick = null, rank = 0;
+    for (let i = 0; i < steps.length; i++) {
+      const v = steps[i]();
+      if (v === undefined) { if (shopId && !inList(shopId)) setShopId(null); return; }
+      if (v) { pick = v; rank = i + 1; break; }
+    }
+    if (pick === shopId) return;
+    setShopId(pick);
+    if (rank === 4 && zipToasted.current !== zipNow) {
+      zipToasted.current = zipNow;
+      const row = near.rows.find((r) => r.id === pick);
+      setToast(`Pricing from ${row.name}, the shop nearest ${zipNow} (about ${Math.round(+row.miles)} mi). Change it under "Send this order to".`);
+      setTimeout(() => setToast(""), 7000);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shops, linkShopId, memberShops, loaded, orders, tierShopIds, near, zipNow, user?.id, shopId]);
+
+  // The ZIP prompt above the picker (set_my_zip: customers.update is staff-only) and the
+  // "tell me when" lead for a ZIP with no shop near.
+  const [zipDraft, setZipDraft] = useState("");
+  const [zipBusy, setZipBusy] = useState(false);
+  const [leadZip, setLeadZip] = useState(""); // the ZIP a lead was just left for
+  const saveZip = async () => {
+    const z = zipDraft.trim();
+    if (!/^\d{5}$/.test(z)) { flash("We can't place that ZIP — check it, or choose a shop below."); return; }
+    setZipBusy(true);
+    const { data, error } = await supabase.rpc("set_my_zip", { p_zip: z });
+    setZipBusy(false);
+    if (error) { flash(error.message || "Couldn't save your ZIP — try again."); return; }
+    if (data !== "ok") { flash("We can't place that ZIP — check it, or choose a shop below."); return; }
+    setZipDraft("");
+    refreshCustomer();
+    flash("Saved.");
+  };
+  const askWhenNear = async (zip) => {
+    const { error } = await supabase.from("leads").insert({ name: customer?.name || "", email: user.email, zip, source: "no-shop-near" });
+    if (error) { flash(error.message || "Couldn't save that — try again."); return; }
+    setLeadZip(zip);
+    flash(`Thanks — we'll email you when a shop near ${zip} takes RoofCoil orders.`, 5000);
+  };
 
   // Orders go through the submit-order Edge Function, which prices each part again at this
   // account's tier against the shop's live Price List and writes the rows itself — the price
@@ -4960,9 +5442,11 @@ export default function ShopOrderApp() {
   // The selected shop's Price List. Its people read it as stored; everyone else gets it
   // through customer_price_list(shop), which strips the cost column; the tier prices stay
   // because estimates are computed here. A shop that has saved nothing prices from the code
-  // defaults. Signed out there is no list to read, and the demo shows no prices anyway.
+  // defaults. Signed out there is no list to read, and the demo shows no prices anyway. With
+  // no shop chosen, estimates use RoofCoil's sample list under the "Sample prices" line
+  // (design §9.2 step 5): customer_price_list is never called without a shop.
   useEffect(() => {
-    if (!shopId) return;
+    if (!shopId) { setPriceList(DEFAULT_PRICE_LIST); setPriceListLoaded(true); return; }
     let stale = false;
     (async () => {
       try {
@@ -5092,7 +5576,8 @@ export default function ShopOrderApp() {
       : await supabase.from("shop_members").insert({ shop_id: shopId, user_id: customerId, role: "staff" });
     if (error) {
       setMemberIds((prev) => (isMember ? [...prev, customerId] : prev.filter((id) => id !== customerId)));
-      setToast("Couldn't change admin access — try again.");
+      // the seat trigger (once enforcement is live) refuses a member past the plan's seats
+      setToast(/seat-limit/.test(error.message || "") ? "Your plan's seats are full — see Plan in Shop Settings." : "Couldn't change admin access — try again.");
       setTimeout(() => setToast(""), 3500);
       console.error(error);
     }
@@ -5882,9 +6367,20 @@ export default function ShopOrderApp() {
     // The button already asks a signed-out visitor to sign up; this is the backstop
     // so no other path can put an anonymous order in front of the shop.
     if (isDemo) { openAuth("signup"); return; }
-    // A shop's own people drawing at their shop while ordering is still off: submit-order
-    // would refuse anyway; say why, and where the switch is.
+    // Nothing is preselected for an account with no link, shop, history or nearby shop, and
+    // no order goes anywhere it didn't choose (design §9.2 step 5).
+    if (!shopId) { flash("Choose a shop under 'Send this order to'.", 5000); return; }
+    // A shop's own people drawing at their shop while it can't take orders: submit-order
+    // would refuse anyway; say why, and where to fix it. Switch on but paused (no plan, no
+    // email, no saved prices, suspended) reads the same line as the Ordering card.
     if (shopInfo && shopInfo.id === shopId && !shopInfo.accepts_orders) { flash("Ordering is off for your shop — switch it on in Shop Floor → Shop Settings.", 5000); return; }
+    // shop_admin_info, when it is loaded for this shop, is the fresh answer; my_shops (read at
+    // sign-in) only stands in until it is.
+    const ownInfo = shopInfo?.id === shopId ? shopInfo : null;
+    if (ownInfo ? ownInfo.takes_orders === false : (memberShops || []).find((s) => s.id === shopId)?.takes_orders === false) {
+      flash(ownInfo ? orderBlockLine(ownInfo) : "Your shop isn't taking orders right now — see Shop Floor → Shop Settings.", 5000);
+      return;
+    }
     if (!customerName.trim()) { setToast("Add a name so the shop knows who this is for."); return; }
     if (shapeType === "panel") {
       if (ribStyle === null) { setToast("Pick a rib style (or None) before sending the order."); return; }
@@ -6311,35 +6807,91 @@ export default function ShopOrderApp() {
   const floorOrders = isStaff ? orders : orders.filter((o) => o.shopId && memberShopIds.includes(o.shopId));
   const visibleOrders = statusFilter === "All" ? floorOrders : floorOrders.filter((o) => o.status === statusFilter);
 
-  // "Send this order to": every shop that takes orders through RoofCoil. With one shop the
-  // order still carries it; with none switched on, it goes to the Fortified desk as before.
+  // "Send this order to": every shop that takes orders through RoofCoil, Featured ones first
+  // with their label, each with its distance from the account's ZIP when that is known (the
+  // pick's own nearest_ordering_shops answer, not a second call). Only the shop pick above
+  // ever selects one: with nothing selected the buttons always show, estimates use the
+  // sample list, and Send asks for a choice. The routing rule under it is word for word the
+  // one public/terms.html prints (design §9.2).
+  const ROUTING_RULE = "RoofCoil sends your order to the shop you choose, or suggests the nearest shop taking orders to your ZIP. RoofCoil is run by the owner of Fortified Sheet Metal, one of these shops; it gets no preference. Sample prices are RoofCoil's illustrative numbers, not any shop's.";
+  const nearNow = near && near.zip === zipNow ? near : null;
+  const milesById = {};
+  (nearNow ? nearNow.rows : []).forEach((r) => { milesById[r.id] = +r.miles; });
+  // A stored ZIP the Census file lacks counts as no ZIP: the prompt shows again, and there is
+  // no "no shop near" line or lead for it. A lookup that failed (known null) claims nothing.
+  const zipUnknown = !!nearNow && nearNow.known === false;
+  // Nothing about the list is claimed until the directory read is in: no zero-shops line, and
+  // no ZIP prompt for a member whose own shop is about to be picked.
+  const showZipPrompt = shopsLoaded && !!user && !!customer && !memberShopIds.includes(shopId) && (!zipNow || zipUnknown);
+  const noShopNear = !!nearNow && nearNow.known === true && !shopId && !nearNow.rows.some((r) => +r.miles <= 250);
   const shopNoticeLine = shopNotice ? (
     <div style={{ fontSize: 11, color: SAFETY, fontWeight: 600, marginTop: 4, marginBottom: 2 }}>
-      {/^[0-9a-f-]{36}$/i.test(shopNotice) ? "That shop" : `"${shopNotice}"`} isn't taking orders through RoofCoil yet — this order goes to the shop below.
+      {/^[0-9a-f-]{36}$/i.test(shopNotice) ? "That shop" : `"${shopNotice}"`} isn't taking orders through RoofCoil right now — choose a shop under 'Send this order to'.
     </div>
   ) : null;
-  const renderShopPicker = () => shops.length === 0 ? shopNoticeLine : shops.length === 1 ? (
-    <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 4 }}>
+  const renderShopPicker = () => (
+    <>
+      {showZipPrompt ? (
+        <div style={{ marginTop: 4, marginBottom: 6 }}>
+          {zipUnknown ? <div style={{ fontSize: 11, color: SAFETY, fontWeight: 600, marginBottom: 2 }}>We can't place ZIP {zipNow} — try a nearby ZIP.</div> : null}
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+            <label style={{ flex: 1, fontSize: 11, color: theme.textSecondary }}>
+              Your ZIP — we'll suggest the nearest shop
+              <input value={zipDraft} onChange={(e) => setZipDraft(e.target.value.replace(/\D/g, "").slice(0, 5))}
+                onKeyDown={(e) => { if (e.key === "Enter" && !zipBusy) saveZip(); }}
+                inputMode="numeric" autoComplete="postal-code" placeholder="75001" className="mono"
+                style={{ width: "100%", padding: 8, marginTop: 4, border: `1px solid ${theme.border}`, borderRadius: 6, fontSize: 14, boxSizing: "border-box" }} />
+            </label>
+            <button type="button" onClick={saveZip} disabled={zipBusy}
+              style={{ padding: "9px 14px", borderRadius: 6, border: "none", background: INK, color: "#fff", fontSize: 12, fontWeight: 600, cursor: "pointer", opacity: zipBusy ? 0.7 : 1, whiteSpace: "nowrap" }}>
+              {zipBusy ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : null}
       {shopNoticeLine}
-      Sent to <b style={{ color: theme.text }}>{shops[0].name}</b>{shops[0].city ? ` · ${shops[0].city}` : ""}
-    </div>
-  ) : (
-    <label style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 4 }}>
-      {shopNoticeLine}
-      Send this order to
-      <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
-        {shops.map((c) => (
-          <button key={c.id} type="button" onClick={() => pickShop(c.id)}
-            style={{
-              flex: "1 1 45%", padding: "7px", borderRadius: 6, fontSize: 12, cursor: "pointer",
-              border: `1px solid ${shopId === c.id ? INK : "#D9D5C7"}`,
-              background: shopId === c.id ? INK : "#fff", color: shopId === c.id ? "#fff" : INK_DEEP, fontWeight: 600,
-            }}>
-            {c.name}{c.city ? <span style={{ display: "block", fontSize: 10, fontWeight: 400, opacity: 0.8 }}>{c.city}</span> : null}
+      {noShopNear ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", fontSize: 11, color: theme.text, fontWeight: 600, marginTop: 4, marginBottom: 2 }}>
+          <span style={{ flex: "1 1 160px" }}>No shop takes RoofCoil orders near {zipNow} yet</span>
+          <button type="button" onClick={() => askWhenNear(zipNow)} disabled={leadZip === zipNow}
+            style={{ padding: "6px 10px", borderRadius: 6, border: `1px solid ${INK}`, background: "#fff", color: INK_DEEP, fontSize: 11.5, fontWeight: 600, cursor: "pointer", opacity: leadZip === zipNow ? 0.6 : 1, whiteSpace: "nowrap" }}>
+            Tell me when one does
           </button>
-        ))}
-      </div>
-    </label>
+        </div>
+      ) : null}
+      {shops.length === 0 ? (
+        shopsLoaded ? <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 4 }}>No shop is taking RoofCoil orders right now.</div> : null
+      ) : shops.length === 1 && shopId === shops[0].id ? (
+        <div style={{ fontSize: 11, color: theme.textSecondary, marginTop: 4 }}>
+          Sent to <b style={{ color: theme.text }}>{shops[0].name}</b>{shops[0].city ? ` · ${shops[0].city}` : ""}
+        </div>
+      ) : (
+        <div role="group" aria-label="Send this order to" style={{ display: "block", fontSize: 11, color: theme.textSecondary, marginTop: 4 }}>
+          Send this order to
+          <div style={{ display: "flex", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
+            {shops.map((c) => {
+              const sel = shopId === c.id;
+              const sub = [c.city, milesById[c.id] != null ? `~${Math.round(milesById[c.id])} mi` : ""].filter(Boolean).join(" · ");
+              return (
+                <button key={c.id} type="button" onClick={() => pickShop(c.id)}
+                  style={{
+                    flex: "1 1 45%", padding: "7px", borderRadius: 6, fontSize: 12, cursor: "pointer",
+                    border: `1px solid ${sel ? INK : "#D9D5C7"}`,
+                    background: sel ? INK : "#fff", color: sel ? "#fff" : INK_DEEP, fontWeight: 600,
+                  }}>
+                  {c.name}
+                  {c.featured ? <span className="mono" style={{ marginLeft: 6, fontSize: 9, fontWeight: 700, padding: "1px 6px", borderRadius: 999, background: INK_DEEP, color: "#E8CE7A", border: `1px solid ${sel ? "#E8CE7A" : INK_DEEP}`, verticalAlign: "middle" }}>Featured</span> : null}
+                  {sub ? <span style={{ display: "block", fontSize: 10, fontWeight: 400, opacity: 0.8 }}>{sub}</span> : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      {/* signed out the demo shows no prices at all, so the sample line is for accounts only */}
+      {!shopId && !isDemo ? <div style={{ fontSize: 11, fontWeight: 600, color: AMBER, marginTop: 6 }}>Sample prices — choose a shop to see its prices</div> : null}
+      <div style={{ fontSize: 10, color: theme.textSecondary, marginTop: 6, lineHeight: 1.4 }}>{ROUTING_RULE}</div>
+    </>
   );
 
   // A preset chip on the drawing tool: the shape with its standard folds and painted side.
@@ -8554,8 +9106,8 @@ export default function ShopOrderApp() {
             <div style={{ color: theme.textSecondary, fontSize: 13, textAlign: "center", padding: 40 }}>You don't have access to this view.</div>
           ) : priceListView === "backend" ? (
             <>
-              {/* A shop that has saved nothing yet is on RoofCoil's seed numbers; say so, once. Never for the default shop: the seed numbers are its own. */}
-              {shopInfo && !shopInfo.is_default && !shopInfo.price_list_saved ? (
+              {/* A shop that has saved nothing yet is on RoofCoil's seed numbers; say so, once. Every shop, the operator's own included (Phase 3 rule a): its prices are its saved list, like anyone's. */}
+              {shopInfo && !shopInfo.price_list_saved ? (
                 <div style={{ background: theme.card, border: `1px solid ${SAFETY}`, borderRadius: 8, padding: 12, marginBottom: 14 }}>
                   <div className="disp" style={{ fontSize: 12, color: SAFETY, marginBottom: 4 }}>Starting prices</div>
                   <div style={{ fontSize: 11, color: theme.text, lineHeight: 1.5 }}>
@@ -8567,9 +9119,9 @@ export default function ShopOrderApp() {
                   </button>
                 </div>
               ) : null}
-              {shopInfo && !shopInfo.is_default && !(shopInfo.price_list_saved && shopInfo.order_email && shopInfo.accepts_orders) ? (
+              {shopInfo && !(shopInfo.price_list_saved && shopInfo.order_email && shopInfo.plan_takes_orders && shopInfo.accepts_orders) ? (
                 <div style={{ fontSize: 10.5, color: theme.textSecondary, marginBottom: 14 }}>
-                  Setup: {[!!shopInfo.price_list_saved, !!shopInfo.order_email, !!shopInfo.accepts_orders].filter(Boolean).length} of 3 required steps done —{" "}
+                  Setup: {[!!shopInfo.price_list_saved, !!shopInfo.order_email, !!shopInfo.plan_takes_orders, !!shopInfo.accepts_orders].filter(Boolean).length} of 4 required steps done —{" "}
                   <button onClick={() => { goTab("dashboard"); setShopFloorView("settings"); }}
                     style={{ border: "none", background: "none", color: SAFETY, fontWeight: 700, cursor: "pointer", padding: 0, fontSize: 10.5 }}>
                     open Shop Settings
@@ -8993,7 +9545,8 @@ export default function ShopOrderApp() {
                 </div>
               ) : null}
               <div style={{ background: theme.card, borderRadius: 10, padding: 18, boxShadow: "0 1px 3px rgba(0,0,0,0.08)" }}>
-                <div className="disp" style={{ fontSize: 16, color: theme.text, textAlign: "center", marginBottom: 2 }}>{selectedShop ? selectedShop.name : "Fortified Sheet Metal"}</div>
+                <div className="disp" style={{ fontSize: 16, color: theme.text, textAlign: "center", marginBottom: 2 }}>{selectedShop ? selectedShop.name : "Sample prices"}</div>
+                {!selectedShop ? <div style={{ fontSize: 11, fontWeight: 600, color: AMBER, textAlign: "center", marginBottom: 2 }}>Sample prices — choose a shop to see its prices</div> : null}
                 <div style={{ fontSize: 11, color: theme.textSecondary, textAlign: "center", marginBottom: 10 }}>
                   {tierHeading(priceListTier)}
                 </div>
@@ -9194,6 +9747,16 @@ export default function ShopOrderApp() {
         </div>
       ) : (
         <div style={{ padding: 16, maxWidth: 640, margin: "0 auto" }}>
+          {/* A member past the plan's seats (seats are enforced on read, design §4.3 row 10):
+              said here, where the shop's work would otherwise just disappear. */}
+          {(() => {
+            const mine = (memberShops || []).find((s) => s.id === shopId);
+            return mine && mine.seated === false ? (
+              <div style={{ background: "linear-gradient(90deg, #FBF3D9, #F5E6C3)", borderLeft: `4px solid ${AMBER}`, borderRadius: 8, padding: "10px 12px", marginBottom: 14, fontSize: 12, fontWeight: 600, color: INK_DEEP }}>
+                Your access to {mine.name} is paused: the shop's plan covers fewer people than it has. Nothing is deleted — ask the shop's owner.
+              </div>
+            ) : null;
+          })()}
           <div style={{ display: "flex", gap: 6, marginBottom: 14 }}>
             {[{ id: "jobs", label: "Jobs" }, ...(canManageShop ? [{ id: "materials", label: "Master Materials List" }, { id: "settings", label: "Shop Settings" }] : [])].map((v) => (
               <button key={v.id} onClick={() => setShopFloorView(v.id)}
@@ -9207,8 +9770,10 @@ export default function ShopOrderApp() {
           </div>
 
           {shopFloorView === "settings" && canManageShop ? (
-            <ShopSettingsView shopId={shopId} info={shopInfo} reloadInfo={reloadShopInfo} isOwner={isShopOwner} userId={user?.id} theme={theme} flash={flash}
+            <ShopSettingsView shopId={shopId} info={shopInfo} reloadInfo={reloadShopInfo} isOwner={isShopOwner} isOwnerStrict={isOwnerStrict} userId={user?.id} theme={theme} flash={flash}
               tierLabels={tierLabels} saveTierLabels={saveTierLabels} refreshAuth={refreshCustomer}
+              billing={billingInfo} reloadBilling={reloadBillingInfo} billingConfirm={billingConfirm}
+              onBillingRefresh={() => { if (billingConfirm) confirmBilling(billingConfirm.shopId, billingConfirm.session); }}
               openBackend={() => { goTab("pricelist"); setPriceListView("backend"); }} />
           ) : shopFloorView === "materials" ? (
             (() => {
