@@ -33,7 +33,8 @@ is the strongest argument for starting pilots over building more.
 
 **Open as of today:** leaked-password protection (dashboard toggle, Pro plan); a real
 sign-up with a ZIP has not been exercised; pilot shops. The business model is decided
-(SaaS per shop, 26 October) and the Phase 3 billing design is in review.
+(SaaS per shop, 26 October), the Phase 3 billing design is approved (27 October), and its
+first implementation PR is in review.
 
 ---
 
@@ -70,7 +71,7 @@ in through the prerendered directory; the email and abuse engineering is real.
 | 3 | Prices computed in the browser and trusted on submit | **Resolved** — `submit-order` reprices server-side and is the only write path into `orders` (#49). |
 | 4 | The single-file `App.jsx` as the velocity blocker | **Partly resolved** — catalog and pricing now live in `supabase/functions/_shared/` and are shared with the server; the component itself is still one large file. Further splitting is a judgement call, not a blocker. |
 | 5 | Binary identity model, no organization concept | **Resolved** — `shops`, `shop_members`, `shop_customers`, `shop_settings`, `shop_invites` with owner/staff roles (#53, #59). |
-| 6 | No commercial machinery: billing, plans, onboarding | **Half resolved** — self-serve onboarding shipped (#59); billing and entitlements are not started (Phase 3). |
+| 6 | No commercial machinery: billing, plans, onboarding | **Half resolved** — self-serve onboarding shipped (#59); billing and entitlements are being implemented (Phase 3, design approved). |
 | 7 | Duplication of taxonomy and colors across pages | **Mostly resolved** — colors come from `catalog_items` everywhere (#61); the capability taxonomy is still copied between the public pages. |
 | 8 | Hardcoded Supabase fallbacks; leaked-password protection off | **Half resolved** — fallbacks removed (#52); the password toggle is still off. |
 
@@ -136,7 +137,7 @@ shops will coexist in the same metro.
 | P1.5 Shops, members, per-shop rows, RLS; Fortified as shop #1 | ✓ #53, #54 |
 | P1.6 Catalog editor; app renders the shop's catalog | ✓ #58, #60, #61 |
 | P1.7 Onboarding: claim → workspace → price list → ordering on | ✓ #59, #62, #64 |
-| P2.8 Stripe plans and server-side entitlements | **designing** — SaaS per shop decided 2026-10-26; design in [phase3-billing-design.md](phase3-billing-design.md) |
+| P2.8 Stripe plans and server-side entitlements | **approved / implementing** — SaaS per shop decided 2026-10-26; design in [phase3-billing-design.md](phase3-billing-design.md), approved 2026-10-27; migration M1, the billing functions and the app release are in review, nothing applied yet |
 | P2.9 Pilot with 2–3 directory shops | **not started** — blocked on choosing the shops |
 
 Added since the plan was written, because they turned out to matter first: no pricing
@@ -169,7 +170,7 @@ whether to split `App.jsx` further.
 | 0. Correctness | Tier fix, server-side reprice, config and advisor fixes | **Done** (toggle aside) |
 | 1. Tenant foundation | Shops, members, per-shop pricing and catalog, isolation verified | **Done** — two-shop checklist passed |
 | 2. Self-serve shop | Catalog editor, onboarding from a listing claim, shop-slug entry | **Done** — a second shop onboarded itself |
-| 3. Pilots + billing | Stripe plans, 2–3 paying pilot shops, feedback loop | **Designing** — SaaS per shop decided; billing design in review; pilot shops still to choose |
+| 3. Pilots + billing | Stripe plans, 2–3 paying pilot shops, feedback loop | **Approved / implementing** — SaaS per shop decided; billing design approved; first implementation PR in review; pilot shops still to choose |
 | 4. Expand segment | Distributor branches or manufacturer white-label, whichever pilots pull | Later, demand-driven |
 
 ---
