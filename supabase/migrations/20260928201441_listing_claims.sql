@@ -1,11 +1,3 @@
--- Shops claim their own listing. Manage your listing (public/manage-listing.html) shows a
--- signed-in account with no listing the live directory; "This is my shop" calls
--- claim_listing(). When the account's confirmed email is at the listing's own website
--- domain and nobody owns the listing yet, the account is linked on the spot; anything else
--- becomes a pending claim that staff approve or dismiss in the directory admin through
--- decide_listing_claim(). Both outcomes are emailed by listing-alert (kinds claim and
--- claim_decided) from the pg_net trigger below. Rows are written only by the two
--- functions; claimants can read their own, staff can read all.
 create table if not exists public.listing_claims (
   id uuid primary key default gen_random_uuid(),
   listing_id uuid not null references public.directory_listings(id) on delete cascade,
@@ -29,8 +21,6 @@ create policy "claimant or staff read claims" on public.listing_claims
   for select to authenticated
   using (user_id = auth.uid() or exists (select 1 from public.staff s where s.id = auth.uid()));
 
--- The host of a website for matching against an email domain: scheme, "www." and any path
--- stripped, lower case; null when there is nothing usable.
 create or replace function public.site_host(p_url text)
 returns text
 language sql
@@ -45,8 +35,6 @@ as $$
 $$;
 revoke all on function public.site_host(text) from public, anon, authenticated;
 
--- Returns 'linked' (matched the website domain, owner set now), 'pending' (staff will
--- decide), or 'already-yours'. Raises with a plain message the page can show.
 create or replace function public.claim_listing(p_listing_id uuid, p_note text default null)
 returns text
 language plpgsql
@@ -92,7 +80,6 @@ $$;
 revoke all on function public.claim_listing(uuid, text) from public, anon;
 grant execute on function public.claim_listing(uuid, text) to authenticated;
 
--- Staff only. Approving sets the listing's owner to the claimant.
 create or replace function public.decide_listing_claim(p_claim_id uuid, p_approve boolean)
 returns text
 language plpgsql
@@ -118,8 +105,6 @@ $$;
 revoke all on function public.decide_listing_claim(uuid, boolean) from public, anon;
 grant execute on function public.decide_listing_claim(uuid, boolean) to authenticated;
 
--- A new pending claim emails the desk (kind claim); a decision, staff's or the automatic
--- domain match, emails the claimant (kind claim_decided).
 create or replace function public.notify_listing_claim()
 returns trigger
 language plpgsql
