@@ -3,9 +3,9 @@
 // reader, a rejection or error, or accuracy checks that did not all pass. Emails the
 // RoofCoil desk who uploaded what, what went wrong, and the file itself (attached when
 // small enough, plus a 7-day download link) so the format can be taught to the tool.
-// The trigger sends at most one alert per person per file per day (a run that has the
-// file is never held back by an earlier one that didn't). What was sent is recorded in
-// takeoff_runs.alert.
+// The trigger sends at most one alert per person, file and reason per day (a run that has
+// the file is never held back by an earlier one that didn't), on at most 10 files per
+// person per day. What was sent is recorded in takeoff_runs.alert.
 //
 // Auth: x-alert-secret header, the same shared secret as order-alert and listing-alert
 // (verify_jwt is off because pg_net cannot mint JWTs).
@@ -51,11 +51,12 @@ type Run = Record<string, any>;
 async function who(run: Run) {
   let name = "";
   let phone = "";
-  let email: string = run.email || "";
   const { data: u } = await sb.auth.admin.getUserById(run.user_id);
   const meta = (u?.user?.user_metadata ?? {}) as Record<string, string>;
   name = meta.name || meta.full_name || "";
-  email = email || u?.user?.email || "";
+  // the account's own email first: the run's email column is written by the user's own
+  // session, so it says only what they put there
+  const email: string = u?.user?.email || run.email || "";
   if (email) {
     const { data: c } = await sb.from("customers").select("name,phone").eq("email", email).limit(1).maybeSingle();
     name = name || c?.name || "";
