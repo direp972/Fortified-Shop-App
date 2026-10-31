@@ -140,6 +140,23 @@ its password and details until its owner confirms, so asking for a link can neve
 over. When the function is redeployed, ship `public/confirm.html` first: every email links
 to it. A CAPTCHA in front of the forms is the next step if bots ever become a problem.
 
+**Google and Facebook sign-in** run through Supabase Auth (`signInWithOAuth` in the app,
+`/auth/v1/authorize` in `public/auth.js`). Both sign-in forms read the project's public
+`/auth/v1/settings` and show a button only for a provider that is switched on under
+Authentication → Sign In / Providers, so turning one on or off needs no deploy. Both
+providers' apps send people to `https://znueitseoqijhkkvdomc.supabase.co/auth/v1/callback`.
+The round trip comes back to the page it started from, query included: `/` on
+shop.roofcoil.com and fortified-shop-app.vercel.app, `/app` behind the www.roofcoil.com and
+fortifiedmetals.com proxies. Each of those has to stay on the redirect allow-list
+(Authentication → URL Configuration); an address that isn't lands on the Site URL instead,
+signed in there rather than where the person started. Supabase links a social sign-in to an
+existing account with the same email, so someone who signed up with a password and later
+taps Google gets the same account, tier and shops. A first social sign-in that has no phone
+or ZIP yet gets the one-last-thing card (skippable); both go to the user's metadata and the
+`on_auth_user_details` trigger copies them onto `customers`. A failed or cancelled round
+trip comes back with `?error=…` in the query, which both forms turn into a sentence and
+clear from the address bar.
+
 ## Shops that take orders
 
 Any directory listing can take orders from the Panel & Trim app:
@@ -257,7 +274,7 @@ sheet over the chooser.
 - **No pricing of any kind shows before sign-in.** Signed out, the app is a demo: estimates,
   the shop's $/LF rates, mileage terms, the Price List, Job Vault and Past Orders are all
   withheld, and the Send button reads "Sign up free for pricing in your area". Sign-up asks
-  for a ZIP code (both forms, and the one-last-thing card after a Google sign-in); it lands
+  for a ZIP code (both forms, and the one-last-thing card after a Google or Facebook sign-in); it lands
   on `customers.zip`, shows next to the email in Customer Pricing Tiers, and a new account
   that didn't arrive by a shop's link starts on the ordering shop nearest that ZIP.
 - Anonymous readers (the directory page, the home-page counter, the prerender step and
