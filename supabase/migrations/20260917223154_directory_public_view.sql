@@ -3,8 +3,7 @@
 -- view instead of the table, so owner_id, application_id and order_email never leave the
 -- database. security_invoker keeps the table's RLS in force; the view only lists live rows.
 -- Signed-in pages that need the internal columns (directory admin, manage listing) keep
--- reading the table. The table's own anon grant is removed in a later migration, once
--- every anonymous reader is on the view and a production build has proven it.
+-- reading the table.
 create or replace view public.directory_public
 with (security_invoker = true)
 as
