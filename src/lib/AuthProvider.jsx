@@ -3,6 +3,34 @@ import { supabase } from "./supabaseClient";
 
 const AuthContext = createContext(null);
 
+// Google and Facebook sign-in. Supabase only answers for the providers switched on in its
+// dashboard (any other sends the browser to a bare "provider is not enabled" page), so the
+// sign-in card reads the project's public settings and shows just those buttons. Switching
+// one on in the dashboard brings its button up with no redeploy. Read once per page load.
+const SOCIAL = ["google", "facebook"];
+let socialProviders = null;
+function getSocialProviders() {
+  if (!socialProviders) {
+    socialProviders = fetch(import.meta.env.VITE_SUPABASE_URL + "/auth/v1/settings", { headers: { apikey: import.meta.env.VITE_SUPABASE_ANON_KEY } })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((j) => ({ google: !!j?.external?.google, facebook: !!j?.external?.facebook }))
+      .catch(() => { socialProviders = null; return { google: false, facebook: false }; });
+  }
+  return socialProviders;
+}
+
+// The round trip leaves the page, so a note in sessionStorage (this tab only) says which
+// provider it went to; whatever comes back reads it once. Older than 15 minutes, it's stale.
+const OAUTH_PENDING = "rc-oauth-pending";
+function takeSocialPending() {
+  let p = null;
+  try { p = JSON.parse(sessionStorage.getItem(OAUTH_PENDING) || "null"); sessionStorage.removeItem(OAUTH_PENDING); } catch (e) { /* ignore */ }
+  return p && SOCIAL.includes(p.provider) && Date.now() - p.at < 15 * 60 * 1000 ? p.provider : null;
+}
+
+// What Supabase adds to the address when it comes back with an error.
+export const AUTH_ERROR_PARAMS = ["error", "error_code", "error_description"];
+
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
@@ -156,16 +184,38 @@ export function AuthProvider({ children }) {
     return { data, error };
   };
 
-  const signInWithGoogle = async () => {
-    // Come back to the exact page that started the sign-in: the app lives at / on
-    // shop.roofcoil.com and at /app behind fortifiedmetals.com's proxy. Both origins
-    // are on the Supabase redirect allow-list.
-    const redirectTo = window.location.origin + window.location.pathname;
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: { redirectTo, queryParams: { prompt: "select_account" } },
-    });
+  // Google or Facebook: Supabase runs the round trip and sends the browser back to the page
+  // that started it, with the session in the URL hash, which supabase-js picks up on load.
+  // The app is at / on shop.roofcoil.com and fortified-shop-app.vercel.app and at /app
+  // behind the www.roofcoil.com and fortifiedmetals.com proxies; all of them are on the
+  // project's redirect allow-list (an address that isn't comes back to the Site URL,
+  // shop.roofcoil.com, signed in there instead). The query comes along so a shop's ?shop=
+  // link still picks that shop; a stale error from a failed try does not.
+  const signInWithProvider = async (provider) => {
+    const back = new URL(window.location.href);
+    AUTH_ERROR_PARAMS.forEach((k) => back.searchParams.delete(k));
+    back.hash = "";
+    // Google: someone with two Google accounts picks one. Facebook: if the email permission
+    // was declined last time, it is asked for again — there is no account without an email.
+    const queryParams = provider === "google" ? { prompt: "select_account" } : { auth_type: "rerequest" };
+    try { sessionStorage.setItem(OAUTH_PENDING, JSON.stringify({ provider, at: Date.now() })); } catch (e) { /* ignore */ }
+    const { data, error } = await supabase.auth.signInWithOAuth({ provider, options: { redirectTo: back.toString(), queryParams } });
+    if (error) {
+      takeSocialPending();
+      return { data, error: { message: "Couldn't start that sign-in — try again, or use your email." } };
+    }
     return { data, error };
+  };
+
+  // Google and Facebook share a name and an email but no phone or ZIP, so AuthGate asks for
+  // them after the first social sign-in. They go to the account's metadata like an email
+  // sign-up's do; the on_auth_user_details trigger copies them onto the customers row where
+  // it has none yet, and the reload below picks that up (the ZIP picks the nearest shop).
+  const saveContactDetails = async (phone, zip) => {
+    const { data, error } = await supabase.auth.updateUser({ data: { phone, zip } });
+    if (error) return { error: { message: friendly(error) || "Couldn't save that — please try again." } };
+    await loadCustomer(data.user);
+    return { error: null };
   };
 
   const signOut = async () => {
@@ -174,6 +224,6 @@ export function AuthProvider({ children }) {
 
   const refreshCustomer = () => loadCustomer(user);
 
-  const value = { user, customer, isStaff, ownedShops, memberShops, loading, signUp, signIn, signInWithGoogle, signOut, refreshCustomer, resendConfirmation, requestPasswordReset };
+  const value = { user, customer, isStaff, ownedShops, memberShops, loading, signUp, signIn, signInWithProvider, getSocialProviders, takeSocialPending, saveContactDetails, signOut, refreshCustomer, resendConfirmation, requestPasswordReset };
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

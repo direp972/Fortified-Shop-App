@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useAuth } from "./lib/AuthProvider";
+import { useAuth, AUTH_ERROR_PARAMS } from "./lib/AuthProvider";
 
 const INK = "#1C1C1E";
 const SAFETY = "#D4AF37";
@@ -16,8 +16,28 @@ const GoogleG = () => (
   </svg>
 );
 
+// Facebook's "f" mark, white on Facebook blue per their login button guidelines.
+const FacebookF = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+    <path fill="#fff" d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.413c0-3.026 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.971H15.83c-1.491 0-1.956.93-1.956 1.874v2.25h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z" />
+  </svg>
+);
+
+const PROVIDER_NAME = { google: "Google", facebook: "Facebook" };
+
+// A failed sign-in comes back with error, error_code and error_description; this says it in
+// words. `provider` is set when it was a Google or Facebook attempt started from this tab.
+function returnErrorMessage(provider, err, code, desc) {
+  const who = PROVIDER_NAME[provider];
+  if (/user email from external provider/i.test(desc)) return `${who || "That account"} didn't share an email address, and an account needs one. Try again and allow access to your email, or use your email below.`;
+  if (/multiple accounts/i.test(desc)) return "More than one account uses that email address. Call 972-944-7963 and we'll sort it out.";
+  if (code === "bad_oauth_state" || /oauth state/i.test(desc)) return "That sign-in took too long or was finished in another tab. Please try again.";
+  if (who && err === "access_denied") return `Sign-in with ${who} was cancelled, so nothing changed. Try again, or use your email below.`;
+  return desc || err || "Sign-in didn't go through — please try again.";
+}
+
 export default function AuthGate({ children }) {
-  const { user, loading, signUp, signIn, signInWithGoogle, resendConfirmation, requestPasswordReset } = useAuth();
+  const { user, customer, loading, signUp, signIn, signInWithProvider, getSocialProviders, takeSocialPending, saveContactDetails, resendConfirmation, requestPasswordReset } = useAuth();
   // Signed out, the tools still open — in demo mode, with pricing and ordering
   // locked (see isDemo in App.jsx). This card comes up over the top when a demo
   // visitor asks for something that needs an account, so whatever they have drawn
@@ -38,6 +58,12 @@ export default function AuthGate({ children }) {
   const setNeedsResend = (on) => setPending(on ? { email, password } : null);
   const [submitting, setSubmitting] = useState(false);
   const [signupDone, setSignupDone] = useState(false);
+  const [providers, setProviders] = useState(null); // { google, facebook }: which buttons to show
+  const [details, setDetails] = useState(null); // provider name while the "one last thing" card is up
+
+  useEffect(() => {
+    if (authOpen && !providers) getSocialProviders().then(setProviders);
+  }, [authOpen, providers, getSocialProviders]);
 
   useEffect(() => {
     const open = (e) => { setMode(e?.detail === "signup" ? "signup" : "signin"); setAuthOpen(true); };
@@ -62,18 +88,55 @@ export default function AuthGate({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading]);
 
-  // If Google (or Supabase) bounced us back with an error, it arrives in the URL hash
-  // (#error=...&error_description=...). Surface it once and clean the address bar.
+  // A sign-in that failed on the way back: from Google or Facebook, Supabase puts the error in
+  // the query string (?error=…&error_code=…&error_description=…); from an expired email link,
+  // in the hash. Say it once, in words, and clean the address bar, keeping the rest of the
+  // query (a shop's ?shop= link). Facebook can also leave a bare "#_=_" behind.
   useEffect(() => {
-    const h = window.location.hash || "";
-    if (h.indexOf("error") === -1) return;
-    const p = new URLSearchParams(h.replace(/^#/, ""));
-    if (p.get("error")) {
-      setError(p.get("error_description") || p.get("error"));
-      setAuthOpen(true);
-      try { window.history.replaceState(null, "", window.location.pathname + window.location.search); } catch (e) { /* ignore */ }
+    const url = new URL(window.location.href);
+    const h = new URLSearchParams((url.hash || "").replace(/^#/, ""));
+    const get = (k) => url.searchParams.get(k) || h.get(k) || "";
+    const err = get("error"), code = get("error_code"), desc = get("error_description");
+    if (!err && !code && !desc) {
+      if (url.hash === "#_=_") {
+        try { window.history.replaceState(null, "", url.pathname + url.search); } catch (e) { /* ignore */ }
+      }
+      return;
     }
+    setError(returnErrorMessage(takeSocialPending(), err, code, desc));
+    setMode("signin");
+    setAuthOpen(true);
+    AUTH_ERROR_PARAMS.forEach((k) => url.searchParams.delete(k));
+    try { window.history.replaceState(null, "", url.pathname + url.search); } catch (e) { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Signed in on the way back from Google or Facebook: the first time through, an account
+  // with no phone or ZIP yet is asked for them (skippable), as the site's sign-in does. An
+  // email account that signs in with Google or Facebook under the same address is the same
+  // account (Supabase links them by email), so it already has both and goes straight in.
+  useEffect(() => {
+    if (loading || !user) return;
+    const provider = takeSocialPending();
+    if (!provider) return;
+    const m = user.user_metadata || {};
+    const knownPhone = String(customer?.phone || m.phone || "");
+    const knownZip = String(customer?.zip || m.zip || "");
+    if (knownPhone.replace(/\D/g, "").length >= 10 && /^\d{5}$/.test(knownZip)) return;
+    setPhone(knownPhone);
+    setZip(knownZip);
+    setError("");
+    setDetails(provider);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, user]);
+
+  // Back from the provider's page with the browser's Back button, the page can come out of the
+  // back-forward cache as it was left, mid-"Please wait…": make it usable again.
+  useEffect(() => {
+    const onShow = (e) => { if (e.persisted) { setSubmitting(false); takeSocialPending(); } };
+    window.addEventListener("pageshow", onShow);
+    return () => window.removeEventListener("pageshow", onShow);
+  }, [takeSocialPending]);
 
   if (loading) {
     return (
@@ -83,12 +146,59 @@ export default function AuthGate({ children }) {
     );
   }
 
-  if (user) return children;
-  // Demo: the tools are open, the card is not up.
-  if (!authOpen && !signupDone) return children;
   // The card floats over the tools rather than replacing them: a drawing or a 3D part in
   // progress, and the order's place in the browser history, are still there afterwards.
   const overlay = { position: "fixed", inset: 0, zIndex: 1000, overflowY: "auto", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, boxSizing: "border-box", background: "linear-gradient(180deg, rgba(11,30,44,0.97), rgba(15,61,92,0.97))", fontFamily: "'Inter', system-ui, sans-serif" };
+
+  if (user) {
+    if (!details) return children;
+    const saveDetails = async (e) => {
+      e.preventDefault();
+      setError("");
+      if (phone.replace(/\D/g, "").length < 10) { setError("Enter a 10-digit phone number."); return; }
+      if (!/^\d{5}$/.test(zip.trim())) { setError("Enter your 5-digit ZIP code."); return; }
+      setSubmitting(true);
+      const { error } = await saveContactDetails(phone.trim(), zip.trim());
+      setSubmitting(false);
+      if (error) { setError(error.message); return; }
+      setDetails(null);
+    };
+    const first = String(user.user_metadata?.full_name || user.user_metadata?.name || "").trim().split(/\s+/)[0];
+    return (<>{children}
+      <div role="dialog" aria-modal="true" aria-label="One last thing" style={overlay}>
+        <form onSubmit={saveDetails} style={{ width: "100%", maxWidth: 380, background: "#fff", borderRadius: 16, padding: 28, boxShadow: "0 30px 80px rgba(0,0,0,0.5)" }}>
+          <div style={{ fontSize: 11, color: "#98A2AC", textTransform: "uppercase", letterSpacing: ".14em", textAlign: "center", marginBottom: 6 }}>One last thing</div>
+          <div style={{ fontFamily: "'Oswald', sans-serif", textTransform: "uppercase", letterSpacing: "0.03em", fontSize: 22, fontWeight: 700, marginBottom: 4, color: "#0A2B41", textAlign: "center" }}>Welcome{first ? `, ${first}` : ""}</div>
+          <div style={{ fontSize: 12.5, color: "#777", marginBottom: 22, textAlign: "center", lineHeight: 1.5 }}>
+            You're signed in with {PROVIDER_NAME[details]}. Add a phone number so the shop can reach you about orders, and your ZIP code for pricing from the shop nearest you.
+          </div>
+          <label style={{ display: "block", fontSize: 12, color: "#555", marginBottom: 12 }}>
+            Phone
+            <input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} required autoComplete="tel" inputMode="tel" placeholder="(555) 555-5555"
+              style={{ width: "100%", padding: 10, marginTop: 4, border: "1px solid #ddd", borderRadius: 7, fontSize: 14, boxSizing: "border-box" }} />
+          </label>
+          <label style={{ display: "block", fontSize: 12, color: "#555", marginBottom: 16 }}>
+            ZIP code
+            <input value={zip} onChange={(e) => setZip(e.target.value.replace(/\D/g, "").slice(0, 5))} required autoComplete="postal-code" inputMode="numeric" placeholder="75001"
+              style={{ width: "100%", padding: 10, marginTop: 4, border: "1px solid #ddd", borderRadius: 7, fontSize: 14, boxSizing: "border-box" }} />
+          </label>
+          {error && (
+            <div role="alert" style={{ fontSize: 12.5, color: "#B3261E", marginBottom: 14, background: "#FDECEA", padding: 8, borderRadius: 6 }}>{error}</div>
+          )}
+          <button type="submit" disabled={submitting}
+            style={{ width: "100%", padding: "12px", borderRadius: 8, border: "none", background: SAFETY, color: "#fff", fontWeight: 700, fontSize: 14, cursor: submitting ? "default" : "pointer", opacity: submitting ? 0.7 : 1 }}>
+            {submitting ? "Saving…" : "Save"}
+          </button>
+          <button type="button" onClick={() => { setDetails(null); setError(""); }}
+            style={{ width: "100%", marginTop: 8, padding: "10px", borderRadius: 8, border: "none", background: "transparent", color: "#777", fontWeight: 600, fontSize: 12.5, cursor: "pointer" }}>
+            Skip for now
+          </button>
+        </form>
+      </div>
+    </>);
+  }
+  // Demo: the tools are open, the card is not up.
+  if (!authOpen && !signupDone) return children;
 
   const dismiss = () => { setAuthOpen(false); setError(""); setPending(null); };
 
@@ -96,6 +206,7 @@ export default function AuthGate({ children }) {
     e.preventDefault();
     setError("");
     setNeedsResend(false);
+    takeSocialPending(); // a Google or Facebook try abandoned earlier is not this sign-in
     setSubmitting(true);
     try {
       if (mode === "signup") {
@@ -112,6 +223,12 @@ export default function AuthGate({ children }) {
         setDoneKind("reset"); setSignupDone(true);
       } else {
         const { error } = await signIn(email, password);
+        // An account made with Google or Facebook has no password until one is set.
+        const social = ["google", "facebook"].filter((p) => providers?.[p]).map((p) => PROVIDER_NAME[p]);
+        if (error && social.length && /invalid login credentials/i.test(error.message || "")) {
+          setError(`That email and password don't match. If you signed up with ${social.join(" or ")}, use that button above, or choose Forgot password to set a password.`);
+          return;
+        }
         if (error) { setError(error.message); setNeedsResend(!!error.notConfirmed); return; }
       }
     } catch (e) {
@@ -136,11 +253,12 @@ export default function AuthGate({ children }) {
     }
   };
 
-  const handleGoogle = async () => {
+  const handleSocial = async (provider) => {
     setError("");
+    setPending(null);
     setSubmitting(true);
-    const { error } = await signInWithGoogle();
-    // On success the browser navigates away to Google, so only an error ever lands here.
+    const { error } = await signInWithProvider(provider);
+    // On success the browser navigates away to the provider, so only an error ever lands here.
     if (error) { setError(error.message); setSubmitting(false); }
   };
 
@@ -175,12 +293,22 @@ export default function AuthGate({ children }) {
           {mode === "signin" ? "Sign in to see pricing and send orders to a shop" : mode === "reset" ? "Enter your email and we'll send a link to choose a new password" : "Free account — unlocks pricing, ordering and saved jobs"}
         </div>
 
-        {mode !== "reset" && (
+        {mode !== "reset" && (providers?.google || providers?.facebook) && (
           <>
-            <button type="button" onClick={handleGoogle} disabled={submitting}
-              style={{ width: "100%", padding: "11px", borderRadius: 8, border: "1px solid #dadce0", background: "#fff", color: "#3c4043", fontWeight: 600, fontSize: 14, cursor: submitting ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 16, opacity: submitting ? 0.7 : 1 }}>
-              <GoogleG /> Continue with Google
-            </button>
+            <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
+              {providers.google && (
+                <button type="button" onClick={() => handleSocial("google")} disabled={submitting}
+                  style={{ width: "100%", padding: "11px", borderRadius: 8, border: "1px solid #dadce0", background: "#fff", color: "#3c4043", fontWeight: 600, fontSize: 14, cursor: submitting ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, opacity: submitting ? 0.7 : 1 }}>
+                  <GoogleG /> Continue with Google
+                </button>
+              )}
+              {providers.facebook && (
+                <button type="button" onClick={() => handleSocial("facebook")} disabled={submitting}
+                  style={{ width: "100%", padding: "11px", borderRadius: 8, border: "1px solid #1877F2", background: "#1877F2", color: "#fff", fontWeight: 600, fontSize: 14, cursor: submitting ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, opacity: submitting ? 0.7 : 1 }}>
+                  <FacebookF /> Continue with Facebook
+                </button>
+              )}
+            </div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 16px", color: "#98A2AC", fontSize: 11, textTransform: "uppercase", letterSpacing: ".08em" }}>
               <span style={{ flex: 1, height: 1, background: "#E7E2D6" }} />or use email<span style={{ flex: 1, height: 1, background: "#E7E2D6" }} />
             </div>

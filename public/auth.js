@@ -211,8 +211,11 @@
   #rc-auth .rc-close{position:absolute;top:14px;right:16px;border:none;background:none;color:#8A94A6;font-size:20px;cursor:pointer;display:none}
   #rc-auth .card{position:relative}
   #rc-auth.dismissable .rc-close{display:block}
-  #rc-auth .rc-g{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;font-family:inherit;font-size:14px;font-weight:600;color:#3c4043;background:#fff;border:1px solid #dadce0;border-radius:10px;padding:11px 13px;cursor:pointer;margin-bottom:14px}
+  #rc-auth .rc-g{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;font-family:inherit;font-size:14px;font-weight:600;color:#3c4043;background:#fff;border:1px solid #dadce0;border-radius:10px;padding:11px 13px;cursor:pointer}
   #rc-auth .rc-g:hover{background:#F6F4EE}
+  #rc-auth .rc-sbtns{display:grid;gap:10px;margin-bottom:14px}
+  #rc-auth .rc-g.rc-fb{color:#fff;background:#1877F2;border-color:#1877F2}
+  #rc-auth .rc-g.rc-fb:hover{background:#166FE5}
   #rc-auth .rc-g svg{flex:none}
   #rc-auth .rc-or{display:flex;align-items:center;gap:10px;margin:0 0 14px;font-family:var(--mono,monospace);font-size:9.5px;letter-spacing:.13em;text-transform:uppercase;color:#8A94A6}
   #rc-auth .rc-or span{flex:1;height:1px;background:#E7E2D6}
@@ -227,8 +230,11 @@
     <p style="font-family:var(--mono,monospace);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#8A94A6;margin:0 0 10px">RoofCoil · One account, every tool</p>
     <h2 id="rc-title">Sign in</h2>
     <p class="sub" id="rc-sub">One sign-in for the whole site — colors, the finder, the Panel &amp; Trim apps, and your order history.</p>
-    <div id="rc-social">
-      <button type="button" class="rc-g" id="rc-google"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>Continue with Google</button>
+    <div id="rc-social" style="display:none">
+      <div class="rc-sbtns">
+      <button type="button" class="rc-g" id="rc-google" style="display:none"><svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>Continue with Google</button>
+      <button type="button" class="rc-g rc-fb" id="rc-facebook" style="display:none"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path fill="#fff" d="M24 12.073C24 5.405 18.627 0 12 0S0 5.405 0 12.073C0 18.1 4.388 23.094 10.125 24v-8.437H7.078v-3.49h3.047V9.413c0-3.026 1.792-4.697 4.533-4.697 1.312 0 2.686.236 2.686.236v2.971H15.83c-1.491 0-1.956.93-1.956 1.874v2.25h3.328l-.532 3.49h-2.796V24C19.612 23.094 24 18.1 24 12.073z"/></svg>Continue with Facebook</button>
+      </div>
       <div class="rc-or"><span></span>or use email<span></span></div>
     </div>
     <div id="rc-name-co" style="display:none">
@@ -251,7 +257,7 @@
     modal.querySelector("#rc-sub").textContent = m === "reset"
       ? "Enter the email on your account and we'll send you a link to choose a new password."
       : "One sign-in for the whole site — colors, the finder, the Panel & Trim apps, and your order history.";
-    modal.querySelector("#rc-social").style.display = m === "reset" ? "none" : "";
+    showSocial();
     modal.querySelector("#rc-name-co").style.display = m === "up" ? "block" : "none";
     modal.querySelector("#rc-pw-wrap").style.display = m === "reset" ? "none" : "";
     modal.querySelector("#rc-go").textContent = m === "in" ? "Sign in" : m === "reset" ? "Send reset link" : "Create account";
@@ -271,6 +277,7 @@
     modal.classList.add("on");
     modal.classList.toggle("dismissable", !opts.blocking);
     setMode(opts.mode || "in");
+    loadSocial();
     // Old preview-build members get their details carried over.
     try {
       const old = JSON.parse(localStorage.getItem("rc-member") || "null");
@@ -309,6 +316,12 @@
     }
     btn.disabled = false; setMode(mode);
     if (res.error) {
+      // An account made with Google or Facebook has no password until one is set.
+      const via = social ? ["google", "facebook"].filter(function (p) { return social[p]; }).map(function (p) { return p === "google" ? "Google" : "Facebook"; }) : [];
+      if (mode === "in" && via.length && /invalid login credentials/i.test(res.error)) {
+        showErr("That email and password don't match. If you signed up with " + via.join(" or ") + ", use that button above, or choose Forgot password to set a password.");
+        return;
+      }
       showErr(friendly(res.error));
       if (mode === "in" && /not confirmed/i.test(res.error)) offerResend(em, pw);
       return;
@@ -331,10 +344,10 @@
   function setModeAfterConfirm() {
     modal.querySelector("#rc-name-co").style.display = "none";
     modal.querySelector("#rc-pw-wrap").style.display = "";
-    modal.querySelector("#rc-social").style.display = "";
     modal.querySelector("#rc-swap").innerHTML = 'New here? <button type="button" data-mode="up">Create a free account</button> · <button type="button" data-mode="reset">Forgot password?</button>';
     modal.querySelector("#rc-go").textContent = "Sign in";
     mode = "in";
+    showSocial();
   }
   // Adds a "Send a new link" button under the "not confirmed" message.
   function offerResend(em, pw) {
@@ -356,27 +369,84 @@
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
   }
 
-  /* ---------- Google sign-in ---------- */
-  // Supabase runs the OAuth dance and sends the browser back to this exact page with
+  /* ---------- Google and Facebook sign-in ---------- */
+  // Supabase only answers for the providers switched on in its dashboard (any other sends
+  // the browser to a bare "provider is not enabled" page), so the buttons wait for the
+  // project's public settings and show just those. Switching one on in the dashboard brings
+  // its button up with no redeploy. Same rule as the app's sign-in card (src/AuthGate.jsx).
+  let social = null; // { google, facebook } once known
+  function loadSocial() {
+    if (social) return;
+    fetch(SUPA + "/auth/v1/settings", { headers: { apikey: KEY } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) { if (j && j.external) { social = { google: !!j.external.google, facebook: !!j.external.facebook }; showSocial(); } })
+      .catch(function () {});
+  }
+  function showSocial() {
+    const on = social || {};
+    modal.querySelector("#rc-google").style.display = on.google ? "" : "none";
+    modal.querySelector("#rc-facebook").style.display = on.facebook ? "" : "none";
+    modal.querySelector("#rc-social").style.display = mode !== "reset" && (on.google || on.facebook) ? "" : "none";
+  }
+
+  // Supabase runs the OAuth round trip and sends the browser back to this exact page with
   // the session in the URL hash; consumeHashSession() below turns that into the same
-  // stored session the email flow writes, so every page and the /app pick it up.
-  modal.querySelector("#rc-google").onclick = function () {
+  // stored session the email flow writes, so every page and the /app pick it up. A note in
+  // sessionStorage (this tab only, the same one the app uses) says which provider it went to.
+  const OAUTH_PENDING = "rc-oauth-pending";
+  const ERROR_PARAMS = ["error", "error_code", "error_description"];
+  function takePending() {
+    let p = null;
+    try { p = JSON.parse(sessionStorage.getItem(OAUTH_PENDING) || "null"); sessionStorage.removeItem(OAUTH_PENDING); } catch (e) {}
+    return p && (p.provider === "google" || p.provider === "facebook") && Date.now() - p.at < 15 * 60 * 1000 ? p.provider : null;
+  }
+  function startOAuth(provider) {
     hideErr();
-    const back = location.origin + location.pathname + location.search;
-    location.href = SUPA + "/auth/v1/authorize?provider=google&redirect_to=" + encodeURIComponent(back) + "&prompt=select_account";
-  };
+    // Back to this page with its query (a stale error from a failed try left out).
+    const back = new URL(location.href);
+    ERROR_PARAMS.forEach(function (k) { back.searchParams.delete(k); });
+    back.hash = "";
+    try { sessionStorage.setItem(OAUTH_PENDING, JSON.stringify({ provider: provider, at: Date.now() })); } catch (e) {}
+    // Google: someone with two Google accounts picks one. Facebook: if the email permission
+    // was declined last time, it is asked for again — there is no account without an email.
+    const extra = provider === "google" ? "&prompt=select_account" : "&auth_type=rerequest";
+    location.href = SUPA + "/auth/v1/authorize?provider=" + provider + "&redirect_to=" + encodeURIComponent(back.toString()) + extra;
+  }
+  modal.querySelector("#rc-google").onclick = function () { startOAuth("google"); };
+  modal.querySelector("#rc-facebook").onclick = function () { startOAuth("facebook"); };
+
+  // A failed sign-in, in words. `provider` is set when it was a Google or Facebook attempt
+  // started from this tab.
+  function returnErrorMessage(provider, err, code, desc) {
+    const who = provider === "google" ? "Google" : provider === "facebook" ? "Facebook" : "";
+    if (/user email from external provider/i.test(desc)) return (who || "That account") + " didn't share an email address, and an account needs one. Try again and allow access to your email, or use your email below.";
+    if (/multiple accounts/i.test(desc)) return "More than one account uses that email address. Call 972-944-7963 and we'll sort it out.";
+    if (code === "bad_oauth_state" || /oauth state/i.test(desc)) return "That sign-in took too long or was finished in another tab. Please try again.";
+    if (who && err === "access_denied") return "Sign-in with " + who + " was cancelled, so nothing changed. Try again, or use your email below.";
+    return desc || err || "Sign-in didn't go through — please try again.";
+  }
 
   function cleanHash() {
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
   }
-  // Handles the return leg of Google sign-in AND the landing from a confirmation /
-  // magic-link email (both arrive as #access_token=…). Returns null when there is
-  // nothing in the hash for us.
+  // Handles the return leg of Google and Facebook sign-in AND the landing from a
+  // confirmation / magic-link email (both arrive as #access_token=…). A failure from Google
+  // or Facebook comes back in the query string (?error=…&error_code=…&error_description=…),
+  // one from an expired email link in the hash; either way the address bar is cleaned and
+  // the rest of the query kept. Returns null when there is nothing in the address for us.
   async function consumeHashSession() {
     const h = location.hash || "";
-    if (h.indexOf("access_token=") === -1 && h.indexOf("error=") === -1) return null;
     const p = new URLSearchParams(h.replace(/^#/, ""));
-    if (p.get("error")) { cleanHash(); return { error: p.get("error_description") || p.get("error") }; }
+    const u = new URL(location.href);
+    const get = function (k) { return u.searchParams.get(k) || p.get(k) || ""; };
+    if (get("error") || get("error_code") || get("error_description")) {
+      const msg = returnErrorMessage(takePending(), get("error"), get("error_code"), get("error_description"));
+      ERROR_PARAMS.forEach(function (k) { u.searchParams.delete(k); });
+      try { history.replaceState(null, "", u.pathname + u.search); } catch (e) {}
+      return { error: msg };
+    }
+    if (h === "#_=_") { cleanHash(); return null; } // left behind by Facebook
+    if (h.indexOf("access_token=") === -1) return null;
     const at = p.get("access_token");
     if (!at) return null;
     try {
@@ -395,17 +465,18 @@
       writeSession(s);
       localStorage.removeItem("rc-member");
       cleanHash();
-      // A brand-new Google account should reach the shop's lead list just like an
-      // email signup does (fire-and-forget).
+      takePending();
+      // A brand-new Google or Facebook account should reach the shop's lead list just like
+      // an email signup does (fire-and-forget).
       const brandNew = user.created_at && (Date.now() - new Date(user.created_at).getTime()) < 10 * 60 * 1000;
-      const viaGoogle = !!(user.app_metadata && user.app_metadata.provider === "google");
-      if (brandNew && viaGoogle) {
+      const via = user.app_metadata && user.app_metadata.provider;
+      if (brandNew && (via === "google" || via === "facebook")) {
         const m = user.user_metadata || {};
         try {
           fetch(SUPA + "/rest/v1/leads", {
             method: "POST",
             headers: { "Content-Type": "application/json", apikey: KEY, Prefer: "return=minimal" },
-            body: JSON.stringify({ name: m.full_name || m.name || "", company: "", phone: "", email: user.email, source: "google" }),
+            body: JSON.stringify({ name: m.full_name || m.name || "", company: "", phone: "", email: user.email, source: via }),
           }).catch(function () {});
         } catch (e) {}
       }
@@ -413,9 +484,9 @@
     } catch (e) { cleanHash(); return null; }
   }
 
-  // Google doesn't give us a phone number or a ZIP code; the shop needs the phone to reach
-  // people about orders and the ZIP picks the shop nearest them — ask once after the first
-  // Google sign-in (skippable). Whatever is already known is filled in.
+  // Google and Facebook don't give us a phone number or a ZIP code; the shop needs the phone
+  // to reach people about orders and the ZIP picks the shop nearest them — ask once after the
+  // first Google or Facebook sign-in (skippable). Whatever is already known is filled in.
   function askForPhone(session) {
     const card = modal.querySelector(".card");
     const m = (session.user && session.user.user_metadata) || {};
